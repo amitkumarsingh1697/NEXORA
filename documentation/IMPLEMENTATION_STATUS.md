@@ -77,7 +77,7 @@ Counts are taken from REQUIREMENTS_TRACEABILITY.md.
 
 ## Repository
 
-| Item                       | Status                      |
-| -------------------------- | --------------------------- |
-| Git commits and push       | not started, by instruction |
-| Remote repository location | blocked on founder decision |
+| Item                       | Status                                                                      |
+| -------------------------- | --------------------------------------------------------------------------- |
+| Git commits and push       | committed to branch `claude/sprint-0-1-foundation`, PR #1 open (2026-11-03) |
+| Remote repository location | github.com/amitkumarsingh1697/NEXORA (public)                               |

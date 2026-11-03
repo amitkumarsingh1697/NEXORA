@@ -1,5 +1,4 @@
 # Continuous integration for the NEXORA monorepo.
-# Not yet executed on GitHub: the repository has not been pushed.
 name: ci
 on:
   pull_request:
@@ -35,6 +34,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # PDF export tests convert DOCX with LibreOffice (research R7); the runner image does not include it.
+      - name: Install LibreOffice
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer-nogui
       - name: Create test databases
         run: psql postgres://nexora:nexora_dev@127.0.0.1:5432/cvforge -f infrastructure/database/init.sql
       - run: pnpm format:check
