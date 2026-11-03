@@ -1,0 +1,62 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-observed: var(--observed);
+  --color-inferred: var(--inferred);
+  --color-unknown: var(--unknown);
+  --color-danger: var(--danger);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, monospace;
+}
+
+:root {
+  --canvas: #f6f7fb;
+  --panel: #ffffff;
+  --line: #e3e6ef;
+  --ink: #0f172a;
+  --muted: #5b6478;
+  --accent: #0e7490;
+  --accent-ink: #ffffff;
+  --observed: #0f766e;
+  --inferred: #b45309;
+  --unknown: #6b7280;
+  --danger: #b91c1c;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #0b0f19;
+    --panel: #121826;
+    --line: #232b3d;
+    --ink: #e5e9f2;
+    --muted: #93a0b8;
+    --accent: #22d3ee;
+    --accent-ink: #062029;
+    --observed: #2dd4bf;
+    --inferred: #fbbf24;
+    --unknown: #9ca3af;
+    --danger: #f87171;
+    color-scheme: dark;
+  }
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+.react-flow__attribution {
+  display: none;
+}

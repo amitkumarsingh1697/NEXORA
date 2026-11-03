@@ -1,0 +1,536 @@
+import { realpathSync, statSync } from 'node:fs';
+import { basename, extname } from 'node:path';
+import type { Db } from '../store/db';
+import { tx } from '../store/db';
+import { indexMarkdown } from './docs';
+import { discoverFiles, readText, sha1, type DiscoveredFile } from './files';
+import { readGitHistory } from './git';
+import { detectFrameworks, findManifests, type Framework, type Manifest } from './manifests';
+import { GraphBuilder, splitTerms, type ChunkRec, type Confidence, type NodeRef } from './model';
+import {
+  indexTypeScript,
+  isTestPath,
+  nearest,
+  type PackageInfo,
+  type TsIndexStats,
+} from './ts-indexer';
+
+export interface CoverageReport {
+  repoId: number;
+  root: string;
+  indexedAt: string;
+  durationMs: number;
+  git: {
+    available: boolean;
+    head?: string;
+    branch?: string | null;
+    /** Paths with uncommitted changes when indexed; the index reflects the working tree, not HEAD. */
+    dirtyFiles?: number;
+    commitsScanned: number;
+    truncated: boolean;
+  };
+  /** Build, dependency, container and CI manifests found (observed). */
+  manifests: Manifest[];
+  /** Frameworks declared in package.json dependencies (observed declarations, not proof of use). */
+  frameworks: Framework[];
+  files: {
+    discovered: number;
+    byLang: Record<string, number>;
+    structurallyAnalysed: number;
+    parseFailures: { path: string; error: string }[];
+    skipped: Record<string, number>;
+    skippedSecretPaths: string[];
+    textOnlyByExtension: Record<string, number>;
+  };
+  packages: number;
+  symbols: number;
+  routes: number;
+  docs: number;
+  imports: TsIndexStats['imports'];
+  calls: TsIndexStats['calls'] & { resolutionRate: number };
+  edgesByConfidence: Record<Confidence, number>;
+  unresolvedRecorded: number;
+  unresolvedDropped: number;
+  limitations: string[];
+}
+
+export interface IndexOptions {
+  /** Called with coarse progress messages (never file contents). */
+  onProgress?: (msg: string) => void;
+  now?: () => Date;
+}
+
+const CHUNK_MAX_LINES = 150;
+const WINDOW_LINES = 80;
+
+function readPackages(files: DiscoveredFile[], texts: Map<string, string>): PackageInfo[] {
+  const out: PackageInfo[] = [];
+  for (const f of files) {
+    if (basename(f.path) !== 'package.json') continue;
+    const text = texts.get(f.path);
+    if (!text) continue;
+    try {
+      const pkg = JSON.parse(text) as {
+        name?: string;
+        bin?: string | Record<string, string>;
+        main?: string;
+      };
+      const dir = f.path === 'package.json' ? '' : f.path.slice(0, -'/package.json'.length);
+      const name = pkg.name ?? (dir || 'root');
+      const bin = typeof pkg.bin === 'string' ? { [name]: pkg.bin } : (pkg.bin ?? {});
+      out.push({ dir, name, bin, main: pkg.main });
+    } catch {
+      // invalid package.json: ignore
+    }
+  }
+  return out;
+}
+
+function windows(lines: string[], from: number, to: number, size: number): [number, number][] {
+  const out: [number, number][] = [];
+  for (let s = from; s <= to; s += size) {
+    const e = Math.min(to, s + size - 1);
+    if (lines.slice(s - 1, e).some((l) => l.trim())) out.push([s, e]);
+  }
+  return out;
+}
+
+function codeChunks(graph: GraphBuilder, path: string, text: string): ChunkRec[] {
+  const lines = text.split('\n');
+  const tops = graph.edges
+    .filter(
+      (e) =>
+        e.kind === 'contains' &&
+        e.src.kind === 'file' &&
+        e.src.key === path &&
+        e.dst.kind === 'symbol',
+    )
+    .map((e) => graph.get(e.dst))
+    .filter(
+      (n): n is NonNullable<typeof n> =>
+        !!n && n.startLine !== undefined && n.endLine !== undefined,
+    )
+    .sort((a, b) => (a.startLine ?? 0) - (b.startLine ?? 0));
+  const out: ChunkRec[] = [];
+  let cursor = 1;
+  const push = (s: number, e: number, symbolKey?: string) =>
+    out.push({
+      filePath: path,
+      startLine: s,
+      endLine: e,
+      symbolKey,
+      kind: 'code',
+      body: lines.slice(s - 1, e).join('\n'),
+    });
+  for (const n of tops) {
+    const s = n.startLine as number;
+    const e = n.endLine as number;
+    if (s < cursor) continue; // nested/overlapping
+    for (const [a, b] of windows(lines, cursor, s - 1, WINDOW_LINES)) push(a, b);
+    for (const [a, b] of windows(lines, s, e, CHUNK_MAX_LINES)) push(a, b, n.key);
+    cursor = e + 1;
+  }
+  for (const [a, b] of windows(lines, cursor, lines.length, WINDOW_LINES)) push(a, b);
+  return out;
+}
+
+export function upsertRepo(db: Db, root: string, now: Date): { id: number; root: string } {
+  const real = realpathSync(root);
+  if (!statSync(real).isDirectory()) throw new Error('Repository path is not a directory.');
+  const existing = db.prepare('SELECT id FROM repos WHERE root = ?').get(real) as
+    { id: number } | undefined;
+  if (existing) return { id: existing.id, root: real };
+  const r = db
+    .prepare('INSERT INTO repos (root, name, created_at) VALUES (?, ?, ?)')
+    .run(real, basename(real), now.toISOString());
+  return { id: Number(r.lastInsertRowid), root: real };
+}
+
+export function indexRepository(
+  db: Db,
+  rootInput: string,
+  opts: IndexOptions = {},
+): CoverageReport {
+  const now = opts.now ?? (() => new Date());
+  const progress = opts.onProgress ?? (() => undefined);
+  const started = Date.now();
+  const repo = upsertRepo(db, rootInput, now());
+  const run = db
+    .prepare("INSERT INTO index_runs (repo_id, started_at, status) VALUES (?, ?, 'running')")
+    .run(repo.id, now().toISOString());
+  const runId = Number(run.lastInsertRowid);
+  try {
+    const report = buildAndPersist(db, repo, progress, now, started);
+    db.prepare(
+      "UPDATE index_runs SET status = 'succeeded', finished_at = ?, coverage = ?, duration_ms = ? WHERE id = ?",
+    ).run(now().toISOString(), JSON.stringify(report), report.durationMs, runId);
+    return report;
+  } catch (e) {
+    db.prepare(
+      "UPDATE index_runs SET status = 'failed', finished_at = ?, error = ?, duration_ms = ? WHERE id = ?",
+    ).run(
+      now().toISOString(),
+      e instanceof Error ? e.message : String(e),
+      Date.now() - started,
+      runId,
+    );
+    throw e;
+  }
+}
+
+function buildAndPersist(
+  db: Db,
+  repo: { id: number; root: string },
+  progress: (m: string) => void,
+  now: () => Date,
+  started: number,
+): CoverageReport {
+  progress('Discovering files');
+  const disc = discoverFiles(repo.root);
+  const paths = new Set(disc.files.map((f) => f.path));
+  const texts = new Map<string, string>();
+  for (const f of disc.files) {
+    const t = readText(f);
+    if (t !== null) texts.set(f.path, t);
+  }
+
+  const packages = readPackages(disc.files, texts);
+  const pkgDirs = packages.map((p) => p.dir);
+  const repoName = basename(repo.root);
+  const moduleOf = (p: string): string => {
+    const d = nearest(p, pkgDirs);
+    return d === undefined ? repoName : (packages.find((x) => x.dir === d)?.name ?? repoName);
+  };
+
+  const graph = new GraphBuilder();
+  for (const p of packages)
+    graph.addNode({
+      kind: 'module',
+      key: p.name,
+      name: p.name,
+      filePath: p.dir ? `${p.dir}/package.json` : 'package.json',
+      module: p.name,
+      data: { dir: p.dir },
+    });
+  if (!packages.length)
+    graph.addNode({
+      kind: 'module',
+      key: repoName,
+      name: repoName,
+      module: repoName,
+      data: { dir: '' },
+    });
+
+  const byLang: Record<string, number> = {};
+  const textOnly: Record<string, number> = {};
+  for (const f of disc.files) {
+    const text = texts.get(f.path);
+    byLang[f.lang] = (byLang[f.lang] ?? 0) + 1;
+    const mod = moduleOf(f.path);
+    const fileRef = graph.addNode({
+      kind: 'file',
+      key: f.path,
+      name: basename(f.path),
+      filePath: f.path,
+      module: mod,
+      startLine: 1,
+      endLine: text ? text.split('\n').length : undefined,
+      data: {
+        lang: f.lang,
+        size: f.size,
+        loc: text ? text.split('\n').filter((l) => l.trim()).length : 0,
+        sha: text ? sha1(text) : undefined,
+        isTest: isTestPath(f.path),
+      },
+    });
+    graph.addEdge({
+      kind: 'contains',
+      src: { kind: 'module', key: mod },
+      dst: fileRef,
+      confidence: 'observed',
+    });
+    if (f.lang === 'unsupported' || f.lang === 'text' || f.lang === 'json') {
+      const ext = extname(f.path).toLowerCase() || basename(f.path);
+      if (f.lang === 'unsupported') textOnly[ext] = (textOnly[ext] ?? 0) + 1;
+      if (text && f.lang !== 'json') {
+        const lines = text.split('\n');
+        for (const [a, b] of windows(lines, 1, lines.length, WINDOW_LINES))
+          graph.chunks.push({
+            filePath: f.path,
+            startLine: a,
+            endLine: b,
+            kind: 'text',
+            body: lines.slice(a - 1, b).join('\n'),
+          });
+      }
+    }
+  }
+
+  progress('Analysing TypeScript and JavaScript');
+  const tsStats = indexTypeScript(
+    repo.root,
+    disc.files.filter((f) => texts.has(f.path)),
+    paths,
+    graph,
+    moduleOf,
+  );
+
+  // Entry points declared in package.json (observed: they are declared).
+  for (const p of packages) {
+    const entries: [string, string][] = [
+      ...Object.entries(p.bin).map(([k, v]) => [`bin:${k}`, v] as [string, string]),
+      ...(p.main ? [['main', p.main] as [string, string]] : []),
+    ];
+    for (const [label, target] of entries) {
+      const file = [p.dir, target.replace(/^\.\//, '')].filter(Boolean).join('/');
+      const ep = graph.addNode({
+        kind: 'entrypoint',
+        key: `${p.name}:${label}`,
+        name: `${p.name} ${label}`,
+        module: p.name,
+        filePath: p.dir ? `${p.dir}/package.json` : 'package.json',
+        data: { target: file },
+      });
+      if (paths.has(file))
+        graph.addEdge({
+          kind: 'starts_at',
+          src: ep,
+          dst: { kind: 'file', key: file },
+          confidence: 'observed',
+          evidencePath: p.dir ? `${p.dir}/package.json` : 'package.json',
+          detail: label,
+        });
+    }
+  }
+
+  progress('Indexing documentation');
+  const exportedByName = new Map<string, string[]>();
+  for (const n of graph.nodes.values()) {
+    if (n.kind === 'symbol' && n.exported) {
+      const bare = n.name.split('.').pop() as string;
+      exportedByName.set(bare, [...(exportedByName.get(bare) ?? []), n.key]);
+    }
+  }
+  let docs = 0;
+  for (const f of disc.files) {
+    if (f.lang !== 'markdown') continue;
+    const text = texts.get(f.path);
+    if (text) {
+      indexMarkdown(graph, f.path, text, paths, exportedByName, moduleOf);
+      docs++;
+    }
+  }
+
+  for (const f of disc.files) {
+    if (f.lang !== 'typescript' && f.lang !== 'javascript') continue;
+    const text = texts.get(f.path);
+    if (text) graph.chunks.push(...codeChunks(graph, f.path, text));
+  }
+
+  progress('Reading git history');
+  const git = readGitHistory(repo.root);
+  for (const [path, h] of git.files) {
+    const n = graph.get({ kind: 'file', key: path });
+    if (!n) continue;
+    const total = h.authors.reduce((a, b) => a + b.lines, 0) || 1;
+    n.data = {
+      ...n.data,
+      commits: h.commits,
+      churn: h.churn,
+      lastChange: h.lastChange,
+      authors: h.authors.slice(0, 5).map((a) => ({
+        name: a.name,
+        email: a.email,
+        commits: a.commits,
+        share: Math.round((a.lines / total) * 100) / 100,
+      })),
+      authorCount: h.authors.length,
+    };
+  }
+
+  progress('Saving index');
+  persist(db, repo.id, graph);
+
+  const edgesByConfidence: Record<Confidence, number> = { observed: 0, inferred: 0, unknown: 0 };
+  for (const e of graph.edges) edgesByConfidence[e.confidence]++;
+  const skipped: Record<string, number> = {};
+  for (const s of disc.skipped) skipped[s.reason] = (skipped[s.reason] ?? 0) + 1;
+  const callTotal =
+    tsStats.calls.observed +
+    tsStats.calls.inferred +
+    tsStats.calls.dynamic +
+    tsStats.calls.unresolved;
+  const limitations: string[] = [];
+  if (!git.available)
+    limitations.push(
+      'Not a git repository: ownership, churn and change-risk signals are unavailable.',
+    );
+  if (git.available && !git.head)
+    limitations.push(
+      'Git repository has no commits yet: ownership and churn signals are unavailable.',
+    );
+  if (git.dirtyFiles)
+    limitations.push(
+      `${git.dirtyFiles} paths had uncommitted changes when indexed, so this index reflects the working tree rather than commit ${git.head?.slice(0, 10) ?? 'HEAD'}.`,
+    );
+  if (git.truncated)
+    limitations.push(`Git history truncated to the latest ${git.commitsScanned} commits.`);
+  const unsupported = Object.entries(textOnly)
+    .map(([ext, n]) => `${n} ${ext}`)
+    .join(', ');
+  if (unsupported)
+    limitations.push(`Searchable as text only, not analysed structurally: ${unsupported}.`);
+  if (tsStats.filesFailed.length)
+    limitations.push(
+      `${tsStats.filesFailed.length} TypeScript/JavaScript files could not be fully analysed.`,
+    );
+  if (tsStats.calls.dynamic)
+    limitations.push(
+      `${tsStats.calls.dynamic} call sites target callbacks, parameters or computed members; their targets are only known at runtime.`,
+    );
+  if (skipped.secret)
+    limitations.push(`${skipped.secret} files that may contain credentials were not read.`);
+  if (skipped.too_large || skipped.limit)
+    limitations.push(
+      `${(skipped.too_large ?? 0) + (skipped.limit ?? 0)} files were skipped by size or count limits.`,
+    );
+
+  const report: CoverageReport = {
+    repoId: repo.id,
+    root: repo.root,
+    indexedAt: now().toISOString(),
+    durationMs: Date.now() - started,
+    git: {
+      available: git.available,
+      head: git.head,
+      branch: git.branch,
+      dirtyFiles: git.dirtyFiles,
+      commitsScanned: git.commitsScanned,
+      truncated: git.truncated,
+    },
+    files: {
+      discovered: disc.files.length,
+      byLang,
+      structurallyAnalysed: tsStats.filesParsed,
+      parseFailures: tsStats.filesFailed.slice(0, 100),
+      skipped,
+      skippedSecretPaths: disc.skipped
+        .filter((s) => s.reason === 'secret')
+        .map((s) => s.path)
+        .slice(0, 50),
+      textOnlyByExtension: textOnly,
+    },
+    manifests: findManifests([
+      ...disc.files.map((f) => f.path),
+      ...disc.skipped.filter((x) => x.reason !== 'secret').map((x) => x.path),
+    ]),
+    frameworks: detectFrameworks(
+      disc.files
+        .filter((f) => basename(f.path) === 'package.json')
+        .map((f) => ({ path: f.path, text: texts.get(f.path) ?? '' })),
+    ),
+    packages: packages.length,
+    symbols: tsStats.symbols,
+    routes: tsStats.routes,
+    docs,
+    imports: tsStats.imports,
+    calls: {
+      ...tsStats.calls,
+      resolutionRate: callTotal
+        ? Math.round(((tsStats.calls.observed + tsStats.calls.inferred) / callTotal) * 1000) / 1000
+        : 1,
+    },
+    edgesByConfidence,
+    unresolvedRecorded: graph.unresolved.length,
+    unresolvedDropped: graph.unresolvedDropped,
+    limitations,
+  };
+  db.prepare('UPDATE repos SET last_indexed_at = ?, head_commit = ?, branch = ? WHERE id = ?').run(
+    report.indexedAt,
+    git.head ?? null,
+    git.branch ?? null,
+    repo.id,
+  );
+  return report;
+}
+
+function persist(db: Db, repoId: number, graph: GraphBuilder): void {
+  tx(db, () => {
+    db.prepare(
+      'DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE repo_id = ?)',
+    ).run(repoId);
+    for (const t of ['chunks', 'unresolved', 'edges', 'nodes'])
+      db.prepare(`DELETE FROM ${t} WHERE repo_id = ?`).run(repoId);
+
+    const insNode = db.prepare(
+      'INSERT INTO nodes (repo_id, kind, key, name, file_path, module, symbol_kind, exported, start_line, end_line, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    );
+    const ids = new Map<string, number>();
+    for (const [id, n] of graph.nodes) {
+      const r = insNode.run(
+        repoId,
+        n.kind,
+        n.key,
+        n.name,
+        n.filePath ?? null,
+        n.module ?? null,
+        n.symbolKind ?? null,
+        n.exported ? 1 : 0,
+        n.startLine ?? null,
+        n.endLine ?? null,
+        JSON.stringify(n.data ?? {}),
+      );
+      ids.set(id, Number(r.lastInsertRowid));
+    }
+    const insEdge = db.prepare(
+      'INSERT INTO edges (repo_id, src, dst, kind, confidence, evidence_path, evidence_line, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    );
+    const idOf = (ref: NodeRef) => ids.get(GraphBuilder.id(ref));
+    for (const e of graph.edges) {
+      const s = idOf(e.src);
+      const d = idOf(e.dst);
+      // An edge to a node that was never declared (e.g. a handler name that does not exist) is dropped, not invented.
+      if (s === undefined || d === undefined) continue;
+      insEdge.run(
+        repoId,
+        s,
+        d,
+        e.kind,
+        e.confidence,
+        e.evidencePath ?? null,
+        e.evidenceLine ?? null,
+        e.count > 1 ? `${e.detail ? `${e.detail}; ` : ''}${e.count} sites` : (e.detail ?? null),
+      );
+    }
+    const insUnres = db.prepare(
+      'INSERT INTO unresolved (repo_id, file_path, line, kind, text, reason) VALUES (?, ?, ?, ?, ?, ?)',
+    );
+    for (const u of graph.unresolved)
+      insUnres.run(repoId, u.filePath, u.line, u.kind, u.text, u.reason);
+    const insChunk = db.prepare(
+      'INSERT INTO chunks (repo_id, file_path, start_line, end_line, symbol_key, kind, body) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    );
+    const insFts = db.prepare(
+      'INSERT INTO chunks_fts (rowid, path, symbol, body, terms) VALUES (?, ?, ?, ?, ?)',
+    );
+    for (const c of graph.chunks) {
+      const r = insChunk.run(
+        repoId,
+        c.filePath,
+        c.startLine,
+        c.endLine,
+        c.symbolKey ?? null,
+        c.kind,
+        c.body,
+      );
+      const symbolName = c.symbolKey?.split('#').pop() ?? '';
+      insFts.run(
+        Number(r.lastInsertRowid),
+        c.filePath,
+        symbolName,
+        c.body,
+        splitTerms(`${c.filePath} ${symbolName} ${c.body}`),
+      );
+    }
+  });
+}

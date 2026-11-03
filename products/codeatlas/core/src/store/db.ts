@@ -1,0 +1,255 @@
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+
+/**
+ * Local SQLite store (Node's built-in node:sqlite, FTS5 enabled).
+ * Everything CodeAtlas learns about a repository lives here, on the user's machine.
+ */
+export type Db = DatabaseSync;
+
+const SCHEMA_VERSION = 3;
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS repos (
+  id INTEGER PRIMARY KEY,
+  root TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  last_indexed_at TEXT,
+  head_commit TEXT,
+  branch TEXT
+);
+
+CREATE TABLE IF NOT EXISTS index_runs (
+  id INTEGER PRIMARY KEY,
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  status TEXT NOT NULL CHECK (status IN ('running','succeeded','failed')),
+  error TEXT,
+  coverage TEXT,
+  duration_ms INTEGER
+);
+
+-- Generic graph: files, symbols, modules (packages), external packages, routes, docs, entrypoints.
+CREATE TABLE IF NOT EXISTS nodes (
+  id INTEGER PRIMARY KEY,
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('file','symbol','module','external','route','doc','entrypoint')),
+  key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  file_path TEXT,
+  module TEXT,
+  symbol_kind TEXT,
+  exported INTEGER NOT NULL DEFAULT 0,
+  start_line INTEGER,
+  end_line INTEGER,
+  data TEXT NOT NULL DEFAULT '{}',
+  UNIQUE (repo_id, kind, key)
+);
+CREATE INDEX IF NOT EXISTS nodes_repo_kind ON nodes(repo_id, kind);
+CREATE INDEX IF NOT EXISTS nodes_repo_file ON nodes(repo_id, file_path);
+CREATE INDEX IF NOT EXISTS nodes_repo_name ON nodes(repo_id, name);
+
+CREATE TABLE IF NOT EXISTS edges (
+  id INTEGER PRIMARY KEY,
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  src INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  dst INTEGER NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  confidence TEXT NOT NULL CHECK (confidence IN ('observed','inferred','unknown')),
+  evidence_path TEXT,
+  evidence_line INTEGER,
+  detail TEXT
+);
+CREATE INDEX IF NOT EXISTS edges_src ON edges(src, kind);
+CREATE INDEX IF NOT EXISTS edges_dst ON edges(dst, kind);
+CREATE INDEX IF NOT EXISTS edges_repo_kind ON edges(repo_id, kind);
+
+-- Things the indexer saw but could not resolve. Reported, never guessed.
+CREATE TABLE IF NOT EXISTS unresolved (
+  id INTEGER PRIMARY KEY,
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  file_path TEXT NOT NULL,
+  line INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  text TEXT NOT NULL,
+  reason TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS unresolved_repo ON unresolved(repo_id, kind);
+
+CREATE TABLE IF NOT EXISTS chunks (
+  id INTEGER PRIMARY KEY,
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  file_path TEXT NOT NULL,
+  start_line INTEGER NOT NULL,
+  end_line INTEGER NOT NULL,
+  symbol_key TEXT,
+  kind TEXT NOT NULL CHECK (kind IN ('code','doc','text')),
+  body TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS chunks_repo_file ON chunks(repo_id, file_path);
+-- v2: bug investigation -> patch workflow (every action is audited in inv_events).
+CREATE TABLE IF NOT EXISTS investigations (
+  id INTEGER PRIMARY KEY,
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('open','patch_proposed','approved','committed','merged','discarded')),
+  analysis TEXT NOT NULL DEFAULT '{}',
+  base_commit TEXT,
+  branch TEXT,
+  worktree_path TEXT,
+  current_patch_id INTEGER,
+  approved_sha TEXT,
+  commit_sha TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS inv_patches (
+  id INTEGER PRIMARY KEY,
+  investigation_id INTEGER NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
+  sha256 TEXT NOT NULL,
+  diff TEXT NOT NULL,
+  files TEXT NOT NULL,
+  explanation TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL CHECK (source IN ('model','manual')),
+  status TEXT NOT NULL CHECK (status IN ('proposed','approved','rejected','superseded','committed')),
+  created_at TEXT NOT NULL,
+  decided_at TEXT
+);
+CREATE TABLE IF NOT EXISTS inv_runs (
+  id INTEGER PRIMARY KEY,
+  investigation_id INTEGER NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
+  patch_id INTEGER,
+  command TEXT NOT NULL,
+  exit_code INTEGER,
+  timed_out INTEGER NOT NULL DEFAULT 0,
+  output TEXT NOT NULL,
+  duration_ms INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS inv_events (
+  id INTEGER PRIMARY KEY,
+  investigation_id INTEGER NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  data TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS inv_approvals (
+  id INTEGER PRIMARY KEY,
+  investigation_id INTEGER NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
+  patch_id INTEGER NOT NULL REFERENCES inv_patches(id) ON DELETE CASCADE,
+  sha256 TEXT NOT NULL,
+  base_commit TEXT NOT NULL,
+  approver TEXT NOT NULL,
+  decision TEXT NOT NULL CHECK (decision IN ('approved','rejected')),
+  validation TEXT NOT NULL CHECK (validation IN ('passed','failed','not_run')),
+  run_ids TEXT NOT NULL DEFAULT '[]',
+  acknowledged_unvalidated INTEGER NOT NULL DEFAULT 0,
+  reason TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS inv_merges (
+  id INTEGER PRIMARY KEY,
+  investigation_id INTEGER NOT NULL REFERENCES investigations(id) ON DELETE CASCADE,
+  patch_id INTEGER NOT NULL REFERENCES inv_patches(id) ON DELETE CASCADE,
+  approval_id INTEGER NOT NULL REFERENCES inv_approvals(id),
+  sha256 TEXT NOT NULL,
+  base_commit TEXT NOT NULL,
+  commit_sha TEXT NOT NULL,
+  target_branch TEXT NOT NULL,
+  merged_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(path, symbol, body, terms, tokenize = 'unicode61 remove_diacritics 2');
+`;
+
+export function openDb(file: string): Db {
+  if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
+  const db = new DatabaseSync(file);
+  db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
+  db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);');
+  const before = (
+    db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as
+      { value: string } | undefined
+  )?.value;
+  if (before && Number(before) > SCHEMA_VERSION)
+    throw new Error(
+      `Database schema v${before} is newer than this CodeAtlas (v${SCHEMA_VERSION}).`,
+    );
+  if (before && Number(before) < 3) migrateToV3(db);
+  db.exec(SCHEMA);
+  db.prepare(
+    "INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+  ).run(String(SCHEMA_VERSION));
+  return db;
+}
+
+/**
+ * v2 -> v3: adds 'merged' to the investigations status CHECK (SQLite cannot
+ * alter a CHECK, so the table is rebuilt with the documented 12-step procedure:
+ * foreign keys off, copy, swap, foreign_key_check, foreign keys on) and adds
+ * repos.branch. inv_approvals / inv_merges are created by SCHEMA afterwards.
+ */
+function migrateToV3(db: Db): void {
+  db.exec('PRAGMA foreign_keys = OFF');
+  try {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const cols = db.prepare('PRAGMA table_info(repos)').all() as { name: string }[];
+      if (cols.length && !cols.some((c) => c.name === 'branch'))
+        db.exec('ALTER TABLE repos ADD COLUMN branch TEXT');
+      const hasInv = db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'investigations'")
+        .get();
+      if (hasInv) {
+        db.exec(`CREATE TABLE investigations_v3 (
+  id INTEGER PRIMARY KEY,
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('open','patch_proposed','approved','committed','merged','discarded')),
+  analysis TEXT NOT NULL DEFAULT '{}',
+  base_commit TEXT,
+  branch TEXT,
+  worktree_path TEXT,
+  current_patch_id INTEGER,
+  approved_sha TEXT,
+  commit_sha TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+INSERT INTO investigations_v3 SELECT id, repo_id, title, description, status, analysis, base_commit, branch, worktree_path, current_patch_id, approved_sha, commit_sha, created_at, updated_at FROM investigations;
+DROP TABLE investigations;
+ALTER TABLE investigations_v3 RENAME TO investigations;`);
+      }
+      const broken = db.prepare('PRAGMA foreign_key_check').all();
+      if (broken.length)
+        throw new Error(`Migration to v3 left ${broken.length} broken references.`);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+}
+
+/** Run fn in a transaction; rolls back on error. */
+export function tx<T>(db: Db, fn: () => T): T {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const out = fn();
+    db.exec('COMMIT');
+    return out;
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
