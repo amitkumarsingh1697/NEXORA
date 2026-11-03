@@ -107,7 +107,10 @@ const STATUS_LABEL: Record<Inv['status'], string> = {
 
 function Diff({ diff }: { diff: string }) {
   return (
-    <pre className="max-h-[480px] overflow-auto rounded-lg border border-line bg-canvas p-3 text-[12px] leading-5">
+    <pre
+      tabIndex={0}
+      className="max-h-[480px] overflow-auto rounded-lg border border-line bg-canvas p-3 text-[12px] leading-5"
+    >
       {diff.split('\n').map((l, i) => (
         <div
           key={i}
@@ -425,7 +428,10 @@ function DetailView({ repoId, invId }: { repoId: number; invId: number }) {
                   </span>
                 </button>
                 {runOpen === r.id && (
-                  <pre className="max-h-72 overflow-auto border-t border-line bg-canvas p-2 text-[11px]">
+                  <pre
+                    tabIndex={0}
+                    className="max-h-72 overflow-auto border-t border-line bg-canvas p-2 text-[11px]"
+                  >
                     {r.output}
                   </pre>
                 )}
@@ -580,7 +586,10 @@ function DetailView({ repoId, invId }: { repoId: number; invId: number }) {
                     <summary className="cursor-pointer text-muted">
                       Prefer to merge yourself?
                     </summary>
-                    <pre className="mt-1 overflow-auto rounded bg-canvas p-2 font-mono">
+                    <pre
+                      tabIndex={0}
+                      className="mt-1 overflow-auto rounded bg-canvas p-2 font-mono"
+                    >
                       {instructions.mergeCommand}
                     </pre>
                   </details>
@@ -598,7 +607,7 @@ function DetailView({ repoId, invId }: { repoId: number; invId: number }) {
             {instructions && (
               <>
                 <p className="text-xs text-muted">Clean up when you are done:</p>
-                <pre className="overflow-auto rounded bg-canvas p-2 font-mono text-xs">
+                <pre tabIndex={0} className="overflow-auto rounded bg-canvas p-2 font-mono text-xs">
                   {instructions.cleanupCommands.join('\n')}
                 </pre>
               </>

@@ -158,7 +158,10 @@ export function Overview({ repoId }: { repoId: number }) {
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
                     Manifests found
                   </h3>
-                  <ul className="mt-1 max-h-48 space-y-0.5 overflow-auto font-mono text-xs">
+                  <ul
+                    tabIndex={0}
+                    className="mt-1 max-h-48 space-y-0.5 overflow-auto font-mono text-xs"
+                  >
                     {(c.manifests ?? []).map((m) => (
                       <li key={m.path}>
                         <span className="text-muted">{m.kind}</span> {m.path}
@@ -174,7 +177,7 @@ export function Overview({ repoId }: { repoId: number }) {
                     Declared in package.json dependencies (observed). Declaration does not prove
                     use.
                   </p>
-                  <ul className="mt-1 max-h-48 space-y-0.5 overflow-auto text-xs">
+                  <ul tabIndex={0} className="mt-1 max-h-48 space-y-0.5 overflow-auto text-xs">
                     {(c.frameworks ?? []).map((f) => (
                       <li key={`${f.evidence}:${f.package}`}>
                         {f.name} <span className="font-mono text-muted">{f.version}</span>
@@ -201,7 +204,7 @@ export function Overview({ repoId }: { repoId: number }) {
             {unresolved.data && !unresolved.data.items.length ? (
               <Empty>Nothing unresolved.</Empty>
             ) : (
-              <div className="max-h-80 overflow-auto">
+              <div tabIndex={0} className="max-h-80 overflow-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="text-muted">
                     <tr>

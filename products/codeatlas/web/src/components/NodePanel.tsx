@@ -224,7 +224,7 @@ export function NodePanel({
                       Tests to run: {impact.tests.map((t) => t.key).join(', ')}
                     </p>
                   )}
-                  <ul className="max-h-48 space-y-0.5 overflow-auto">
+                  <ul tabIndex={0} className="max-h-48 space-y-0.5 overflow-auto">
                     {impact.affected.slice(0, 60).map((n) => (
                       <li key={n.id}>
                         <button

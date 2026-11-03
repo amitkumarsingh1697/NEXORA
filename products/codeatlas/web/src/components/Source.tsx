@@ -33,7 +33,7 @@ export function Source({
   if (error) return <ErrorBox error={error} />;
   if (!data) return null;
   return (
-    <div className="overflow-auto rounded-lg border border-line bg-canvas">
+    <div tabIndex={0} className="overflow-auto rounded-lg border border-line bg-canvas">
       <div className="border-b border-line px-3 py-1.5 font-mono text-[11px] text-muted">
         {data.path}:{data.startLine}-{data.endLine}
       </div>

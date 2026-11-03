@@ -234,7 +234,7 @@ export function Flows({ repoId, onOpen }: { repoId: number; onOpen: Open }) {
         />
         {starts.loading ? <Spinner /> : <ErrorBox error={starts.error} />}
         {starts.data && !list.length && <Empty>No routes or entry points detected.</Empty>}
-        <ul className="max-h-[560px] space-y-0.5 overflow-auto">
+        <ul tabIndex={0} className="max-h-[560px] space-y-0.5 overflow-auto">
           {list.map((s) => (
             <li key={s.id}>
               <button
