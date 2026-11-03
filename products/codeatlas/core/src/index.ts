@@ -1,4 +1,5 @@
 export * from './store/db';
+export * from './store/analytics';
 export * from './indexer/model';
 export * from './indexer/files';
 export * from './indexer/manifests';

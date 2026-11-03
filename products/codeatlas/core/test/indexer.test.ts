@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   dependencyView,
+  explainSchemaError,
   detectFrameworks,
   edgesFrom,
   edgesTo,
@@ -451,5 +452,45 @@ describe('circular dependencies (S1-4)', () => {
     const ids = Array.from({ length: n }, (_, i) => i);
     expect(stronglyConnected(ids, (i) => (i + 1 < n ? [i + 1] : []))).toEqual([]);
     expect(stronglyConnected(ids, (i) => [(i + 1) % n])[0]).toHaveLength(n);
+  });
+});
+
+describe('failure safety (S2-6)', () => {
+  it('a failure while saving leaves the previous index intact and queryable', () => {
+    const r = makeFixtureRepo();
+    try {
+      const d = openDb(':memory:');
+      const first = indexRepository(d, r);
+      const count = () =>
+        (
+          d.prepare('SELECT COUNT(*) AS n FROM nodes WHERE repo_id = ?').get(first.repoId) as {
+            n: number;
+          }
+        ).n;
+      const before = count();
+      expect(before).toBeGreaterThan(0);
+      // Inject a failure in the middle of the save transaction, after old rows are deleted.
+      d.exec(
+        "CREATE TRIGGER fail_edges BEFORE INSERT ON edges BEGIN SELECT RAISE(ABORT, 'injected failure'); END;",
+      );
+      expect(() => indexRepository(d, r)).toThrow(/injected failure/);
+      expect(count()).toBe(before);
+      expect(search(d, first.repoId, 'listUsers').length).toBeGreaterThan(0);
+      const runs = d
+        .prepare('SELECT status, error FROM index_runs WHERE repo_id = ? ORDER BY id')
+        .all(first.repoId) as { status: string; error: string }[];
+      expect(runs.map((x) => x.status)).toEqual(['succeeded', 'failed']);
+      expect(runs[1]?.error).toMatch(/injected failure/);
+    } finally {
+      rmSync(r, { recursive: true, force: true });
+    }
+  });
+
+  it('explains a missing FTS5 module', () => {
+    expect(explainSchemaError(new Error('no such module: fts5')).message).toMatch(
+      /without the FTS5 extension/,
+    );
+    const other = new Error('disk I/O error');
+    expect(explainSchemaError(other)).toBe(other);
   });
 });

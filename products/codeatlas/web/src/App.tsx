@@ -3,8 +3,10 @@ import { navigate, setQuery, useRoute } from './router';
 import { TABS } from './tabs';
 import type { Repo } from './types';
 import { NodePanel } from './components/NodePanel';
-import { ErrorBox, cn, useAsync } from './components/ui';
+import { ErrorBox, Spinner, cn, useAsync } from './components/ui';
 import { Repos } from './pages/Repos';
+import { Settings, type SettingsInfo } from './pages/Settings';
+import { Welcome } from './pages/Welcome';
 
 function Brand() {
   return (
@@ -94,18 +96,47 @@ function RepoPage({ repoId, tab }: { repoId: number; tab: string }) {
 }
 
 export function App() {
-  const { path } = useRoute();
+  // Subscribing here re-renders when the session link only changes the hash.
+  useRoute();
   if (!token()) return <NoToken />;
+  return <Shell />;
+}
+
+function Shell() {
+  const { path } = useRoute();
+  const settings = useAsync(() => api<SettingsInfo>('/api/settings'), [path === '/']);
   const m = /^\/repos\/(\d+)(?:\/([\w-]+))?/.exec(path);
+  const page = m ? (
+    <RepoPage repoId={Number(m[1])} tab={m[2] ?? 'overview'} />
+  ) : path === '/settings' ? (
+    <Settings />
+  ) : settings.loading && !settings.data ? (
+    <div className="mx-auto max-w-[1400px] px-4 py-5">
+      <Spinner />
+    </div>
+  ) : settings.data?.firstRun ? (
+    <Welcome onDone={settings.reload} />
+  ) : (
+    <Repos />
+  );
   return (
     <div className="min-h-full">
       <header className="border-b border-line bg-panel">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between px-4 py-3">
           <Brand />
-          <span className="text-xs text-muted">Local only · 127.0.0.1</span>
+          <div className="flex items-center gap-4">
+            <span className="text-xs text-muted">Local only · 127.0.0.1</span>
+            <button
+              className="text-sm text-muted hover:text-ink"
+              onClick={() => navigate('/settings')}
+              aria-current={path === '/settings' ? 'page' : undefined}
+            >
+              Settings
+            </button>
+          </div>
         </div>
       </header>
-      {m ? <RepoPage repoId={Number(m[1])} tab={m[2] ?? 'overview'} /> : <Repos />}
+      {page}
     </div>
   );
 }

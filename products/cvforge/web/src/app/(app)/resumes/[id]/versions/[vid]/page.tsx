@@ -144,7 +144,7 @@ export default function VersionPage({ params }: { params: Promise<{ id: string; 
       )}
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
       <p className="text-sm">
-        <Link href={`/resumes/${id}`} className="text-brand">
+        <Link href={`/resumes/${id}`} className="text-brand underline">
           ← Back to resume
         </Link>
       </p>

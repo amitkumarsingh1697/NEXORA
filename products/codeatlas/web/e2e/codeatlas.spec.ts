@@ -4,6 +4,7 @@ import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeFixtureRepo } from '../../core/test/fixture';
 import { E2E_HOME } from '../playwright.config';
+import { expectAccessible } from './a11y';
 
 const FIX =
   "--- a/src/handlers.ts\n+++ b/src/handlers.ts\n@@ -5,3 +5,3 @@\n function listUsers(): string[] {\n-  return [];\n+  return ['admin'];\n }\n";
@@ -24,11 +25,16 @@ test('index a repository, explore it, ask a question, and take a bug through rev
     // Without the token the UI explains how to open it.
     await page.goto('/');
     await expect(page.getByText('Open CodeAtlas from your terminal')).toBeVisible();
+    await expectAccessible(page, 'no token');
     // The API refuses requests without the token.
     expect((await request.get('/api/repos')).status()).toBe(401);
 
     await page.goto(`/#token=${token}`);
     await expect(page).toHaveURL(/\/$/); // token removed from the address bar
+    // First run shows the welcome screen once (S2-1).
+    await expect(page.getByRole('heading', { name: 'Welcome to CodeAtlas' })).toBeVisible();
+    await expectAccessible(page, 'welcome');
+    await page.getByRole('button', { name: 'Add your first repository' }).click();
     // Clone refuses non-https and local URLs before running git (S1-3).
     await page
       .getByPlaceholder('https://github.com/owner/project.git')
@@ -38,6 +44,7 @@ test('index a repository, explore it, ask a question, and take a bug through rev
     await page.getByPlaceholder('/Users/you/code/my-project').fill(root);
     await page.getByRole('button', { name: 'Add and index' }).click();
     await expect(page.getByText(/Indexed \d/)).toBeVisible({ timeout: 60_000 });
+    await expectAccessible(page, 'repositories');
     await page.getByRole('button', { name: /^codeatlas-fixture-/ }).click();
 
     // Overview: coverage and gaps.
@@ -49,6 +56,7 @@ test('index a repository, explore it, ask a question, and take a bug through rev
     await expect(page.getByText(/branch main at [0-9a-f]{10}/)).toBeVisible();
     await expect(page.getByText('Frameworks declared')).toBeVisible();
     await expect(page.getByText('.github/workflows/ci.yml')).toBeVisible();
+    await expectAccessible(page, 'overview and coverage');
 
     // Risk findings: the fixture's import cycle and the unread .env file (S1-4).
     await page.getByRole('button', { name: 'Risk', exact: true }).click();
@@ -57,6 +65,7 @@ test('index a repository, explore it, ask a question, and take a bug through rev
       page.getByRole('heading', { name: 'Potentially sensitive configuration' }),
     ).toBeVisible();
     await expect(page.getByText('supersecretvalue123')).toHaveCount(0);
+    await expectAccessible(page, 'risk');
 
     // Flows: route -> handler -> callee, then node details with evidence.
     await page.getByRole('button', { name: 'Flows' }).click();
@@ -65,6 +74,7 @@ test('index a repository, explore it, ask a question, and take a bug through rev
     await expect(page.getByRole('complementary', { name: 'Node details' })).toContainText(
       'listUsers',
     );
+    await expectAccessible(page, 'flows with node details');
     await page.getByRole('button', { name: 'Close' }).click();
 
     // Ask (no model configured): evidence with citations.
@@ -74,6 +84,12 @@ test('index a repository, explore it, ask a question, and take a bug through rev
     await expect(page.getByText('Evidence only (no model)')).toBeVisible();
     await expect(page.getByTitle('Index revision the citations refer to')).toContainText('(main)');
     await expect(page.getByRole('button', { name: /S1 · handleUsers/ })).toBeVisible();
+    // Answer feedback stays local (S2-1).
+    await page.getByRole('button', { name: 'Not useful' }).click();
+    await page.getByLabel('Note (optional)').fill('Should mention the route');
+    await page.getByRole('button', { name: 'Send feedback' }).click();
+    await expect(page.getByText('Feedback is kept on this machine only.')).toBeVisible();
+    await expectAccessible(page, 'ask');
 
     // Investigate: bug -> rejected patch -> corrected patch -> approve exact diff -> commit -> merge.
     await page.getByRole('button', { name: 'Investigate' }).click();
@@ -127,6 +143,7 @@ test('index a repository, explore it, ask a question, and take a bug through rev
     await mergeButton.click();
     await expect(page.getByText('6. Merged')).toBeVisible();
     await expect(page.getByText('Merged locally')).toBeVisible();
+    await expectAccessible(page, 'investigation and merge');
     await expect(
       page.getByText(/Rollback: Revert the merged commit.*git revert [0-9a-f]{40}/),
     ).toBeVisible();
@@ -138,6 +155,24 @@ test('index a repository, explore it, ask a question, and take a bug through rev
         encoding: 'utf8',
       }).trim(),
     );
+
+    // Settings: AI status, data location and local analytics of everything above (S2-1).
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+    await expect(page.getByText(E2E_HOME, { exact: true })).toBeVisible();
+    await expect(page.getByText('👍 0 · 👎 1')).toBeVisible();
+    await expect(page.getByText('Should mention the route')).toBeVisible();
+    await expect(page.getByText('1 approved / 1 rejected')).toBeVisible();
+    await expectAccessible(page, 'settings');
+    const del = page.getByRole('button', { name: 'Delete all local data' });
+    await expect(del).toBeDisabled();
+    await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+    await del.click();
+    await expect(page.getByRole('status')).toContainText('Your repositories were not touched');
+    // The repository's files are unchanged by deletion; the welcome screen returns.
+    expect(readFileSync(join(root, 'src/handlers.ts'), 'utf8')).toContain("return ['admin'];");
+    await page.getByRole('button', { name: '← Repositories' }).click();
+    await expect(page.getByRole('heading', { name: 'Welcome to CodeAtlas' })).toBeVisible();
     expect(errors).toEqual([]);
   } finally {
     rmSync(root, { recursive: true, force: true });

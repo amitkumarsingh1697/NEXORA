@@ -8,7 +8,7 @@ import { DatabaseSync } from 'node:sqlite';
  */
 export type Db = DatabaseSync;
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -166,6 +166,15 @@ CREATE TABLE IF NOT EXISTS inv_merges (
   merged_by TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+-- v4: local usage analytics (spec §5.11). Counts and enums only; never transmitted.
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id INTEGER PRIMARY KEY,
+  at TEXT NOT NULL,
+  repo_id INTEGER REFERENCES repos(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('index_succeeded','index_failed','module_explored','question_asked','answer_feedback','findings_generated','change_request_proposed','patch_decided','validation_ran','change_merged')),
+  data TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS analytics_events_kind_idx ON analytics_events(kind, at);
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(path, symbol, body, terms, tokenize = 'unicode61 remove_diacritics 2');
 `;
 
@@ -183,7 +192,11 @@ export function openDb(file: string): Db {
       `Database schema v${before} is newer than this CodeAtlas (v${SCHEMA_VERSION}).`,
     );
   if (before && Number(before) < 3) migrateToV3(db);
-  db.exec(SCHEMA);
+  try {
+    db.exec(SCHEMA);
+  } catch (e) {
+    throw explainSchemaError(e);
+  }
   db.prepare(
     "INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
   ).run(String(SCHEMA_VERSION));
@@ -252,4 +265,14 @@ export function tx<T>(db: Db, fn: () => T): T {
     db.exec('ROLLBACK');
     throw e;
   }
+}
+
+/** Turn a missing-FTS5 failure into an actionable message (research R1). */
+export function explainSchemaError(e: unknown): Error {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (/no such module: fts5/i.test(msg))
+    return new Error(
+      'This Node.js build has SQLite without the FTS5 extension, which CodeAtlas needs for search. Use an official Node.js 22.13+ build from nodejs.org.',
+    );
+  return e instanceof Error ? e : new Error(msg);
 }

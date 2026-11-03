@@ -28,15 +28,21 @@ function ExportsInner() {
       (resumes.data?.resumes ?? []).flatMap((r) =>
         r.versions
           .filter((v) => v.status === 'finalized')
-          .map((v) => ({ id: v.id, label: `${r.title} — v${v.versionNumber} ${v.label}` })),
+          .map((v) => ({
+            id: v.id,
+            label: `${r.title} — v${v.versionNumber} ${v.label}`,
+            template: v.template ?? null,
+          })),
       ),
     [resumes.data],
   );
-  const [form, setForm] = useState({ versionId: preselect, template: 'classic', format: 'docx' });
+  const [form, setForm] = useState({ versionId: preselect, template: '', format: 'docx' });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
   if (resumes.loading) return <Spinner />;
   const versionId = form.versionId || versions[versions.length - 1]?.id || '';
+  // An explicit choice here wins; otherwise use the template saved on the version.
+  const template = form.template || versions.find((v) => v.id === versionId)?.template || 'classic';
   const label = (id: string) => versions.find((v) => v.id === id)?.label ?? 'Deleted version';
   return (
     <div className="space-y-6">
@@ -58,7 +64,7 @@ function ExportsInner() {
               try {
                 const r = await api<{ export: ExportRow }>('/api/exports', {
                   method: 'POST',
-                  json: { ...form, versionId },
+                  json: { ...form, versionId, template },
                 });
                 await exportsList.reload();
                 setMsg({
@@ -93,7 +99,7 @@ function ExportsInner() {
               <select
                 id="et"
                 className="h-10 w-full rounded-md border border-line bg-white px-2 text-sm"
-                value={form.template}
+                value={template}
                 onChange={(e) => setForm({ ...form, template: e.target.value })}
               >
                 <option value="classic">Classic Professional</option>

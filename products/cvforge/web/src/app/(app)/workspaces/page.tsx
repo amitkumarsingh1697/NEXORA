@@ -5,13 +5,18 @@ import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Alert, Badge, Card, EmptyState, PageHeader, Spinner } from '@/components/ui';
 import { useApi } from '@/lib/api';
-import type { WorkspaceListItem } from '@/lib/types';
+import type { WorkspaceComparison, WorkspaceListItem } from '@/lib/types';
 
 export default function WorkspacesPage() {
   const { data, error, loading } = useApi<{ workspaces: WorkspaceListItem[] }>('/api/workspaces');
   const [selected, setSelected] = useState<string[]>([]);
   const list = data?.workspaces ?? [];
   const compared = list.filter((w) => selected.includes(w.id));
+  const comparison = useApi<WorkspaceComparison>(
+    compared.length >= 2
+      ? `/api/workspaces/compare?ids=${compared.map((w) => w.id).join(',')}`
+      : null,
+  );
   return (
     <div className="space-y-6">
       <PageHeader
@@ -137,6 +142,49 @@ export default function WorkspacesPage() {
               </tbody>
             </table>
           </div>
+          {comparison.error && <Alert tone="error">{comparison.error}</Alert>}
+          {comparison.data && !comparison.data.sameResumeVersion && (
+            <Alert tone="warning">
+              These jobs were analysed against different resume versions, so their scores are not
+              directly comparable.
+            </Alert>
+          )}
+          {comparison.data && (
+            <div className="mt-4 space-y-3">
+              <h3 className="text-sm font-semibold">Skills these jobs share</h3>
+              {!comparison.data.overlap.shared.length ? (
+                <p className="text-sm text-muted">
+                  No skill from the taxonomy appears in more than one of these jobs.
+                </p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs uppercase tracking-wider text-muted">
+                      <th className="py-2">Skill</th>
+                      {compared.map((w) => (
+                        <th key={w.id}>{w.name}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {comparison.data.overlap.shared.map((s) => (
+                      <tr key={s.concept}>
+                        <td className="py-2 font-medium">{s.concept}</td>
+                        {compared.map((w) => {
+                          const j = s.jobs.find((x) => x.id === w.id);
+                          return (
+                            <td key={w.id}>
+                              {j ? `${j.state.replace('_', ' ')} (${j.importance})` : '—'}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </Card>
       )}
     </div>

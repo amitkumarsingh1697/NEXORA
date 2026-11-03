@@ -90,7 +90,7 @@ export default function SignupPage() {
       </Button>
       <p className="text-center text-sm">
         Already registered?{' '}
-        <Link href="/login" className="text-brand">
+        <Link href="/login" className="text-brand underline">
           Sign in
         </Link>
       </p>

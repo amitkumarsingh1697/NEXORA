@@ -11,7 +11,8 @@ export interface WordPart {
 
 export interface ResumeChange {
   type: ChangeType;
-  section: SectionKey | 'personal';
+  /** 'formatting' covers presentation choices: section order and template (RI-4.8-05). */
+  section: SectionKey | 'personal' | 'formatting';
   label: string;
   before: string | null;
   after: string | null;
@@ -229,10 +230,19 @@ export function diffResumes(a: ResumeContent, b: ResumeContent): ResumeDiff {
   if (a.sectionOrder.join() !== b.sectionOrder.join()) {
     out.push({
       type: 'reordered',
-      section: 'summary',
+      section: 'formatting',
       label: 'Section order',
       before: a.sectionOrder.join(', '),
       after: b.sectionOrder.join(', '),
+    });
+  }
+  if ((a.template ?? null) !== (b.template ?? null)) {
+    out.push({
+      type: !a.template ? 'added' : !b.template ? 'removed' : 'modified',
+      section: 'formatting',
+      label: 'Template',
+      before: a.template ?? null,
+      after: b.template ?? null,
     });
   }
   const counts = { added: 0, removed: 0, modified: 0, reordered: 0 } as Record<ChangeType, number>;

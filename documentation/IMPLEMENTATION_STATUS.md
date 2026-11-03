@@ -7,21 +7,22 @@ This is the single tracker required by spec §19.
 
 ## Last evidence run
 
-**Date:** 2026-11-03, in the build container.
+**Date:** 2026-11-03, in the build container, at the end of Sprint 2.
 
 **Environment:**
 
 - Node 22.23.4, pnpm 10.28.0, PostgreSQL 16, LibreOffice 24.2.7.2
 - No Ollama; no Docker daemon
 
-| Command                                   | Result                                                                                      |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `pnpm format:check`                       | clean                                                                                       |
-| `pnpm check` (typecheck, lint, tests)     | pass: 234 tests                                                                             |
-| `node skills/archlens/scripts/check.mjs`  | pass (plus a negative test with an invalid field and a broken link, which correctly failed) |
-| `pnpm --filter @nexora/cvforge-web e2e`   | 3 passed (2026-11-03, end of Sprint 1)                                                      |
-| `pnpm --filter @nexora/codeatlas-web e2e` | 1 passed (2026-11-03, end of Sprint 1; now builds the UI first)                             |
-| `pnpm audit --prod`                       | no known vulnerabilities (2026-11-03)                                                       |
+| Command                                   | Result                                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------------- |
+| `pnpm format:check`                       | clean                                                                     |
+| `pnpm check` (typecheck, lint, tests)     | pass: 258 tests                                                           |
+| `node skills/archlens/scripts/check.mjs`  | pass                                                                      |
+| `pnpm --filter @nexora/cvforge-web e2e`   | 3 passed, including axe scans of 11 screens (2026-11-03, end of Sprint 2) |
+| `pnpm --filter @nexora/codeatlas-web e2e` | 1 passed, including axe scans of 9 screens (2026-11-03, end of Sprint 2)  |
+| `pnpm audit --prod`                       | no known vulnerabilities (2026-11-03)                                     |
+| GitHub Actions CI on `main`               | green after PR #1 (2026-11-03)                                            |
 
 Test counts by package:
 
@@ -30,11 +31,11 @@ Test counts by package:
 | validation        | 4     |
 | logging           | 1     |
 | ai                | 11    |
-| cvforge-core      | 49    |
+| cvforge-core      | 58    |
 | cvforge-extension | 16    |
-| cvforge-backend   | 29    |
-| codeatlas-core    | 103   |
-| codeatlas-service | 21    |
+| cvforge-backend   | 34    |
+| codeatlas-core    | 108   |
+| codeatlas-service | 26    |
 
 ## Requirement status summary
 
@@ -42,15 +43,14 @@ Counts are taken from REQUIREMENTS_TRACEABILITY.md.
 
 | Area                                                   | Tested | Implemented (no test) | In progress | Not started | Blocked |
 | ------------------------------------------------------ | -----: | --------------------: | ----------: | ----------: | ------: |
-| CVForge (RI-*)                                         |     42 |                     3 |           1 |           1 |       0 |
-| CodeAtlas (AB-*)                                       |     38 |                     0 |           4 |           5 |       0 |
-| Cross-cutting (AI, SEC, UX, DATA, COST, PERF, DOC, SK) |     10 |                     5 |           1 |           4 |       0 |
+| CVForge (RI-*)                                         |     44 |                     2 |           1 |           0 |       0 |
+| CodeAtlas (AB-*)                                       |     40 |                     0 |           2 |           5 |       0 |
+| Cross-cutting (AI, SEC, UX, DATA, COST, PERF, DOC, SK) |     13 |                     5 |           0 |           2 |       0 |
 
 **Verification blocked by environment**, so these items are not counted as "verified":
 
 - real Ollama model quality
 - live LinkedIn and Naukri pages
-- the CI run
 
 ## Sprint status
 
@@ -59,7 +59,7 @@ Counts are taken from REQUIREMENTS_TRACEABILITY.md.
 | Baseline (spec phases 0–11, built 2026-11-02)   | Built               | Phase reports in the project thread; tests above                                                                                                   |
 | Sprint 0: governance and research               | **Done** 2026-11-03 | The 10 governance files exist; 12 sourced research entries; every spec requirement has an ID and status; ArchLens check passes; `pnpm check` green |
 | Sprint 1: spec compliance and security findings | **Done** 2026-11-03 | All 8 items; evidence below and in REQUIREMENTS_TRACEABILITY                                                                                       |
-| Sprint 2: product surface and robustness        | Not started         |                                                                                                                                                    |
+| Sprint 2: product surface and robustness        | **Done** 2026-11-03 | All 7 items; evidence below, in REQUIREMENTS_TRACEABILITY and in `reports/SPRINT_2_REPORT.md`                                                      |
 | Sprint 3: CodeAtlas depth                       | Not started         |                                                                                                                                                    |
 
 ## Sprint 1 items
@@ -75,9 +75,21 @@ Counts are taken from REQUIREMENTS_TRACEABILITY.md.
 | S1-7 Restart survival test              | tested                   | `service/test/restart.test.ts`                                                                                                                                    |
 | S1-8 Prompt-injection test              | tested                   | `chat.test.ts` "prompt injection in repository content (S1-8)"                                                                                                    |
 
+## Sprint 2 items
+
+| Item                                        | Status | Evidence                                                                                                                                       |
+| ------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| S2-1 Analytics, feedback, settings, welcome | tested | `ca/core/test/analytics.test.ts`, `ca/service/test/analytics.test.ts`, `investigations.test.ts` analytics assertions, CodeAtlas E2E            |
+| S2-2 Job comparison                         | tested | `cv/core/__tests__/compare.test.ts`, `cv/be/__tests__/compare.test.ts`, CVForge E2E comparison step                                            |
+| S2-3 Formatting diffs                       | tested | `versioning.test.ts` formatting cases, `cv/be/__tests__/formatting.test.ts`                                                                    |
+| S2-4 Word parser isolation                  | tested | `isolate.test.ts` (normal, timeout with event-loop probe, heap cap, corrupt); CVForge E2E uploads a DOCX through the production Next.js server |
+| S2-5 Accessibility scans                    | tested | `e2e/a11y.ts` in both suites; 5 serious issues found and fixed (contrast in both palettes, link styling, logo label)                           |
+| S2-6 Cancellation and failure safety        | tested | `ca/service/test/jobs.test.ts`, `indexer.test.ts` "failure safety (S2-6)"                                                                      |
+| S2-7 User guide and test report             | done   | `product/USER_GUIDE.md`, `testing/TEST_REPORT.md`                                                                                              |
+
 ## Repository
 
-| Item                       | Status                                                                      |
-| -------------------------- | --------------------------------------------------------------------------- |
-| Git commits and push       | committed to branch `claude/sprint-0-1-foundation`, PR #1 open (2026-11-03) |
-| Remote repository location | github.com/amitkumarsingh1697/NEXORA (public)                               |
+| Item                       | Status                                                                                    |
+| -------------------------- | ----------------------------------------------------------------------------------------- |
+| Git commits and push       | Sprints 0–1 merged to `main` via PR #1; Sprint 2 on branch `claude/sprint-2` (2026-11-03) |
+| Remote repository location | github.com/amitkumarsingh1697/NEXORA (public)                                             |

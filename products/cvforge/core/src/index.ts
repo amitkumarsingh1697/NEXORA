@@ -6,6 +6,7 @@ export * from './taxonomy/skills';
 export * from './career/stage';
 export * from './job/model';
 export * from './job/parse';
+export * from './job/compare';
 export * from './evidence/engine';
 export * from './clarification/generate';
 export * from './scoring/types';

@@ -50,7 +50,7 @@ export default function ForgotPage() {
         Send reset link
       </Button>
       <p className="text-center text-sm">
-        <Link href="/login" className="text-brand">
+        <Link href="/login" className="text-brand underline">
           Back to sign in
         </Link>
       </p>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TEMPLATE_IDS } from '../export/templates';
 
 /**
  * Structured resume representation. Every list item carries a stable `id` so
@@ -102,6 +103,12 @@ export const resumeContentSchema = z.object({
   languages: z.array(languageSchema).max(30).default([]),
   custom: z.array(customSectionSchema).max(20).default([]),
   sectionOrder: z.array(z.enum(SECTION_KEYS)).default([...SECTION_KEYS]),
+  /**
+   * Preferred export template, chosen by the user and stored on the version so that formatting
+   * changes are versioned and diffed (RI-4.8-05). Absent on versions created before it existed;
+   * exports then fall back to whatever template the user picks on the export screen.
+   */
+  template: z.enum(TEMPLATE_IDS).optional(),
 });
 
 export type ResumeContent = z.infer<typeof resumeContentSchema>;

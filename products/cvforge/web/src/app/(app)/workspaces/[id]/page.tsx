@@ -97,7 +97,7 @@ export default function WorkspacePage({ params }: { params: Promise<{ id: string
               .join(' · ')}{' '}
             — analysing{' '}
             <Link
-              className="text-brand"
+              className="text-brand underline"
               href={`/resumes/${data.workspace.resumeId}/versions/${data.baseVersion.id}`}
             >
               v{data.baseVersion.versionNumber} {data.baseVersion.label}
@@ -714,7 +714,7 @@ function SuggestionsTab({
           key={s.id}
           className={cn(
             s.decision === 'accepted' && 'border-demonstrated',
-            s.decision === 'rejected' && 'opacity-60',
+            s.decision === 'rejected' && 'border-dashed',
           )}
         >
           <div className="flex flex-wrap items-center gap-2">

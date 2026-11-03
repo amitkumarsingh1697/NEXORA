@@ -45,7 +45,7 @@ function CompareInner({ id }: { id: string }) {
         description={`${data.from.label} → ${data.to.label}`}
       />
       <p className="text-sm">
-        <Link href={`/resumes/${id}`} className="text-brand">
+        <Link href={`/resumes/${id}`} className="text-brand underline">
           ← Back to resume
         </Link>
       </p>

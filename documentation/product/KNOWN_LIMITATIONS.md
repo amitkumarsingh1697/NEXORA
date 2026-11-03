@@ -5,7 +5,7 @@ Honest list of what does not work, or was not verified, in the current build.
 ## Verification gaps
 
 - **No real model was exercised.** Ollama was not installed in the build environment. AI paths (CVForge phrasing, CodeAtlas chat, model patches) are tested with fake providers only; quality with real models is unmeasured.
-- **CI has not run.** `.github/workflows/ci.yml` is written but the repository has not been pushed.
+- **Accessibility is checked automatically only.** axe scans cover the screens the E2E journeys reach; there has been no manual keyboard or screen-reader audit, and the extension popup is not scanned.
 - **Extension toolbar click is simulated in E2E.** Playwright opens the popup page directly and stubs the active tab; manual testing in Chrome/Edge is still needed, especially on live LinkedIn/Naukri pages (extraction selectors were written against public page structures and a fixture, not verified on live logged-in pages).
 - **Docker compose file validated (`docker compose config`) but not started**: no Docker daemon in the build environment. Postgres was run natively.
 
@@ -14,7 +14,9 @@ Honest list of what does not work, or was not verified, in the current build.
 - English resumes and job descriptions only; skill taxonomy is a curated list, not exhaustive.
 - Scanned (image-only) PDFs are not supported (no OCR).
 - Complex layouts (multiple columns, tables, text boxes) reduce parse confidence; the user must review the confirm screen.
-- Two export templates only.
+- Two export templates only. The template is the only stored formatting choice besides section order; fonts, margins and spacing are fixed per template.
+- Job comparison matches requirements by skill-taxonomy concept. Responsibilities without a recognised skill are not compared across jobs.
+- Word documents that take longer than 20 seconds or more than 256 MB of memory to parse are refused as too complex. PDF parsing has no equivalent worker isolation yet.
 - Single-instance deployment: in-memory rate limiter, local-disk storage, outbox-directory mailer (no email is actually sent; no email verification).
 - No organisations/teams yet beyond the personal org created at signup.
 - Scores are heuristic and explainable, not predictions of ATS outcomes or hiring decisions.
@@ -32,6 +34,8 @@ Honest list of what does not work, or was not verified, in the current build.
 - Running an untrusted repository's own `test`/`build` scripts executes that repository's code; the allowlist limits _which_ scripts, not what they do.
 - Model patches and dependency install need network access (to the model and the registry respectively).
 - Single user, single machine by design.
+- Local analytics record counts on this machine only; there is no opt-in organisational analytics yet. "Delete all local data" clears the database but leaves the investigation worktrees and public clones folders on disk for you to delete (their paths are shown in Settings).
+- Cancelling indexing stops the indexer process; a cancel during the final database commit can still complete that commit.
 - Local merge is fast-forward only. If your branch moved after the investigation started, the merge is refused and you start a new investigation from the current commit. Approver identity is the OS user name.
 - Public clone: https only, no private repositories, no size cap (10-minute timeout), and the clone request waits for the download before indexing starts. Host checks happen before git resolves the name again, so DNS rebinding is a residual risk (threat A16).
 - Frameworks are detected from package.json declarations only; declaration does not prove use. Manifests from non-JavaScript ecosystems are not classified.
@@ -39,4 +43,4 @@ Honest list of what does not work, or was not verified, in the current build.
 
 ## Repository
 
-- No git commits yet (by instruction, nothing has been committed or pushed). The target remote repository has not been chosen.
+- Public repository: github.com/amitkumarsingh1697/NEXORA. Changes reach `main` only through reviewed pull requests.

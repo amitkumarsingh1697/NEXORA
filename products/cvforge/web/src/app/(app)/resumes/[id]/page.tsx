@@ -162,7 +162,7 @@ export default function ResumeDetail({ params }: { params: Promise<{ id: string 
                 </td>
                 <td className="text-muted">{new Date(v.createdAt).toLocaleString()}</td>
                 <td className="text-right">
-                  <Link href={`/resumes/${id}/versions/${v.id}`} className="text-brand">
+                  <Link href={`/resumes/${id}/versions/${v.id}`} className="text-brand underline">
                     {v.status === 'draft' ? 'Review & edit' : 'View'}
                   </Link>
                 </td>

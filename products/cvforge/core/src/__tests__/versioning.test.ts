@@ -10,6 +10,7 @@ import {
 import { checkNoFabrication } from '../suggestions/guard';
 import { applySuggestions, StaleSuggestionError } from '../versioning/apply';
 import { diffResumes } from '../versioning/diff';
+import { resumeContentSchema } from '../resume/model';
 import { SAMPLE_JD_TEXT, SAMPLE_RESUME_TEXT } from './fixtures/samples';
 
 const NOW = new Date('2026-11-01T00:00:00Z');
@@ -126,5 +127,37 @@ describe('versioning', () => {
   });
   it('identical versions have no changes', () => {
     expect(diffResumes(resume, structuredClone(resume)).changes).toHaveLength(0);
+  });
+  it('diffs template and section order as formatting changes (RI-4.8-05)', () => {
+    const styled = structuredClone(resume);
+    styled.template = 'modern';
+    styled.sectionOrder = [...resume.sectionOrder].reverse();
+    const d = diffResumes(resume, styled);
+    const formatting = d.changes.filter((c) => c.section === 'formatting');
+    expect(formatting.map((c) => [c.type, c.label, c.before, c.after])).toEqual([
+      [
+        'reordered',
+        'Section order',
+        resume.sectionOrder.join(', '),
+        styled.sectionOrder.join(', '),
+      ],
+      ['added', 'Template', null, 'modern'],
+    ]);
+    expect(d.changes).toHaveLength(2);
+    const switched = structuredClone(styled);
+    switched.template = 'classic';
+    expect(diffResumes(styled, switched).changes).toEqual([
+      expect.objectContaining({
+        section: 'formatting',
+        type: 'modified',
+        before: 'modern',
+        after: 'classic',
+      }),
+    ]);
+  });
+  it('accepts versions stored before the template field existed and rejects unknown templates', () => {
+    const legacy = resumeContentSchema.parse({ personal: {} });
+    expect(legacy.template).toBeUndefined();
+    expect(resumeContentSchema.safeParse({ personal: {}, template: 'fancy' }).success).toBe(false);
   });
 });

@@ -62,6 +62,9 @@
 | S2-6 | Index cancellation and failure safety                                         | PERF-12-01, PERF-12-02 | `DELETE /api/jobs/:id` cancels a running index. A failure-injection test proves the previous index stays queryable. A clear error appears if FTS5 is unavailable.                                                                                                                                                                               |
 | S2-7 | User guide and test report                                                    | DOC-11-01              | `documentation/product/USER_GUIDE.md` covers both products. `documentation/testing/TEST_REPORT.md` is generated from an executed run.                                                                                                                                                                                                           |
 
+**Status:** done 2026-11-03. Evidence per item is in [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) and [reports/SPRINT_2_REPORT.md](reports/SPRINT_2_REPORT.md).
+**Scope notes:** S2-2 also returns which resume version each job was analysed against and warns when they differ. S2-3 stores the template as an optional field, so versions saved before Sprint 2 stay valid. In S2-4 the "server stays responsive" criterion is tested by an event-loop probe that keeps ticking while the worker is busy. S2-6's cancel buttons are covered by the service test, not by E2E.
+
 ---
 
 ## Sprint 3: CodeAtlas depth

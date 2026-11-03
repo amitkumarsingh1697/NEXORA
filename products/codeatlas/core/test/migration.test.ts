@@ -35,7 +35,7 @@ INSERT INTO inv_patches VALUES (3, 7, 'sha', 'diff', '[]', '', 'manual', 'commit
 `;
 
 describe('schema migration', () => {
-  it('upgrades a v2 database to v3 without losing rows or breaking foreign keys', () => {
+  it('upgrades a v2 database to the current schema (v3 rebuild, then v4) without losing rows or breaking foreign keys', () => {
     const file = join(dir, 'v2.db');
     const old = new DatabaseSync(file);
     old.exec(V2);
@@ -43,7 +43,7 @@ describe('schema migration', () => {
 
     const db = openDb(file);
     expect(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({
-      value: '3',
+      value: '4',
     });
     expect(
       (db.prepare('PRAGMA table_info(repos)').all() as { name: string }[]).map((c) => c.name),
@@ -55,9 +55,11 @@ describe('schema migration', () => {
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
     expect(
       db
-        .prepare("SELECT name FROM sqlite_master WHERE name IN ('inv_approvals','inv_merges')")
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE name IN ('inv_approvals','inv_merges','analytics_events')",
+        )
         .all(),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     // The patch's foreign key still points at the rebuilt table: cascade delete works.
     db.prepare('DELETE FROM investigations WHERE id = 7').run();
     expect(db.prepare('SELECT COUNT(*) AS n FROM inv_patches').get()).toEqual({ n: 0 });

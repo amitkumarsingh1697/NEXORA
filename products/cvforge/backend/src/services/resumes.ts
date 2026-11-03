@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, max } from 'drizzle-orm';
+import { and, asc, desc, eq, max, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { AppError, parseOrThrow } from '@nexora/validation';
 import {
@@ -167,6 +167,7 @@ export async function listResumes(ctx: Ctx, userId: string) {
         origin: resumeVersions.origin,
         label: resumeVersions.label,
         createdAt: resumeVersions.createdAt,
+        template: sql<string | null>`${resumeVersions.content}->>'template'`,
       })
       .from(resumeVersions)
       .where(eq(resumeVersions.resumeId, r.id))
