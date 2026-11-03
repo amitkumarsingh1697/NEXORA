@@ -1,0 +1,59 @@
+# Continuous integration for the NEXORA monorepo.
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nexora
+          POSTGRES_PASSWORD: nexora_dev
+          POSTGRES_DB: cvforge
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U nexora" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://nexora:nexora_dev@127.0.0.1:5432/cvforge_test
+      E2E_DATABASE_URL: postgres://nexora:nexora_dev@127.0.0.1:5432/cvforge_e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # PDF export tests convert DOCX with LibreOffice (research R7); the runner image does not include it.
+      # Carlito and Liberation are metric-compatible with the templates' Calibri and Arial; without them line wrapping changes.
+      - name: Install LibreOffice
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer-nogui fonts-crosextra-carlito fonts-liberation
+      - name: Create test databases
+        run: psql postgres://nexora:nexora_dev@127.0.0.1:5432/cvforge -f infrastructure/database/init.sql
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm audit --prod
+      - run: pnpm --filter @nexora/codeatlas-web build
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: products/cvforge/web
+      - name: CVForge E2E
+        run: pnpm --filter @nexora/cvforge-web e2e
+      - name: CodeAtlas E2E
+        run: pnpm --filter @nexora/codeatlas-web e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: products/*/web/playwright-report

@@ -1,0 +1,27 @@
+{
+  "name": "@nexora/codeatlas-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CodeAtlas local service: binds to 127.0.0.1 only and serves the API and web UI.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "codeatlas": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "node --no-warnings --import tsx src/cli.ts serve",
+    "cli": "node --no-warnings --import tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nexora/ai": "workspace:*",
+    "@nexora/codeatlas-core": "workspace:*",
+    "@nexora/logging": "workspace:*",
+    "@nexora/validation": "workspace:*",
+    "tsx": "4.23.15",
+    "zod": "4.6.7"
+  }
+}

@@ -1,0 +1,1122 @@
+import { existsSync, realpathSync } from 'node:fs';
+import { dirname, join, relative, sep } from 'node:path';
+import ts from 'typescript';
+import type { DiscoveredFile } from './files';
+import { GraphBuilder, type Confidence, type NodeRef } from './model';
+
+/**
+ * TypeScript/JavaScript indexer built on the TypeScript Compiler API.
+ *
+ * Labelling rules (shown to users as-is):
+ * - observed: the type checker resolved it (import resolved to a file, call
+ *   resolved to a declaration, class heritage resolved).
+ * - inferred: a heuristic made the link (framework route conventions, a call
+ *   with no type information matched to the only declaration of that name,
+ *   tests linked to the files they import).
+ * - unknown: seen but not resolvable (dynamic calls, unresolved imports). These
+ *   are recorded in `unresolved` and counted in the coverage report.
+ */
+
+export interface TsIndexStats {
+  programs: number;
+  filesParsed: number;
+  filesFailed: { path: string; error: string }[];
+  imports: { internal: number; external: number; unresolved: number };
+  calls: {
+    observed: number;
+    inferred: number;
+    external: number;
+    builtin: number;
+    dynamic: number;
+    unresolved: number;
+  };
+  symbols: number;
+  routes: number;
+}
+
+export interface PackageInfo {
+  dir: string; // repo-relative, '' for root
+  name: string;
+  bin: Record<string, string>;
+  main?: string;
+}
+
+/** Runtime globals (Node, browsers, extensions). Calls to these are builtin, not unresolved. */
+const RUNTIME_GLOBALS = new Set([
+  ...Object.getOwnPropertyNames(globalThis),
+  'window',
+  'document',
+  'navigator',
+  'location',
+  'localStorage',
+  'sessionStorage',
+  'browser',
+  'chrome',
+  'customElements',
+  'requestAnimationFrame',
+  'cancelAnimationFrame',
+  'alert',
+  'confirm',
+  'getComputedStyle',
+  'matchMedia',
+  'Deno',
+  'Bun',
+]);
+
+const HTTP_VERBS = new Set(['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'all']);
+const NEXT_VERBS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD']);
+const TEST_RE = /(^|\/)(__tests__|e2e)\/|[._-](test|spec)\.[cm]?[jt]sx?$/;
+
+export function isTestPath(p: string): boolean {
+  return TEST_RE.test(p);
+}
+
+function toPosix(p: string): string {
+  return p.split(sep).join('/');
+}
+
+/** Nearest ancestor directory (repo-relative) from a set, longest match wins. */
+export function nearest(path: string, dirs: string[]): string | undefined {
+  let best: string | undefined;
+  for (const d of dirs) {
+    if (d === '' || path === d || path.startsWith(`${d}/`)) {
+      if (best === undefined || d.length > best.length) best = d;
+    }
+  }
+  return best;
+}
+
+function packageNameOfSpecifier(spec: string): string {
+  if (spec.startsWith('node:')) return spec;
+  const parts = spec.split('/');
+  return spec.startsWith('@') ? parts.slice(0, 2).join('/') : (parts[0] ?? spec);
+}
+
+function packageNameFromNodeModulesPath(p: string): string {
+  const idx = p.lastIndexOf('/node_modules/');
+  const rest = p.slice(idx + '/node_modules/'.length).split('/');
+  return rest[0]?.startsWith('@') ? `${rest[0]}/${rest[1]}` : (rest[0] ?? 'unknown');
+}
+
+/** Map a Next.js app/pages router file to a URL path. */
+export function nextRoutePath(
+  filePath: string,
+): { kind: 'route' | 'page' | 'pages-api'; path: string } | null {
+  const app = /(?:^|\/)(?:src\/)?app\/(.*?)(?:\/)?(route|page)\.[cm]?[jt]sx?$/.exec(filePath);
+  if (app) {
+    const segs = (app[1] ?? '')
+      .split('/')
+      .filter((s) => s && !/^\(.*\)$/.test(s) && !s.startsWith('@'));
+    const path = `/${segs.map((s) => s.replace(/^\[\[?\.\.\.(.+?)\]?\]$/, '*$1').replace(/^\[(.+)\]$/, ':$1')).join('/')}`;
+    return { kind: app[2] === 'route' ? 'route' : 'page', path };
+  }
+  const pages = /(?:^|\/)(?:src\/)?pages\/(api\/.*?)\.[cm]?[jt]sx?$/.exec(filePath);
+  if (pages) {
+    const segs = (pages[1] ?? '')
+      .replace(/\/index$/, '')
+      .split('/')
+      .map((s) => s.replace(/^\[(.+)\]$/, ':$1'));
+    return { kind: 'pages-api', path: `/${segs.join('/')}` };
+  }
+  return null;
+}
+
+interface Ctx {
+  root: string;
+  repoFiles: Set<string>; // repo-relative paths of all discovered files
+  graph: GraphBuilder;
+  stats: TsIndexStats;
+  moduleOf: (path: string) => string;
+  /** bare name -> symbol keys (for inferred fallback) */
+  byName: Map<string, Set<string>>;
+  pendingInferred: {
+    owner: NodeRef;
+    name: string;
+    path: string;
+    line: number;
+    text: string;
+    kind: 'calls' | 'instantiates';
+  }[];
+}
+
+function rel(ctx: Ctx, abs: string): string | null {
+  let real = abs;
+  try {
+    real = realpathSync(abs);
+  } catch {
+    // keep as-is
+  }
+  const r = toPosix(relative(ctx.root, real));
+  if (r.startsWith('..') || r.includes('/node_modules/') || r.startsWith('node_modules/'))
+    return null;
+  return ctx.repoFiles.has(r) ? r : null;
+}
+
+function lineOf(sf: ts.SourceFile, pos: number): number {
+  return sf.getLineAndCharacterOfPosition(pos).line + 1;
+}
+
+function nameText(name: ts.PropertyName | ts.BindingName | undefined): string | null {
+  if (!name) return null;
+  if (ts.isIdentifier(name) || ts.isPrivateIdentifier(name)) return name.text;
+  if (ts.isStringLiteral(name) || ts.isNumericLiteral(name)) return name.text;
+  return null;
+}
+
+function isTopLevel(node: ts.Node): boolean {
+  const p = node.parent;
+  return !!p && (ts.isSourceFile(p) || ts.isModuleBlock(p));
+}
+
+function isFunctionInit(e: ts.Expression | undefined): boolean {
+  if (!e) return false;
+  let x: ts.Expression = e;
+  while (ts.isParenthesizedExpression(x) || ts.isAsExpression(x) || ts.isSatisfiesExpression(x))
+    x = x.expression;
+  return ts.isArrowFunction(x) || ts.isFunctionExpression(x);
+}
+
+function hasExport(node: ts.Node): boolean {
+  const mods = ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined;
+  return !!mods?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+}
+
+function namespacePrefix(node: ts.Node): string {
+  const parts: string[] = [];
+  let p: ts.Node | undefined = node.parent;
+  while (p && !ts.isSourceFile(p)) {
+    if (ts.isModuleDeclaration(p)) parts.unshift(p.name.getText());
+    p = p.parent;
+  }
+  return parts.length ? `${parts.join('.')}.` : '';
+}
+
+/** If `node` is a declaration CodeAtlas tracks as a symbol, return its qualified name and kind. */
+function describeDecl(
+  node: ts.Node,
+): { qname: string; kind: string; exported: boolean; nameNode: ts.Node } | null {
+  if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && isTopLevel(node)) {
+    const n = node.name?.text ?? (hasExport(node) ? 'default' : null);
+    if (!n) return null;
+    return {
+      qname: namespacePrefix(node) + n,
+      kind: ts.isClassDeclaration(node) ? 'class' : 'function',
+      exported: hasExport(node),
+      nameNode: node.name ?? node,
+    };
+  }
+  if (
+    (ts.isInterfaceDeclaration(node) ||
+      ts.isTypeAliasDeclaration(node) ||
+      ts.isEnumDeclaration(node)) &&
+    isTopLevel(node)
+  ) {
+    const kind = ts.isInterfaceDeclaration(node)
+      ? 'interface'
+      : ts.isTypeAliasDeclaration(node)
+        ? 'type'
+        : 'enum';
+    return {
+      qname: namespacePrefix(node) + node.name.text,
+      kind,
+      exported: hasExport(node),
+      nameNode: node.name,
+    };
+  }
+  if (
+    ts.isVariableDeclaration(node) &&
+    ts.isVariableDeclarationList(node.parent) &&
+    ts.isVariableStatement(node.parent.parent) &&
+    isTopLevel(node.parent.parent)
+  ) {
+    const n = nameText(node.name);
+    if (!n) return null;
+    return {
+      qname: namespacePrefix(node.parent.parent) + n,
+      kind: isFunctionInit(node.initializer) ? 'function' : 'variable',
+      exported: hasExport(node.parent.parent),
+      nameNode: node.name,
+    };
+  }
+  if (
+    (ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node) ||
+      ts.isGetAccessorDeclaration(node) ||
+      ts.isSetAccessorDeclaration(node) ||
+      (ts.isPropertyDeclaration(node) && isFunctionInit(node.initializer))) &&
+    ts.isClassLike(node.parent)
+  ) {
+    const cls = node.parent.name?.text ?? 'default';
+    const n = ts.isConstructorDeclaration(node) ? 'constructor' : nameText(node.name);
+    if (!n) return null;
+    const isPrivate =
+      ts.getCombinedModifierFlags(node as ts.Declaration) & ts.ModifierFlags.Private;
+    return {
+      qname: `${namespacePrefix(node.parent)}${cls}.${n}`,
+      kind: ts.isPropertyDeclaration(node)
+        ? 'method'
+        : ts.isConstructorDeclaration(node)
+          ? 'constructor'
+          : ts.isMethodDeclaration(node)
+            ? 'method'
+            : 'accessor',
+      exported: !isPrivate,
+      nameNode: node.name ?? node,
+    };
+  }
+  if (ts.isExportAssignment(node) && !node.isExportEquals && isTopLevel(node)) {
+    return {
+      qname: 'default',
+      kind: isFunctionInit(node.expression) ? 'function' : 'variable',
+      exported: true,
+      nameNode: node,
+    };
+  }
+  return null;
+}
+
+/** Nearest tracked declaration enclosing (or equal to) `node`. */
+function trackedAncestor(node: ts.Node | undefined): { node: ts.Node; qname: string } | null {
+  let n: ts.Node | undefined = node;
+  while (n && !ts.isSourceFile(n)) {
+    const d = describeDecl(n);
+    if (d) return { node: n, qname: d.qname };
+    n = n.parent;
+  }
+  return null;
+}
+
+const BRANCH_KINDS = new Set([
+  ts.SyntaxKind.IfStatement,
+  ts.SyntaxKind.ForStatement,
+  ts.SyntaxKind.ForInStatement,
+  ts.SyntaxKind.ForOfStatement,
+  ts.SyntaxKind.WhileStatement,
+  ts.SyntaxKind.DoStatement,
+  ts.SyntaxKind.CaseClause,
+  ts.SyntaxKind.CatchClause,
+  ts.SyntaxKind.ConditionalExpression,
+]);
+
+function loadCompilerOptions(root: string, tsconfigRel: string | undefined): ts.CompilerOptions {
+  let base: ts.CompilerOptions = {};
+  if (tsconfigRel !== undefined) {
+    const file = join(root, tsconfigRel, 'tsconfig.json');
+    const read = ts.readConfigFile(file, ts.sys.readFile);
+    if (!read.error) {
+      const parsed = ts.parseJsonConfigFileContent(
+        read.config,
+        ts.sys,
+        dirname(file),
+        undefined,
+        file,
+      );
+      base = parsed.options;
+    }
+  }
+  return {
+    ...base,
+    allowJs: true,
+    checkJs: false,
+    noEmit: true,
+    skipLibCheck: true,
+    types: [],
+    maxNodeModuleJsDepth: 0,
+    incremental: false,
+    composite: false,
+    declaration: false,
+    sourceMap: false,
+    plugins: [],
+    jsx: base.jsx ?? ts.JsxEmit.Preserve,
+    moduleResolution: base.moduleResolution ?? ts.ModuleResolutionKind.Bundler,
+    module: base.module ?? ts.ModuleKind.ESNext,
+    target: base.target ?? ts.ScriptTarget.ES2022,
+    resolveJsonModule: true,
+  };
+}
+
+export function indexTypeScript(
+  root: string,
+  files: DiscoveredFile[],
+  allPaths: Set<string>,
+  graph: GraphBuilder,
+  moduleOf: (p: string) => string,
+): TsIndexStats {
+  const stats: TsIndexStats = {
+    programs: 0,
+    filesParsed: 0,
+    filesFailed: [],
+    imports: { internal: 0, external: 0, unresolved: 0 },
+    calls: { observed: 0, inferred: 0, external: 0, builtin: 0, dynamic: 0, unresolved: 0 },
+    symbols: 0,
+    routes: 0,
+  };
+  const ctx: Ctx = {
+    root: realpathSync(root),
+    repoFiles: allPaths,
+    graph,
+    stats,
+    moduleOf,
+    byName: new Map(),
+    pendingInferred: [],
+  };
+  const code = files.filter((f) => f.lang === 'typescript' || f.lang === 'javascript');
+  const tsconfigDirs = [...allPaths]
+    .filter((p) => p === 'tsconfig.json' || p.endsWith('/tsconfig.json'))
+    .map((p) => (p === 'tsconfig.json' ? '' : p.slice(0, -'/tsconfig.json'.length)));
+
+  // Group files by nearest tsconfig so path aliases resolve per package.
+  const groups = new Map<string, DiscoveredFile[]>();
+  for (const f of code) {
+    const g = nearest(f.path, tsconfigDirs) ?? '\0none';
+    const list = groups.get(g) ?? [];
+    list.push(f);
+    groups.set(g, list);
+  }
+
+  const programs: {
+    program: ts.Program;
+    checker: ts.TypeChecker;
+    files: DiscoveredFile[];
+    options: ts.CompilerOptions;
+    host: ts.CompilerHost;
+  }[] = [];
+  for (const [group, list] of groups) {
+    const options = loadCompilerOptions(ctx.root, group === '\0none' ? undefined : group);
+    const host = ts.createCompilerHost(options, true);
+    const program = ts.createProgram({
+      rootNames: list.map((f) => join(ctx.root, f.path)),
+      options,
+      host,
+    });
+    programs.push({ program, checker: program.getTypeChecker(), files: list, options, host });
+    stats.programs++;
+  }
+
+  // Pass 1: declarations, imports, routes.
+  for (const p of programs) {
+    for (const f of p.files) {
+      const sf = p.program.getSourceFile(join(ctx.root, f.path));
+      if (!sf) {
+        stats.filesFailed.push({ path: f.path, error: 'not loaded by compiler' });
+        continue;
+      }
+      try {
+        collectDeclarations(ctx, sf, f.path);
+        collectImports(ctx, sf, f.path, p.options, p.host);
+        collectNextRoutes(ctx, sf, f.path);
+        stats.filesParsed++;
+      } catch (e) {
+        stats.filesFailed.push({ path: f.path, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+  }
+
+  // Pass 2: calls, heritage, JSX, express-style routes, complexity.
+  for (const p of programs) {
+    for (const f of p.files) {
+      const sf = p.program.getSourceFile(join(ctx.root, f.path));
+      if (!sf) continue;
+      try {
+        collectReferences(ctx, sf, f.path, p.checker);
+      } catch (e) {
+        stats.filesFailed.push({
+          path: f.path,
+          error: `reference pass: ${e instanceof Error ? e.message : String(e)}`,
+        });
+      }
+    }
+  }
+
+  // Inferred fallback: untyped call matched to the only declaration with that name.
+  for (const c of ctx.pendingInferred) {
+    const keys = ctx.byName.get(c.name);
+    if (keys && keys.size === 1) {
+      const [key] = keys as Set<string> & { size: 1 };
+      graph.addEdge({
+        kind: c.kind,
+        src: c.owner,
+        dst: { kind: 'symbol', key: key as string },
+        confidence: 'inferred',
+        evidencePath: c.path,
+        evidenceLine: c.line,
+        detail: 'matched by unique name (no type information)',
+      });
+      stats.calls.inferred++;
+    } else {
+      stats.calls.unresolved++;
+      graph.addUnresolved({
+        filePath: c.path,
+        line: c.line,
+        kind: 'call',
+        text: c.text,
+        reason: keys
+          ? `ambiguous: ${keys.size} declarations named ${c.name}`
+          : 'no declaration found',
+      });
+    }
+  }
+
+  // Tests -> files they import (inferred).
+  for (const e of graph.edges) {
+    if (
+      e.kind === 'imports' &&
+      e.dst.kind === 'file' &&
+      isTestPath(e.src.key) &&
+      !isTestPath(e.dst.key)
+    ) {
+      graph.addEdge({
+        kind: 'tests',
+        src: e.src,
+        dst: e.dst,
+        confidence: 'inferred',
+        evidencePath: e.evidencePath,
+        evidenceLine: e.evidenceLine,
+        detail: 'test file imports this file',
+      });
+    }
+  }
+  return stats;
+}
+
+function symbolKey(path: string, qname: string): string {
+  return `${path}#${qname}`;
+}
+
+function collectDeclarations(ctx: Ctx, sf: ts.SourceFile, path: string): void {
+  const fileRef: NodeRef = { kind: 'file', key: path };
+  const visit = (node: ts.Node): void => {
+    const d = describeDecl(node);
+    if (d) {
+      const key = symbolKey(path, d.qname);
+      const parent = trackedAncestor(node.parent);
+      const jsDoc = ts
+        .getJSDocCommentsAndTags(node)
+        .map((j) => (ts.isJSDoc(j) && typeof j.comment === 'string' ? j.comment : ''))
+        .filter(Boolean)
+        .join(' ')
+        .slice(0, 500);
+      const startLine = lineOf(sf, node.getStart(sf));
+      const endLine = lineOf(sf, node.getEnd());
+      ctx.graph.addNode({
+        kind: 'symbol',
+        key,
+        name: d.qname,
+        filePath: path,
+        module: ctx.moduleOf(path),
+        symbolKind: d.kind,
+        exported: d.exported,
+        startLine,
+        endLine,
+        data: {
+          signature: signatureOf(node, sf),
+          doc: jsDoc || undefined,
+          loc: endLine - startLine + 1,
+        },
+      });
+      ctx.graph.addEdge({
+        kind: 'contains',
+        src: parent ? { kind: 'symbol', key: symbolKey(path, parent.qname) } : fileRef,
+        dst: { kind: 'symbol', key },
+        confidence: 'observed',
+        evidencePath: path,
+        evidenceLine: startLine,
+      });
+      if (
+        d.kind === 'function' ||
+        d.kind === 'method' ||
+        d.kind === 'class' ||
+        d.kind === 'constructor'
+      ) {
+        const bare = d.qname.split('.').pop() as string;
+        const set = ctx.byName.get(bare) ?? new Set<string>();
+        set.add(key);
+        ctx.byName.set(bare, set);
+      }
+      ctx.stats.symbols++;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+}
+
+function signatureOf(node: ts.Node, sf: ts.SourceFile): string {
+  const text = node.getText(sf);
+  // Up to the body: first "{" or "=>" at depth 0, capped.
+  let depth = 0;
+  for (let i = 0; i < Math.min(text.length, 400); i++) {
+    const ch = text[i];
+    if (ch === '(' || ch === '<' || ch === '[') depth++;
+    else if (ch === ')' || ch === '>' || ch === ']') depth = Math.max(0, depth - 1);
+    else if (depth === 0 && (ch === '{' || (ch === '=' && text[i + 1] === '>')))
+      return text.slice(0, i).replace(/\s+/g, ' ').trim();
+  }
+  return text.slice(0, 200).split('\n')[0]?.trim() ?? '';
+}
+
+function collectImports(
+  ctx: Ctx,
+  sf: ts.SourceFile,
+  path: string,
+  options: ts.CompilerOptions,
+  host: ts.CompilerHost,
+): void {
+  const fileRef: NodeRef = { kind: 'file', key: path };
+  const record = (spec: string, pos: number, detail: string, typeOnly: boolean) => {
+    const line = lineOf(sf, pos);
+    const res = ts.resolveModuleName(spec, sf.fileName, options, host).resolvedModule;
+    if (res) {
+      // Workspace packages resolve through node_modules symlinks; their real path is inside the repo, so they are internal.
+      const target = rel(ctx, res.resolvedFileName);
+      if (target) {
+        ctx.graph.addEdge({
+          kind: 'imports',
+          src: fileRef,
+          dst: { kind: 'file', key: target },
+          confidence: 'observed',
+          evidencePath: path,
+          evidenceLine: line,
+          detail: typeOnly ? `type-only: ${detail}` : detail,
+        });
+        ctx.stats.imports.internal++;
+        return;
+      }
+      const pkg = res.resolvedFileName.includes('/node_modules/')
+        ? packageNameFromNodeModulesPath(toPosix(res.resolvedFileName))
+        : packageNameOfSpecifier(spec);
+      const ext = ctx.graph.addNode({
+        kind: 'external',
+        key: pkg,
+        name: pkg,
+        data: { installed: true },
+      });
+      ctx.graph.addEdge({
+        kind: 'imports',
+        src: fileRef,
+        dst: ext,
+        confidence: 'observed',
+        evidencePath: path,
+        evidenceLine: line,
+        detail,
+      });
+      ctx.stats.imports.external++;
+      return;
+    }
+    // Not resolvable by the compiler.
+    if (spec.startsWith('.') || spec.startsWith('/')) {
+      const candidate = toPosix(join(dirname(path), spec));
+      if (ctx.repoFiles.has(candidate)) {
+        // Non-code asset (css, svg, json...) that exists on disk.
+        ctx.graph.addEdge({
+          kind: 'imports',
+          src: fileRef,
+          dst: { kind: 'file', key: candidate },
+          confidence: 'observed',
+          evidencePath: path,
+          evidenceLine: line,
+          detail: 'asset',
+        });
+        ctx.stats.imports.internal++;
+        return;
+      }
+      ctx.stats.imports.unresolved++;
+      ctx.graph.addUnresolved({
+        filePath: path,
+        line,
+        kind: 'import',
+        text: spec,
+        reason: 'relative import not found',
+      });
+      return;
+    }
+    if (spec.startsWith('node:') || isBuiltinModule(spec)) {
+      const name = spec.startsWith('node:') ? spec : `node:${spec}`;
+      ctx.graph.addEdge({
+        kind: 'imports',
+        src: fileRef,
+        dst: ctx.graph.addNode({ kind: 'external', key: name, name, data: { builtin: true } }),
+        confidence: 'observed',
+        evidencePath: path,
+        evidenceLine: line,
+        detail,
+      });
+      ctx.stats.imports.external++;
+      return;
+    }
+    // Bare specifier with no types/installation: treat as external package, inferred.
+    const pkg = packageNameOfSpecifier(spec);
+    if (/^[@a-z0-9]/i.test(pkg) && !pkg.startsWith('@/') && !pkg.startsWith('~')) {
+      ctx.graph.addEdge({
+        kind: 'imports',
+        src: fileRef,
+        dst: ctx.graph.addNode({
+          kind: 'external',
+          key: pkg,
+          name: pkg,
+          data: { installed: false },
+        }),
+        confidence: 'inferred',
+        evidencePath: path,
+        evidenceLine: line,
+        detail: `${detail} (package not resolvable locally)`,
+      });
+      ctx.stats.imports.external++;
+    } else {
+      ctx.stats.imports.unresolved++;
+      ctx.graph.addUnresolved({
+        filePath: path,
+        line,
+        kind: 'import',
+        text: spec,
+        reason: 'path alias or module not resolvable',
+      });
+    }
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      let names: string;
+      let typeOnly: boolean;
+      if (ts.isImportDeclaration(node)) {
+        typeOnly = !!node.importClause?.isTypeOnly;
+        const nb = node.importClause?.namedBindings;
+        const parts: string[] = [];
+        if (node.importClause?.name) parts.push(`default as ${node.importClause.name.text}`);
+        if (nb && ts.isNamedImports(nb)) parts.push(...nb.elements.map((e) => e.name.text));
+        if (nb && ts.isNamespaceImport(nb)) parts.push(`* as ${nb.name.text}`);
+        names = parts.join(', ');
+      } else {
+        typeOnly = node.isTypeOnly;
+        names =
+          node.exportClause && ts.isNamedExports(node.exportClause)
+            ? `re-export ${node.exportClause.elements.map((e) => e.name.text).join(', ')}`
+            : 're-export *';
+      }
+      record(node.moduleSpecifier.text, node.getStart(sf), names, typeOnly);
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      ts.isStringLiteral(node.moduleReference.expression)
+    ) {
+      record(node.moduleReference.expression.text, node.getStart(sf), node.name.text, false);
+    } else if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === 'require'))
+    ) {
+      const arg = node.arguments[0];
+      if (arg && (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)))
+        record(
+          arg.text,
+          node.getStart(sf),
+          node.expression.kind === ts.SyntaxKind.ImportKeyword ? 'dynamic import' : 'require',
+          false,
+        );
+      else if (arg) {
+        ctx.stats.imports.unresolved++;
+        ctx.graph.addUnresolved({
+          filePath: path,
+          line: lineOf(sf, node.getStart(sf)),
+          kind: 'import',
+          text: node.getText(sf),
+          reason: 'computed module specifier',
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+}
+
+const BUILTINS = new Set([
+  'fs',
+  'path',
+  'os',
+  'crypto',
+  'http',
+  'https',
+  'url',
+  'util',
+  'events',
+  'stream',
+  'child_process',
+  'buffer',
+  'zlib',
+  'net',
+  'tls',
+  'dns',
+  'assert',
+  'readline',
+  'worker_threads',
+  'perf_hooks',
+  'timers',
+  'querystring',
+  'module',
+  'process',
+  'vm',
+  'cluster',
+  'v8',
+  'fs/promises',
+  'stream/promises',
+  'timers/promises',
+]);
+function isBuiltinModule(spec: string): boolean {
+  return BUILTINS.has(spec);
+}
+
+function collectNextRoutes(ctx: Ctx, sf: ts.SourceFile, path: string): void {
+  const r = nextRoutePath(path);
+  if (!r) return;
+  const handlers: { name: string; line: number }[] = [];
+  for (const st of sf.statements) {
+    if (ts.isFunctionDeclaration(st) && hasExport(st) && st.name)
+      handlers.push({ name: st.name.text, line: lineOf(sf, st.getStart(sf)) });
+    if (ts.isVariableStatement(st) && hasExport(st))
+      for (const d of st.declarationList.declarations)
+        if (ts.isIdentifier(d.name))
+          handlers.push({ name: d.name.text, line: lineOf(sf, d.getStart(sf)) });
+    if (ts.isFunctionDeclaration(st) && hasExport(st) && !st.name)
+      handlers.push({ name: 'default', line: lineOf(sf, st.getStart(sf)) });
+    if (ts.isExportAssignment(st) && !st.isExportEquals)
+      handlers.push({ name: 'default', line: lineOf(sf, st.getStart(sf)) });
+  }
+  const add = (method: string, handler: string, line: number) => {
+    const key = `${method} ${r.path}`;
+    const route = ctx.graph.addNode({
+      kind: 'route',
+      key,
+      name: key,
+      filePath: path,
+      module: ctx.moduleOf(path),
+      startLine: line,
+      data: { method, path: r.path, framework: r.kind === 'pages-api' ? 'next-pages' : 'next-app' },
+    });
+    ctx.graph.addEdge({
+      kind: 'handled_by',
+      src: route,
+      dst: { kind: 'symbol', key: symbolKey(path, handler) },
+      confidence: 'inferred',
+      evidencePath: path,
+      evidenceLine: line,
+      detail: 'Next.js file-system routing convention',
+    });
+    ctx.stats.routes++;
+  };
+  if (r.kind === 'route')
+    for (const h of handlers) if (NEXT_VERBS.has(h.name)) add(h.name, h.name, h.line);
+  if (r.kind === 'page')
+    for (const h of handlers) if (h.name === 'default') add('PAGE', 'default', h.line);
+  if (r.kind === 'pages-api')
+    for (const h of handlers) if (h.name === 'default') add('ANY', 'default', h.line);
+}
+
+function collectReferences(
+  ctx: Ctx,
+  sf: ts.SourceFile,
+  path: string,
+  checker: ts.TypeChecker,
+): void {
+  const fileRef: NodeRef = { kind: 'file', key: path };
+  const complexity = new Map<string, number>();
+  let resolvedCalls = 0;
+  let unresolvedCalls = 0;
+
+  const ownerOf = (node: ts.Node): NodeRef => {
+    const t = trackedAncestor(node);
+    return t ? { kind: 'symbol', key: symbolKey(path, t.qname) } : fileRef;
+  };
+
+  type Target =
+    | { type: 'symbol'; key: string; via?: string }
+    | { type: 'external'; pkg: string }
+    | { type: 'builtin' }
+    | { type: 'local' }
+    | { type: 'none' };
+  const resolve = (expr: ts.Node): Target => {
+    let sym = checker.getSymbolAtLocation(expr);
+    if (!sym) return { type: 'none' };
+    if (sym.flags & ts.SymbolFlags.Alias) {
+      try {
+        sym = checker.getAliasedSymbol(sym);
+      } catch {
+        return { type: 'none' };
+      }
+    }
+    const decl = sym.valueDeclaration ?? sym.declarations?.[0];
+    if (!decl) return { type: 'none' };
+    const dsf = decl.getSourceFile();
+    const fileName = toPosix(dsf.fileName);
+    if (fileName.includes('/node_modules/')) {
+      if (/\/node_modules\/(typescript|@types\/node)\//.test(fileName)) return { type: 'builtin' };
+      return { type: 'external', pkg: packageNameFromNodeModulesPath(fileName) };
+    }
+    if (dsf.hasNoDefaultLib || /\/lib\.[\w.]*\.d\.ts$/.test(fileName)) return { type: 'builtin' };
+    const target = rel(ctx, dsf.fileName);
+    if (!target) return { type: 'external', pkg: 'unknown' };
+    const t = trackedAncestor(decl);
+    if (!t) return { type: 'local' };
+    // Parameters and locals inside a function body: the real target is only known at runtime.
+    if (
+      t.node !== decl &&
+      (ts.isParameter(decl) ||
+        ts.isVariableDeclaration(decl) ||
+        ts.isBindingElement(decl) ||
+        ts.isFunctionDeclaration(decl))
+    )
+      return { type: 'local' };
+    // Interface members and object-literal members link to their owning symbol.
+    const via =
+      t.node !== decl && !describeDecl(decl)
+        ? (ts.getNameOfDeclaration(decl as ts.Declaration)?.getText(dsf) ?? undefined)
+        : undefined;
+    return { type: 'symbol', key: symbolKey(target, t.qname), via };
+  };
+
+  const calleeName = (e: ts.Expression): ts.Node | null => {
+    if (ts.isIdentifier(e)) return e;
+    if (ts.isPropertyAccessExpression(e)) return e.name;
+    if (ts.isElementAccessExpression(e)) return null;
+    if (ts.isParenthesizedExpression(e)) return calleeName(e.expression);
+    if (ts.isNonNullExpression(e)) return calleeName(e.expression);
+    return null;
+  };
+
+  const linkCall = (node: ts.CallExpression | ts.NewExpression, kind: 'calls' | 'instantiates') => {
+    const owner = ownerOf(node);
+    const line = lineOf(sf, node.getStart(sf));
+    const nameNode = calleeName(node.expression);
+    if (!nameNode) {
+      ctx.stats.calls.dynamic++;
+      unresolvedCalls++;
+      return;
+    }
+    const t = resolve(nameNode);
+    if (t.type === 'symbol') {
+      ctx.graph.addEdge({
+        kind,
+        src: owner,
+        dst: { kind: 'symbol', key: t.key },
+        confidence: 'observed',
+        evidencePath: path,
+        evidenceLine: line,
+        detail: t.via ? `via member ${t.via}` : undefined,
+      });
+      ctx.stats.calls.observed++;
+      resolvedCalls++;
+    } else if (t.type === 'external') {
+      ctx.stats.calls.external++;
+      resolvedCalls++;
+    } else if (t.type === 'builtin') {
+      ctx.stats.calls.builtin++;
+      resolvedCalls++;
+    } else if (t.type === 'local') {
+      ctx.stats.calls.dynamic++;
+      unresolvedCalls++;
+    } else if (RUNTIME_GLOBALS.has(rootIdentifier(node.expression))) {
+      ctx.stats.calls.builtin++;
+      resolvedCalls++;
+    } else {
+      const name = nameNode.getText(sf);
+      ctx.pendingInferred.push({
+        owner,
+        name,
+        path,
+        line,
+        text: node.expression.getText(sf).slice(0, 120),
+        kind,
+      });
+      unresolvedCalls++;
+    }
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (
+      BRANCH_KINDS.has(node.kind) ||
+      (ts.isBinaryExpression(node) &&
+        [
+          ts.SyntaxKind.AmpersandAmpersandToken,
+          ts.SyntaxKind.BarBarToken,
+          ts.SyntaxKind.QuestionQuestionToken,
+        ].includes(node.operatorToken.kind))
+    ) {
+      const o = ownerOf(node);
+      if (o.kind === 'symbol') complexity.set(o.key, (complexity.get(o.key) ?? 1) + 1);
+    }
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind !== ts.SyntaxKind.ImportKeyword &&
+      !(ts.isIdentifier(node.expression) && node.expression.text === 'require')
+    ) {
+      linkCall(node, 'calls');
+      detectExpressRoute(ctx, sf, path, node, ownerOf, resolve);
+    } else if (ts.isNewExpression(node)) linkCall(node, 'instantiates');
+    else if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const tag = node.tagName;
+      if (!(ts.isIdentifier(tag) && /^[a-z]/.test(tag.text))) {
+        const t = resolve(ts.isPropertyAccessExpression(tag) ? tag.name : tag);
+        if (t.type === 'symbol')
+          ctx.graph.addEdge({
+            kind: 'renders',
+            src: ownerOf(node),
+            dst: { kind: 'symbol', key: t.key },
+            confidence: 'observed',
+            evidencePath: path,
+            evidenceLine: lineOf(sf, node.getStart(sf)),
+          });
+      }
+    } else if (ts.isHeritageClause(node)) {
+      const cls = node.parent;
+      const d = describeDecl(cls);
+      if (d) {
+        for (const t of node.types) {
+          const target = resolve(
+            ts.isPropertyAccessExpression(t.expression) ? t.expression.name : t.expression,
+          );
+          const kind = node.token === ts.SyntaxKind.ExtendsKeyword ? 'extends' : 'implements';
+          const src: NodeRef = { kind: 'symbol', key: symbolKey(path, d.qname) };
+          if (target.type === 'symbol')
+            ctx.graph.addEdge({
+              kind,
+              src,
+              dst: { kind: 'symbol', key: target.key },
+              confidence: 'observed',
+              evidencePath: path,
+              evidenceLine: lineOf(sf, t.getStart(sf)),
+            });
+          else if (target.type === 'external')
+            ctx.graph.addEdge({
+              kind,
+              src,
+              dst: ctx.graph.addNode({ kind: 'external', key: target.pkg, name: target.pkg }),
+              confidence: 'observed',
+              evidencePath: path,
+              evidenceLine: lineOf(sf, t.getStart(sf)),
+              detail: t.expression.getText(sf),
+            });
+          else if (target.type !== 'builtin')
+            ctx.graph.addUnresolved({
+              filePath: path,
+              line: lineOf(sf, t.getStart(sf)),
+              kind: 'heritage',
+              text: t.getText(sf),
+              reason: 'base type not resolved',
+            });
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+
+  for (const [key, c] of complexity) {
+    const n = ctx.graph.get({ kind: 'symbol', key });
+    if (n) n.data = { ...n.data, complexity: c };
+  }
+  const fileNode = ctx.graph.get(fileRef);
+  if (fileNode)
+    fileNode.data = {
+      ...fileNode.data,
+      resolvedCalls,
+      unresolvedCalls,
+      complexity: [...complexity.values()].reduce((a, b) => a + b, 0),
+    };
+}
+
+function detectExpressRoute(
+  ctx: Ctx,
+  sf: ts.SourceFile,
+  path: string,
+  node: ts.CallExpression,
+  ownerOf: (n: ts.Node) => NodeRef,
+  resolve: (n: ts.Node) => { type: string; key?: string },
+): void {
+  if (!ts.isPropertyAccessExpression(node.expression)) return;
+  const verb = node.expression.name.text.toLowerCase();
+  if (!HTTP_VERBS.has(verb)) return;
+  const objText = node.expression.expression.getText(sf);
+  if (!/(app|router|server|api|route|fastify|hono)$/i.test(objText)) return;
+  const first = node.arguments[0];
+  if (
+    !first ||
+    !(ts.isStringLiteral(first) || ts.isNoSubstitutionTemplateLiteral(first)) ||
+    !first.text.startsWith('/')
+  )
+    return;
+  const method = verb === 'all' ? 'ANY' : verb.toUpperCase();
+  const key = `${method} ${first.text}`;
+  const line = lineOf(sf, node.getStart(sf));
+  const route = ctx.graph.addNode({
+    kind: 'route',
+    key,
+    name: key,
+    filePath: path,
+    module: ctx.moduleOf(path),
+    startLine: line,
+    data: { method, path: first.text, framework: 'express-style' },
+  });
+  ctx.stats.routes++;
+  const handler = node.arguments[node.arguments.length - 1];
+  if (handler && handler !== first) {
+    const t = isFunctionInitLike(handler)
+      ? null
+      : resolve(ts.isPropertyAccessExpression(handler) ? handler.name : handler);
+    if (t && t.type === 'symbol' && t.key)
+      ctx.graph.addEdge({
+        kind: 'handled_by',
+        src: route,
+        dst: { kind: 'symbol', key: t.key },
+        confidence: 'inferred',
+        evidencePath: path,
+        evidenceLine: line,
+        detail: `${objText}.${verb}() registration`,
+      });
+    else if (!t) {
+      const owner = ownerOf(node);
+      ctx.graph.addEdge({
+        kind: 'handled_by',
+        src: route,
+        dst: owner,
+        confidence: 'inferred',
+        evidencePath: path,
+        evidenceLine: line,
+        detail: 'inline handler registered here',
+      });
+    } else
+      ctx.graph.addUnresolved({
+        filePath: path,
+        line,
+        kind: 'route_handler',
+        text: handler.getText(sf).slice(0, 120),
+        reason: 'handler not resolved',
+      });
+  }
+}
+
+function rootIdentifier(e: ts.Expression): string {
+  let x: ts.Expression = e;
+  while (
+    ts.isPropertyAccessExpression(x) ||
+    ts.isElementAccessExpression(x) ||
+    ts.isCallExpression(x) ||
+    ts.isNonNullExpression(x) ||
+    ts.isParenthesizedExpression(x)
+  )
+    x = x.expression;
+  return ts.isIdentifier(x) ? x.text : '';
+}
+
+function isFunctionInitLike(e: ts.Expression): boolean {
+  return ts.isArrowFunction(e) || ts.isFunctionExpression(e);
+}
+
+export function confidenceLabel(c: Confidence): string {
+  return c;
+}
+
+export function fileExists(root: string, p: string): boolean {
+  return existsSync(join(root, p));
+}
