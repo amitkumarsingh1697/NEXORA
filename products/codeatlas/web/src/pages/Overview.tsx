@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api';
 import type { Coverage, Job, Repo } from '../types';
 import { Button, Card, Empty, ErrorBox, Spinner, Stat, useAsync } from '../components/ui';
@@ -25,6 +25,7 @@ export function Overview({ repoId }: { repoId: number }) {
       }>(`/api/repos/${repoId}/unresolved`),
     [repoId],
   );
+  const [cancelError, setCancelError] = useState<unknown>(null);
   const running = d.data?.job?.status === 'running';
   useEffect(() => {
     if (!running) return;
@@ -39,7 +40,22 @@ export function Overview({ repoId }: { repoId: number }) {
     <div className="space-y-5">
       {running && (
         <Card>
-          <Spinner label={`Indexing… ${d.data?.job?.progress.at(-1) ?? ''}`} />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Spinner label={`Indexing… ${d.data?.job?.progress.at(-1) ?? ''}`} />
+            <Button
+              small
+              variant="secondary"
+              onClick={() =>
+                api(`/api/jobs/${d.data!.job!.id}`, { method: 'DELETE' }).then(
+                  d.reload,
+                  setCancelError,
+                )
+              }
+            >
+              Cancel indexing
+            </Button>
+          </div>
+          <ErrorBox error={cancelError} />
         </Card>
       )}
       {!c ? (

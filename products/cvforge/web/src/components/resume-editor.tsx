@@ -238,6 +238,27 @@ export function ResumeEditor({
         </div>
       </Card>
 
+      <Card
+        title="Formatting"
+        description="Saved with this version, so formatting changes show up when you compare versions."
+      >
+        <label htmlFor="rt" className="mb-1 block text-sm font-medium">
+          Preferred template
+        </label>
+        <select
+          id="rt"
+          className="h-10 w-full max-w-xs rounded-md border border-line bg-white px-2 text-sm"
+          value={value.template ?? ''}
+          onChange={(e) =>
+            set('template', (e.target.value || undefined) as ResumeContent['template'])
+          }
+        >
+          <option value="">Not set (choose when exporting)</option>
+          <option value="classic">Classic Professional</option>
+          <option value="modern">Modern Professional</option>
+        </select>
+      </Card>
+
       <Card title="Section order" description="Order in which sections appear in exports.">
         <ol className="grid gap-1 sm:grid-cols-2">
           {value.sectionOrder.map((s, i) => (

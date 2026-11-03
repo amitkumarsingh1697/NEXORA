@@ -47,22 +47,24 @@ Last evidence run: see the table at the top of [IMPLEMENTATION_STATUS.md](IMPLEM
 | Tests and validation run                                      | `investigate.test.ts`, E2E                                                                                              | met (tested)                                                        |
 | Diffs reviewable; approval required; patch hash verified      | `investigate.test.ts`, E2E                                                                                              | met (tested)                                                        |
 | Only approved changes can be merged locally                   | `investigate.test.ts` merge refusal and success tests; `investigations.test.ts`; CodeAtlas E2E (reject, approve, merge) | **met** (tested 2026-11-03; ADR 0010)                               |
-| Repository content stays local by default                     | Consent gate `ai.test.ts`; no telemetry code                                                                            | met (tested)                                                        |
+| Repository content stays local by default                     | Consent gate `ai.test.ts`; analytics are local only and store no content (`ca/service/test/analytics.test.ts`)          | met (tested)                                                        |
 | Automated tests pass                                          | `pnpm check`, CodeAtlas E2E                                                                                             | met (tested)                                                        |
 
 ## Release quality checklist (spec §17)
 
-| Item                                        | Status                                                                                            |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Full test suite, lint and type checks       | met (see IMPLEMENTATION_STATUS)                                                                   |
-| Build all applications                      | CodeAtlas web build and CVForge Next build run inside the E2E suites; the extension builds in E2E |
-| All critical journeys verified              | Automated journeys pass; live-site and real-model checks outstanding                              |
-| Authorisation boundaries reviewed           | SECURITY_THREAT_MODEL C3, C4, A1–A4                                                               |
-| Data handling reviewed                      | PRIVACY_AND_DATA_HANDLING; legal review outstanding (P-02)                                        |
-| Dependency vulnerabilities checked          | `pnpm audit --prod`: no known vulnerabilities (last run in IMPLEMENTATION_STATUS)                 |
-| No secrets committed                        | Nothing committed yet; `.env*` git-ignored                                                        |
-| No dead-end controls; no fake functionality | Reviewed against CLAUDE.md §5; fakes exist only in tests                                          |
-| Known limitations documented                | product/KNOWN_LIMITATIONS.md                                                                      |
+| Item                                        | Status                                                                                                             |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Full test suite, lint and type checks       | met (see IMPLEMENTATION_STATUS)                                                                                    |
+| Build all applications                      | CodeAtlas web build and CVForge Next build run inside the E2E suites; the extension builds in E2E                  |
+| All critical journeys verified              | Automated journeys pass; live-site and real-model checks outstanding                                               |
+| Authorisation boundaries reviewed           | SECURITY_THREAT_MODEL C3, C4, A1–A4                                                                                |
+| Data handling reviewed                      | PRIVACY_AND_DATA_HANDLING; legal review outstanding (P-02)                                                         |
+| Dependency vulnerabilities checked          | `pnpm audit --prod`: no known vulnerabilities (last run in IMPLEMENTATION_STATUS)                                  |
+| No secrets committed                        | `.env*` git-ignored; the repository is public on GitHub, so any leak would be exposed (see the release assessment) |
+| No dead-end controls; no fake functionality | Reviewed against CLAUDE.md §5; fakes exist only in tests                                                           |
+| Known limitations documented                | product/KNOWN_LIMITATIONS.md                                                                                       |
+| Accessibility                               | Automated axe scans (WCAG A/AA rules) in both E2E suites, no serious or critical violations; no manual audit       |
+| User documentation                          | product/USER_GUIDE.md; test report in testing/TEST_REPORT.md                                                       |
 
 ## Manual verification checklists (owner: founder)
 
@@ -84,17 +86,17 @@ Last evidence run: see the table at the top of [IMPLEMENTATION_STATUS.md](IMPLEM
 
 ## Future operating costs (spec §10; nothing purchased)
 
-| Item                         | Needed for                       | Notes                                                                          |
-| ---------------------------- | -------------------------------- | ------------------------------------------------------------------------------ |
-| Domain                       | Public CVForge                   | Annual fee                                                                     |
-| Hosting (Node service)       | Public CVForge                   | Single instance initially (S-02)                                               |
-| Managed PostgreSQL + backups | Public CVForge                   | Encryption at rest expected from the provider                                  |
-| Object storage               | Multi-instance CVForge           | Implement `ObjectStorage` for S3-compatible storage                            |
-| Bandwidth                    | Public CVForge                   | Small (documents only)                                                         |
-| Hosted inference             | Optional only                    | Consent-gated; never mandatory                                                 |
-| Email delivery               | Password reset, verification     | Implement `Mailer`                                                             |
-| Monitoring                   | Production                       | Health endpoint exists                                                         |
-| CI/CD                        | Repository                       | Workflow written; runner minutes may cost on private repos                     |
-| Browser extension publishing | Store listings                   | Chrome Web Store one-time developer fee; confirm current pricing before paying |
-| Desktop code signing         | Future CodeAtlas desktop (Tauri) | Not in v1                                                                      |
-| Legal and security review    | Launch                           | P-02, S-01                                                                     |
+| Item                         | Needed for                       | Notes                                                                                                                                   |
+| ---------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Domain                       | Public CVForge                   | Annual fee                                                                                                                              |
+| Hosting (Node service)       | Public CVForge                   | Single instance initially (S-02)                                                                                                        |
+| Managed PostgreSQL + backups | Public CVForge                   | Encryption at rest expected from the provider                                                                                           |
+| Object storage               | Multi-instance CVForge           | Implement `ObjectStorage` for S3-compatible storage                                                                                     |
+| Bandwidth                    | Public CVForge                   | Small (documents only)                                                                                                                  |
+| Hosted inference             | Optional only                    | Consent-gated; never mandatory                                                                                                          |
+| Email delivery               | Password reset, verification     | Implement `Mailer`                                                                                                                      |
+| Monitoring                   | Production                       | Health endpoint exists                                                                                                                  |
+| CI/CD                        | Repository                       | GitHub Actions running on the public repository; minutes are free for public repos at the time of writing, confirm before going private |
+| Browser extension publishing | Store listings                   | Chrome Web Store one-time developer fee; confirm current pricing before paying                                                          |
+| Desktop code signing         | Future CodeAtlas desktop (Tauri) | Not in v1                                                                                                                               |
+| Legal and security review    | Launch                           | P-02, S-01                                                                                                                              |

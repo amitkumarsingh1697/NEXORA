@@ -151,6 +151,82 @@ function AnswerView({ repoId, a }: { repoId: number; a: Answer }) {
           </ul>
         </details>
       )}
+      <Feedback repoId={repoId} a={a} />
+    </div>
+  );
+}
+
+/** 👍/👎 with an optional note, stored only in local analytics (spec §5.11). */
+function Feedback({ repoId, a }: { repoId: number; a: Answer }) {
+  const [rating, setRating] = useState<'up' | 'down' | null>(null);
+  const [note, setNote] = useState('');
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const send = async (r: 'up' | 'down', withNote: string) => {
+    setError(null);
+    try {
+      await api(`/api/repos/${repoId}/chat/feedback`, {
+        method: 'POST',
+        body: {
+          rating: r,
+          note: withNote,
+          confidence: a.confidence,
+          citations: a.citations.length,
+        },
+      });
+      setSent(true);
+    } catch (e) {
+      setError(e);
+    }
+  };
+  if (sent)
+    return <p className="text-xs text-muted">Thanks. Feedback is kept on this machine only.</p>;
+  return (
+    <div className="space-y-2 border-t border-line pt-2 text-xs">
+      <div className="flex items-center gap-2">
+        <span className="text-muted">Was this answer useful?</span>
+        <button
+          type="button"
+          aria-label="Useful"
+          aria-pressed={rating === 'up'}
+          onClick={() => setRating('up')}
+          className={cn(
+            'rounded border px-2 py-0.5',
+            rating === 'up' ? 'border-accent' : 'border-line',
+          )}
+        >
+          👍
+        </button>
+        <button
+          type="button"
+          aria-label="Not useful"
+          aria-pressed={rating === 'down'}
+          onClick={() => setRating('down')}
+          className={cn(
+            'rounded border px-2 py-0.5',
+            rating === 'down' ? 'border-accent' : 'border-line',
+          )}
+        >
+          👎
+        </button>
+      </div>
+      {rating && (
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex min-w-[240px] flex-1 flex-col gap-1">
+            <span className="text-muted">Note (optional)</span>
+            <input
+              value={note}
+              maxLength={1000}
+              onChange={(e) => setNote(e.target.value)}
+              className="rounded border border-line bg-panel px-2 py-1"
+            />
+          </label>
+          <Button small onClick={() => void send(rating, note)}>
+            Send feedback
+          </Button>
+        </div>
+      )}
+      <ErrorBox error={error} />
     </div>
   );
 }

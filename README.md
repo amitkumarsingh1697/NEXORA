@@ -59,11 +59,11 @@ pnpm --filter @nexora/codeatlas-web e2e
 
 ## Documentation
 
-Start at [documentation/README.md](documentation/README.md). Current status of every feature is in [documentation/IMPLEMENTATION_STATUS.md](documentation/IMPLEMENTATION_STATUS.md).
+Start at [documentation/README.md](documentation/README.md). End-user instructions are in [documentation/product/USER_GUIDE.md](documentation/product/USER_GUIDE.md). Current status of every feature is in [documentation/IMPLEMENTATION_STATUS.md](documentation/IMPLEMENTATION_STATUS.md).
 
 ## Ground rules
 
 - Private data (resumes, source code) stays local by default. Hosted models are used only when configured **and** the user consents.
 - No secrets, tokens or resume contents in logs.
-- CodeAtlas never merges, never auto-approves, and runs only allowlisted commands in isolated worktrees.
+- CodeAtlas never approves or merges on its own: a fast-forward merge happens only after a human approves the exact patch hash and types it back. It runs only allowlisted commands in isolated worktrees.
 - The extension reads a page only after the user clicks Extract, and never touches job-site cookies or credentials.

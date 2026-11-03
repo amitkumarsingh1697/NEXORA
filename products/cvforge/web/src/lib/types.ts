@@ -12,6 +12,8 @@ export interface VersionSummary {
   workspaceId?: string | null;
   createdAt: string;
   finalizedAt?: string | null;
+  /** Preferred export template stored on the version, if the user chose one. */
+  template?: 'classic' | 'modern' | null;
 }
 
 export interface ResumeListItem {
@@ -143,4 +145,18 @@ export interface WorkspaceDetail {
   evidence: EvidenceRow[];
   suggestions: SuggestionRow[];
   baseVersion: { id: string; versionNumber: number; label: string; origin: string };
+}
+
+export type ComparedState = 'demonstrated' | 'user_confirmed' | 'missing' | 'pending' | 'none';
+
+export interface WorkspaceComparison {
+  workspaces: { id: string; name: string; resumeVersionId: string | null }[];
+  sameResumeVersion: boolean;
+  overlap: {
+    shared: {
+      concept: string;
+      jobs: { id: string; importance: 'required' | 'preferred'; state: ComparedState }[];
+    }[];
+    unique: Record<string, string[]>;
+  };
 }

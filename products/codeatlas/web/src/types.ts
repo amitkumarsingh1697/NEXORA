@@ -12,7 +12,7 @@ export interface Repo {
 export interface Job {
   id: string;
   repoId: number;
-  status: 'running' | 'succeeded' | 'failed';
+  status: 'running' | 'succeeded' | 'failed' | 'cancelled';
   progress: string[];
   error?: string;
 }

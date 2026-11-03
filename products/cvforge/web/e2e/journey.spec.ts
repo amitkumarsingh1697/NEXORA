@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseResumeText, renderDocx } from '@nexora/cvforge-core';
+import { expectAccessible } from './a11y';
 
 const RESUME = `Priya Sharma
 Senior Software Engineer
@@ -41,6 +42,15 @@ Requirements
 - Bachelor's degree in Computer Science or related field
 `;
 
+const JD2 = `Platform Engineer
+Company: Beta Cloud
+Location: Remote
+
+Requirements
+- Strong experience with Java
+- Experience with Kafka and Terraform
+`;
+
 test('complete resume intelligence journey', async ({ page }) => {
   const dir = join(process.cwd(), '.data', 'e2e');
   await mkdir(dir, { recursive: true });
@@ -49,6 +59,7 @@ test('complete resume intelligence journey', async ({ page }) => {
 
   // Sign up
   await page.goto('/signup');
+  await expectAccessible(page, 'sign up');
   await page.getByLabel('Name').fill('Priya');
   await page.getByLabel('Email').fill('priya@example.com');
   await page.getByLabel('Password').fill('a very long passphrase');
@@ -61,6 +72,7 @@ test('complete resume intelligence journey', async ({ page }) => {
   await page.getByRole('button', { name: 'Upload and extract' }).click();
   await expect(page.getByText('Extraction complete')).toBeVisible();
   await expect(page.getByLabel('Full name')).toHaveValue('Priya Sharma');
+  await expectAccessible(page, 'resume review and editor');
 
   // Correct and confirm
   await page.getByLabel('Headline').fill('Senior Software Engineer (Payments)');
@@ -73,10 +85,12 @@ test('complete resume intelligence journey', async ({ page }) => {
   await page.getByRole('button', { name: 'Create workspace and analyse' }).click();
   await expect(page.getByText('Job Match Score')).toBeVisible();
   await expect(page.getByText(/pending clarification/).first()).toBeVisible();
+  await expectAccessible(page, 'workspace analysis');
 
   // Requirement matrix shows evidence
   await page.getByRole('tab', { name: 'Requirements' }).click();
   await expect(page.getByText('Demonstrated').first()).toBeVisible();
+  await expectAccessible(page, 'requirement matrix');
 
   // Clarify: confirm Kubernetes, skip AWS
   await page.getByRole('tab', { name: /Clarify/ }).click();
@@ -86,6 +100,7 @@ test('complete resume intelligence journey', async ({ page }) => {
     .fill('Deployed the FinPay payment services to Kubernetes clusters');
   await k8s.getByRole('button', { name: 'Yes, I have this' }).click();
   await expect(page.getByText('Answer recorded and analysis updated.')).toBeVisible();
+  await expectAccessible(page, 'clarification questions');
   const aws = page.locator('section', { hasText: 'Have you used AWS' });
   await aws.getByRole('button', { name: 'Skip' }).click();
   await expect(aws.getByText('Skipped')).toBeVisible();
@@ -94,6 +109,7 @@ test('complete resume intelligence journey', async ({ page }) => {
   await page.getByRole('tab', { name: 'Scores' }).click();
   await expect(page.getByText('Required skills and qualifications').first()).toBeVisible();
   await expect(page.getByText('Uncertainty').first()).toBeVisible();
+  await expectAccessible(page, 'score explanations');
 
   // Suggestions: accept bullet, reject a skill
   await page.getByRole('tab', { name: 'Suggestions' }).click();
@@ -105,6 +121,7 @@ test('complete resume intelligence journey', async ({ page }) => {
   const skill = page.locator('section', { hasText: 'Add skill' }).first();
   await skill.getByRole('button', { name: 'Reject' }).click();
   await expect(skill.getByText('rejected')).toBeVisible();
+  await expectAccessible(page, 'suggestions');
   await page.getByRole('button', { name: 'Create version' }).click();
 
   // Compare
@@ -114,6 +131,7 @@ test('complete resume intelligence journey', async ({ page }) => {
     page.getByText('Deployed the FinPay payment services to Kubernetes clusters').first(),
   ).toBeVisible();
   await expect(page.getByText('Decision record')).toBeVisible();
+  await expectAccessible(page, 'version comparison');
 
   // Export DOCX and PDF
   await page.goto('/exports');
@@ -125,6 +143,27 @@ test('complete resume intelligence journey', async ({ page }) => {
     expect(d.suggestedFilename()).toMatch(new RegExp(`_v2_classic\\.${format}$`));
   }
   await expect(page.getByText('Matches version').first()).toBeVisible();
+  await expectAccessible(page, 'exports');
+
+  // Job comparison (RI-4.4-04): a second job, analysed against the newer version
+  await page.goto('/workspaces/new');
+  await page.getByLabel('Job description').fill(JD2);
+  await page.getByRole('button', { name: 'Create workspace and analyse' }).click();
+  await expect(page.getByText('Job Match Score')).toBeVisible();
+  await page.goto('/workspaces');
+  const boxes = page.getByRole('checkbox', { name: /^Compare / });
+  await expect(boxes).toHaveCount(2);
+  await boxes.nth(0).check();
+  await boxes.nth(1).check();
+  await expect(page.getByText('Skills these jobs share')).toBeVisible();
+  const shared = page.locator('tr', {
+    has: page.getByRole('cell', { name: 'Kafka', exact: true }),
+  });
+  await expect(shared).toBeVisible();
+  await expect(page.getByText(/analysed against different resume versions/)).toBeVisible();
+  await expectAccessible(page, 'job comparison');
+  await page.goto('/dashboard');
+  await expectAccessible(page, 'dashboard');
 });
 
 test('unauthenticated users are redirected and APIs refuse access', async ({ page, request }) => {

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createProvider, type ModelProvider } from '@nexora/ai';
 import { InvestigationWorkflow, WorkflowError } from '@nexora/codeatlas-core';
 import { HttpError, type Req } from '../http';
-import { repoOr404, type ServiceContext } from '../server';
+import { repoOr404, track, type ServiceContext } from '../server';
 
 const STATUS: Record<WorkflowError['code'], number> = {
   NOT_FOUND: 404,
@@ -98,6 +98,7 @@ export function investigationRoutes(provider?: ModelProvider) {
           })
           .parse(req.body);
         wf.proposeManualPatch(repoId, invId, b.diff, b.explanation);
+        track(ctx, 'change_request_proposed', repoId, { source: 'manual' });
         return detail(repoId, invId);
       }),
     );
@@ -109,6 +110,7 @@ export function investigationRoutes(provider?: ModelProvider) {
           contextWindowTokens: ctx.cfg.ai.AI_CONTEXT_TOKENS,
           timeoutMs: ctx.cfg.ai.AI_TIMEOUT_MS,
         });
+        track(ctx, 'change_request_proposed', repoId, { source: 'model' });
         return detail(repoId, invId);
       }),
     );
@@ -118,6 +120,9 @@ export function investigationRoutes(provider?: ModelProvider) {
       wrap(async (req, repoId, invId) => {
         const { commandId } = z.object({ commandId: z.string().min(1).max(100) }).parse(req.body);
         const run = await wf.runCommand(repoId, invId, commandId);
+        track(ctx, 'validation_ran', repoId, {
+          outcome: run.exitCode === 0 && !run.timedOut ? 'passed' : 'failed',
+        });
         return { run, ...detail(repoId, invId) };
       }),
     );
@@ -132,6 +137,7 @@ export function investigationRoutes(provider?: ModelProvider) {
           })
           .parse(req.body);
         wf.approve(repoId, invId, sha256, { acknowledgeFailedValidation });
+        track(ctx, 'patch_decided', repoId, { decision: 'approved' });
         return detail(repoId, invId);
       }),
     );
@@ -143,6 +149,7 @@ export function investigationRoutes(provider?: ModelProvider) {
           .object({ reason: z.string().max(500).default('') })
           .parse(req.body ?? {});
         wf.reject(repoId, invId, reason);
+        track(ctx, 'patch_decided', repoId, { decision: 'rejected' });
         return detail(repoId, invId);
       }),
     );
@@ -166,6 +173,7 @@ export function investigationRoutes(provider?: ModelProvider) {
           .object({ confirm: z.string().regex(/^[0-9a-fA-F]{8}$/) })
           .parse(req.body);
         const out = wf.merge(repoId, invId, confirm);
+        track(ctx, 'change_merged', repoId, {});
         return { merge: out.merge, rollback: out.rollback, ...detail(repoId, invId) };
       }),
     );

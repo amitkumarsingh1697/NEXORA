@@ -58,10 +58,10 @@ function LoginForm() {
         Sign in
       </Button>
       <div className="flex justify-between text-sm">
-        <Link href="/forgot-password" className="text-brand">
+        <Link href="/forgot-password" className="text-brand underline">
           Forgot password?
         </Link>
-        <Link href="/signup" className="text-brand">
+        <Link href="/signup" className="text-brand underline">
           Create account
         </Link>
       </div>

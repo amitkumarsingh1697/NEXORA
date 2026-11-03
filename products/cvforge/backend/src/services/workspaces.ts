@@ -3,7 +3,9 @@ import { z } from 'zod';
 import { AppError, parseOrThrow } from '@nexora/validation';
 import {
   REQUIREMENT_KINDS,
+  compareRequirements,
   findConcepts,
+  type ComparedEvidenceState,
   parseJobDescription,
   type Requirement,
 } from '@nexora/cvforge-core';
@@ -379,9 +381,64 @@ export async function setBaseVersion(
 }
 
 /** Side-by-side comparison of the latest analysis in several workspaces. */
-export async function compareWorkspaces(ctx: Ctx, userId: string, ids: string[]) {
-  const list = await listWorkspaces(ctx, userId);
-  return list
-    .filter((w) => ids.includes(w.id))
-    .map((w) => ({ id: w.id, name: w.name, job: w.job, latestAnalysis: w.latestAnalysis }));
+export const compareIdsSchema = z.array(z.uuid()).min(2).max(6);
+
+/**
+ * Compare up to six of the user's job workspaces (RI-4.4-04): latest scores, the resume version
+ * each was analysed against, and which skills the jobs share. Workspaces the user does not own
+ * are left out.
+ */
+export async function compareWorkspaces(ctx: Ctx, userId: string, rawIds: unknown) {
+  const ids = parseOrThrow(compareIdsSchema, rawIds);
+  const list = (await listWorkspaces(ctx, userId)).filter((w) => ids.includes(w.id));
+  const jobs = [];
+  const resumeVersions: Record<string, string | null> = {};
+  for (const w of list) {
+    const { requirements } = await workspaceJob(ctx, w.id);
+    const [analysis] = await ctx.db
+      .select({ id: analyses.id, resumeVersionId: analyses.resumeVersionId })
+      .from(analyses)
+      .where(eq(analyses.workspaceId, w.id))
+      .orderBy(desc(analyses.createdAt))
+      .limit(1);
+    resumeVersions[w.id] = analysis?.resumeVersionId ?? null;
+    const evidence = analysis
+      ? await ctx.db
+          .select({
+            requirementId: requirementEvidence.requirementId,
+            status: requirementEvidence.status,
+            state: requirementEvidence.state,
+          })
+          .from(requirementEvidence)
+          .where(eq(requirementEvidence.analysisId, analysis.id))
+      : [];
+    jobs.push({
+      id: w.id,
+      requirements: requirements.map((r) => {
+        const e = evidence.find((x) => x.requirementId === r.id);
+        const state: ComparedEvidenceState = !e
+          ? 'none'
+          : e.status === 'pending'
+            ? 'pending'
+            : (e.state as ComparedEvidenceState);
+        return {
+          concepts: r.concepts as string[],
+          importance: r.importance as 'required' | 'preferred',
+          state,
+        };
+      }),
+    });
+  }
+  const versions = new Set(Object.values(resumeVersions).filter((v): v is string => !!v));
+  return {
+    workspaces: list.map((w) => ({
+      id: w.id,
+      name: w.name,
+      job: w.job,
+      latestAnalysis: w.latestAnalysis,
+      resumeVersionId: resumeVersions[w.id] ?? null,
+    })),
+    sameResumeVersion: versions.size === 1 && list.every((w) => resumeVersions[w.id]),
+    overlap: compareRequirements(jobs),
+  };
 }

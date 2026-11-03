@@ -1,5 +1,10 @@
 import JSZip from 'jszip';
-import mammoth from 'mammoth';
+import {
+  DEFAULT_LIMITS,
+  IsolationError,
+  runMammothIsolated,
+  type IsolationLimits,
+} from './isolate';
 
 export type DocumentKind = 'pdf' | 'docx';
 
@@ -27,9 +32,14 @@ export interface ExtractionResult {
 }
 
 export class DocumentRejectedError extends Error {
-  readonly reason: 'too_large' | 'unsupported_type' | 'corrupt' | 'macro_enabled' | 'empty';
-  constructor(reason: DocumentRejectedError['reason'], message: string) {
-    super(message);
+  readonly reason:
+    'too_large' | 'unsupported_type' | 'corrupt' | 'macro_enabled' | 'empty' | 'too_complex';
+  constructor(
+    reason: DocumentRejectedError['reason'],
+    message: string,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
     this.name = 'DocumentRejectedError';
     this.reason = reason;
   }
@@ -67,7 +77,10 @@ export async function sniffDocumentKind(bytes: Uint8Array): Promise<DocumentKind
   return null;
 }
 
-export async function extractDocument(bytes: Uint8Array): Promise<ExtractionResult> {
+export async function extractDocument(
+  bytes: Uint8Array,
+  opts: { limits?: IsolationLimits } = {},
+): Promise<ExtractionResult> {
   if (bytes.length === 0) throw new DocumentRejectedError('empty', 'The file is empty.');
   if (bytes.length > MAX_UPLOAD_BYTES) {
     throw new DocumentRejectedError('too_large', 'The file exceeds the 10 MB limit.');
@@ -75,7 +88,7 @@ export async function extractDocument(bytes: Uint8Array): Promise<ExtractionResu
   const kind = await sniffDocumentKind(bytes);
   if (!kind)
     throw new DocumentRejectedError('unsupported_type', 'Only PDF and DOCX files are supported.');
-  return kind === 'pdf' ? extractPdf(bytes) : extractDocx(bytes);
+  return kind === 'pdf' ? extractPdf(bytes) : extractDocx(bytes, opts.limits ?? DEFAULT_LIMITS);
 }
 
 interface PdfTextItem {
@@ -189,17 +202,23 @@ async function extractPdf(bytes: Uint8Array): Promise<ExtractionResult> {
   };
 }
 
-async function extractDocx(bytes: Uint8Array): Promise<ExtractionResult> {
-  const buffer = Buffer.from(bytes);
+async function extractDocx(bytes: Uint8Array, limits: IsolationLimits): Promise<ExtractionResult> {
   let raw: { value: string };
   let html: { value: string; messages: { message: string }[] };
   let zip: JSZip;
   try {
-    raw = await mammoth.extractRawText({ buffer });
-    html = await mammoth.convertToHtml({ buffer });
+    ({ raw, html } = await runMammothIsolated(bytes, limits));
     zip = await JSZip.loadAsync(bytes);
-  } catch {
-    throw new DocumentRejectedError('corrupt', 'The Word document could not be read.');
+  } catch (e) {
+    if (e instanceof IsolationError && e.kind !== 'failed')
+      throw new DocumentRejectedError(
+        'too_complex',
+        'This Word document is too complex to read safely. Try saving it again or exporting it as PDF.',
+        { cause: e },
+      );
+    throw new DocumentRejectedError('corrupt', 'The Word document could not be read.', {
+      cause: e,
+    });
   }
   const headerFooterText: string[] = [];
   for (const name of Object.keys(zip.files)) {

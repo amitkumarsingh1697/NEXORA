@@ -111,6 +111,15 @@ describe('investigations over HTTP', () => {
       (await svc.api(`${base}/${id}/merge`, { method: 'POST', body: { confirm: sha.slice(0, 8) } }))
         .status,
     ).toBe(409);
+
+    // Local analytics recorded the workflow (AB-5.11-01); a refused merge is not counted.
+    const a = await svc.api<{
+      patches: { proposed: number; approved: number };
+      merges: number;
+    }>(`/api/analytics?repo=${repoId}`);
+    expect(a.body.patches.proposed).toBeGreaterThanOrEqual(1);
+    expect(a.body.patches.approved).toBeGreaterThanOrEqual(1);
+    expect(a.body.merges).toBe(1);
   });
 
   it('maps bad patches and unknown investigations to clear errors', async () => {

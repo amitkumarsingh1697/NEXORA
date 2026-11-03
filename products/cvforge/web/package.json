@@ -17,6 +17,7 @@
     "clsx": "2.1.1",
     "drizzle-orm": "0.45.4",
     "lucide-react": "1.66.0",
+    "mammoth": "1.13.0",
     "next": "16.4.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -25,6 +26,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@nexora/cvforge-core": "workspace:*",
     "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "4.3.3",

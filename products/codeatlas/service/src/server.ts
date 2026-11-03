@@ -33,6 +33,12 @@ import {
   upsertRepo,
   cloneRepository,
   CloneError,
+  recordEvent,
+  analyticsSummary,
+  deleteAllLocalData,
+  getSetting,
+  setSetting,
+  type AnalyticsKind,
   type Db,
 } from '@nexora/codeatlas-core';
 import { createLogger } from '@nexora/logging';
@@ -46,7 +52,7 @@ import {
   SECURITY_HEADERS,
   type Req,
 } from './http';
-import { JobRunner } from './jobs';
+import { JobRunner, type Job } from './jobs';
 
 export interface ServiceContext {
   cfg: ServiceConfig;
@@ -56,6 +62,46 @@ export interface ServiceContext {
   jobs: JobRunner;
   router: Router;
   log: ReturnType<typeof createLogger>;
+}
+
+/**
+ * Record a local analytics event (spec §5.11). Recording happens after the user's action has
+ * succeeded, so a failure here is logged and does not turn that action into an error.
+ */
+export function track<K extends AnalyticsKind>(
+  ctx: ServiceContext,
+  kind: K,
+  repoId: number | null,
+  data: Parameters<typeof recordEvent<K>>[3],
+): void {
+  try {
+    recordEvent(ctx.db, kind, repoId, data);
+  } catch (e) {
+    ctx.log.error(
+      { kind, err: e instanceof Error ? { name: e.name, message: e.message } : String(e) },
+      'analytics event not recorded',
+    );
+  }
+}
+
+function trackJob(ctx: ServiceContext, job: Job): void {
+  const durationMs = Math.max(0, Date.parse(job.finishedAt ?? '') - Date.parse(job.startedAt)) || 0;
+  if (job.status === 'succeeded' && job.report) {
+    const rep = job.report;
+    track(ctx, 'index_succeeded', job.repoId, {
+      files: rep.files.discovered,
+      symbols: rep.symbols,
+      relationships: Object.values(rep.edgesByConfidence).reduce((a, b) => a + b, 0),
+      durationMs: rep.durationMs,
+    });
+    const f = riskView(ctx.db, job.repoId, 0).findings;
+    track(ctx, 'findings_generated', job.repoId, {
+      cycles: f.cycles.length,
+      sensitiveConfig: f.sensitiveConfig.length,
+    });
+  } else if (job.status === 'failed' || job.status === 'cancelled') {
+    track(ctx, 'index_failed', job.repoId, { cancelled: job.status === 'cancelled', durationMs });
+  }
 }
 
 export function loadOrCreateToken(home: string): string {
@@ -169,6 +215,47 @@ function registerCoreRoutes(ctx: ServiceContext): void {
     };
   });
 
+  // Settings, first run and local analytics (spec §5.11, §5.12 screens 1 and 19).
+  const worktreeDir = ctx.cfg.worktreeDir ?? join(ctx.cfg.home, 'worktrees');
+  r.add('GET', '/api/settings', () => ({
+    dataLocation: ctx.cfg.home,
+    database: ctx.dbPath,
+    worktrees: worktreeDir,
+    clones: join(ctx.cfg.home, 'clones'),
+    firstRun: getSetting(ctx.db, 'welcome_dismissed') !== 'true' && listRepos(ctx.db).length === 0,
+    analytics: { storedLocally: true, transmitted: false },
+  }));
+  r.add('POST', '/api/settings/welcome', () => {
+    setSetting(ctx.db, 'welcome_dismissed', 'true');
+    return { ok: true };
+  });
+  r.add('GET', '/api/analytics', (req) => {
+    const repo = req.query.get('repo');
+    return analyticsSummary(ctx.db, repo ? repoOr404(ctx, repo).id : undefined);
+  });
+  r.add('POST', '/api/data/delete-all', (req) => {
+    z.strictObject({ confirm: z.literal('DELETE') }).parse(req.body);
+    if (listRepos(ctx.db).some((repo) => ctx.jobs.activeFor(repo.id)))
+      throw new HttpError(409, 'BUSY', 'Cancel or wait for indexing to finish first.');
+    const deleted = deleteAllLocalData(ctx.db);
+    return {
+      deleted,
+      note: `CodeAtlas's database was cleared. Your repositories were not touched. Folders CodeAtlas created are kept for you to review and delete: ${join(ctx.cfg.home, 'clones')} and ${worktreeDir}.`,
+    };
+  });
+
+  r.add('DELETE', '/api/jobs/:id', async (req) => {
+    const job = await ctx.jobs.cancel(req.params.id ?? '');
+    if (!job) throw new HttpError(404, 'NOT_FOUND', 'Job not found.');
+    if (job.status === 'cancelled')
+      ctx.db
+        .prepare(
+          "UPDATE index_runs SET status = 'failed', error = 'Cancelled by the user; the previous index is unchanged.', finished_at = ? WHERE repo_id = ? AND status = 'running'",
+        )
+        .run(new Date().toISOString(), job.repoId);
+    return { job };
+  });
+
   r.add('GET', '/api/jobs/:id', (req) => {
     const job = ctx.jobs.get(req.params.id ?? '');
     if (!job) throw new HttpError(404, 'NOT_FOUND', 'Job not found.');
@@ -191,13 +278,17 @@ function registerCoreRoutes(ctx: ServiceContext): void {
   r.add('GET', '/api/repos/:id/views/modules', (req) =>
     modulesView(ctx.db, repoOr404(ctx, req.params.id).id),
   );
-  r.add('GET', '/api/repos/:id/views/dependencies', (req) =>
-    dependencyView(ctx.db, repoOr404(ctx, req.params.id).id, {
-      module: req.query.get('module') || undefined,
+  r.add('GET', '/api/repos/:id/views/dependencies', (req) => {
+    const repo = repoOr404(ctx, req.params.id);
+    const module = req.query.get('module') || undefined;
+    const view = dependencyView(ctx.db, repo.id, {
+      module,
       includeExternal: req.query.get('external') === '1',
       limit: Math.min(Number(req.query.get('limit')) || 250, 1000),
-    }),
-  );
+    });
+    if (module) track(ctx, 'module_explored', repo.id, {});
+    return view;
+  });
   r.add('GET', '/api/repos/:id/flows', (req) => ({
     starts: flowStarts(ctx.db, repoOr404(ctx, req.params.id).id),
   }));
@@ -297,12 +388,16 @@ export function createService(
   mkdirSync(cfg.home, { recursive: true, mode: 0o700 });
   const dbPath = join(cfg.home, 'codeatlas.db');
   const db = openDb(dbPath);
+  // An index run left 'running' by a crash or kill never committed; record it as failed.
+  db.prepare(
+    "UPDATE index_runs SET status = 'failed', error = 'Interrupted before completion; the previous index is unchanged.', finished_at = ? WHERE status = 'running'",
+  ).run(new Date().toISOString());
   const ctx: ServiceContext = {
     cfg,
     db,
     dbPath,
     token: loadOrCreateToken(cfg.home),
-    jobs: new JobRunner(dbPath),
+    jobs: new JobRunner(dbPath, (job) => trackJob(ctx, job)),
     router: new Router(),
     log: createLogger({ name: 'codeatlas' }),
   };

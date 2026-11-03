@@ -116,12 +116,28 @@ export function Repos() {
                 <p className="text-xs text-muted">
                   {r.job?.status === 'running'
                     ? `Indexing… ${r.job.progress.at(-1) ?? ''}`
-                    : r.lastIndexedAt
-                      ? `Indexed ${new Date(r.lastIndexedAt).toLocaleString()}`
-                      : 'Not indexed yet'}
+                    : r.job?.status === 'cancelled' || r.job?.status === 'failed'
+                      ? (r.job.error ?? 'Indexing stopped.')
+                      : r.lastIndexedAt
+                        ? `Indexed ${new Date(r.lastIndexedAt).toLocaleString()}`
+                        : 'Not indexed yet'}
                 </p>
               </div>
               <div className="flex gap-2">
+                {r.job?.status === 'running' && (
+                  <Button
+                    small
+                    variant="secondary"
+                    onClick={() =>
+                      api(`/api/jobs/${r.job!.id}`, { method: 'DELETE' }).then(
+                        repos.reload,
+                        setError,
+                      )
+                    }
+                  >
+                    Cancel indexing
+                  </Button>
+                )}
                 <Button
                   small
                   variant="secondary"

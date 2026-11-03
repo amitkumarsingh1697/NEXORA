@@ -8,7 +8,7 @@ export interface Job {
   id: string;
   repoId: number;
   root: string;
-  status: 'running' | 'succeeded' | 'failed';
+  status: 'running' | 'succeeded' | 'failed' | 'cancelled';
   progress: string[];
   startedAt: string;
   finishedAt?: string;
@@ -23,8 +23,13 @@ const TIMEOUT_MS = 30 * 60_000;
 /** Runs indexing out of process so the API stays responsive; one job per repository at a time. */
 export class JobRunner {
   private jobs = new Map<string, Job>();
+  private children = new Map<string, ReturnType<typeof fork>>();
 
-  constructor(private readonly dbPath: string) {}
+  constructor(
+    private readonly dbPath: string,
+    /** Called once for every job when it ends: succeeded, failed or cancelled. */
+    private readonly onFinished?: (job: Job) => void,
+  ) {}
 
   get(id: string): Job | undefined {
     return this.jobs.get(id);
@@ -50,6 +55,7 @@ export class JobRunner {
       execArgv: ['--no-warnings', '--import', TSX],
       stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     });
+    this.children.set(job.id, child);
     let stderr = '';
     child.stderr?.on('data', (d: Buffer) => {
       stderr = (stderr + d.toString()).slice(-2000);
@@ -62,8 +68,10 @@ export class JobRunner {
     });
     child.on('exit', (code, signal) => {
       clearTimeout(timer);
+      this.children.delete(job.id);
       job.finishedAt = new Date().toISOString();
-      if (code === 0 && job.report) job.status = 'succeeded';
+      if (job.status === 'cancelled') job.error = 'Cancelled. The previous index is unchanged.';
+      else if (code === 0 && job.report) job.status = 'succeeded';
       else {
         job.status = 'failed';
         job.error ??=
@@ -73,8 +81,29 @@ export class JobRunner {
       }
       // Keep the last 50 jobs.
       if (this.jobs.size > 50) this.jobs.delete(this.jobs.keys().next().value as string);
+      this.onFinished?.(job);
       onDone?.(job);
     });
     return job;
+  }
+
+  /**
+   * Stop a running index. The child is killed; its uncommitted SQLite
+   * transaction is rolled back, so the previous index stays queryable.
+   * Resolves once the child has exited.
+   */
+  cancel(id: string): Promise<Job | undefined> {
+    const job = this.jobs.get(id);
+    const child = this.children.get(id);
+    if (!job || job.status !== 'running' || !child) return Promise.resolve(job);
+    job.status = 'cancelled';
+    return new Promise((resolve) => {
+      const force = setTimeout(() => child.kill('SIGKILL'), 3_000);
+      child.once('exit', () => {
+        clearTimeout(force);
+        resolve(job);
+      });
+      child.kill('SIGTERM');
+    });
   }
 }

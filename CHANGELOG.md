@@ -13,12 +13,20 @@ All notable changes to this repository. Format: [Keep a Changelog](https://keepa
 - CVForge extension (Chrome/Edge MV3): pairing, on-click extraction (JSON-LD, LinkedIn, Naukri, generic), review and save.
 - CodeAtlas core: TypeScript Compiler API indexer with observed/inferred/unknown edges, git history, Markdown/ADR knowledge, coverage report, FTS5 search, views (modules, dependencies, flows, risk, ownership, knowledge, impact), grounded chat with retrieval-only fallback, bug investigation workflow with worktrees, allowlisted commands and hash-bound approval.
 - CodeAtlas service and web UI on 127.0.0.1 with token, Host and Origin protection.
-- Infrastructure: docker compose (Postgres, optional Ollama), DB init SQL, native Postgres setup script, `.env.example` files, CI workflow (not yet run).
+- Infrastructure: docker compose (Postgres, optional Ollama), DB init SQL, native Postgres setup script, `.env.example` files, CI workflow.
 - Documentation set, ADRs 0001–0008, ArchLens skill draft.
 - Governance (Sprint 0): CLAUDE.md, master specification extract, research log, sprint plan, requirements traceability, definition of done, AI engineering rules, security threat model, risk register, release readiness, implementation status; ADRs 0009–0011. ArchLens packaged as a separate skill with references and a checker.
 - CodeAtlas (Sprint 1): approval and rejection records with identity and validation state; structured bug report; human-triggered fast-forward local merge with re-verification and typed hash confirmation (ADR 0010); schema v3 with migration; branch, dirty flag, manifest and declared-framework inventory; index revision on every chat citation; file- and module-level cycle detection (Tarjan); potentially-sensitive-configuration findings; public https clone with host and DNS checks; restart and prompt-injection tests.
 
+- Sprint 2: CodeAtlas local analytics for every spec §5.11 metric (schema v4, never transmitted), 👍/👎 answer feedback with a note, Settings screen (AI status, data location, analytics, delete all local data with typed confirmation), first-run welcome screen, indexing cancellation (`DELETE /api/jobs/:id` and Cancel buttons) and a clear error when SQLite lacks FTS5. CVForge job comparison with shared-skill overlap and a resume-version warning; preferred template stored on each version, with template and section order diffed as formatting changes. Automated axe accessibility scans in both E2E suites. User guide and test report.
+
+### Changed
+
+- CodeAtlas runs left `running` by a crash are marked failed at startup. Light-theme colours for "observed" and "inferred" darkened to meet contrast. CVForge inline links are underlined and decided suggestions are no longer dimmed.
+
 ### Security
+
+- CVForge: Word documents are parsed by mammoth in a worker thread with a 20 s timeout and a 256 MB heap cap (research R8, risk K-07).
 
 - CVForge extension: `storage.local` and `storage.session` restricted to trusted extension contexts, so content scripts cannot read the refresh token (research R4).
 - pdf.js: confirmed the installed 6.5.438 is not affected by GHSA-wgrm-67xf-hhpq; the `isEvalSupported` option no longer exists (research R9 corrected).

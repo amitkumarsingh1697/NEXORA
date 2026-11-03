@@ -63,22 +63,22 @@ All endpoints exchange JSON unless noted. Errors use one shape:
 
 ### Workspaces, analysis, suggestions
 
-| Method       | Path                            | Body / result                                                                                                                |
-| ------------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| GET          | `/workspaces`                   | List                                                                                                                         |
-| POST         | `/workspaces`                   | `{ resumeVersionId, jobText (50–… chars), name?, source?, sourceUrl?, sourceSite? }`                                         |
-| GET / DELETE | `/workspaces/:id`               | Workspace with job, requirements, latest analysis, questions, suggestions                                                    |
-| GET          | `/workspaces/compare?ids=a,b,…` | Up to 6 workspaces side by side                                                                                              |
-| PUT          | `/workspaces/:id/job`           | Replace job text and re-parse                                                                                                |
-| PUT          | `/workspaces/:id/base-version`  | Switch the resume version being analysed                                                                                     |
-| POST         | `/workspaces/:id/requirements`  | `{ kind, text, importance, hard?, minYears? }`                                                                               |
-| PUT / DELETE | `/requirements/:id`             | Edit / remove a requirement                                                                                                  |
-| POST         | `/workspaces/:id/analyze`       | Run the analysis                                                                                                             |
-| GET          | `/workspaces/:id/analyses`      | Analysis history                                                                                                             |
-| POST         | `/questions/:id/answer`         | `{ response: yes\|no\|skipped\|deferred, text }` — `yes` needs ≥ 10 characters in the user's own words; re-runs the analysis |
-| POST         | `/workspaces/:id/suggestions`   | Generate suggestions                                                                                                         |
-| PATCH        | `/suggestions/:id`              | `{ decision: accepted\|rejected\|pending, editedProposed? }`                                                                 |
-| POST         | `/workspaces/:id/versions`      | `{ label? }` → new version from accepted suggestions: `{ versionId, resumeId, counts }`                                      |
+| Method       | Path                            | Body / result                                                                                                                                                                                                                                                                 |
+| ------------ | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET          | `/workspaces`                   | List                                                                                                                                                                                                                                                                          |
+| POST         | `/workspaces`                   | `{ resumeVersionId, jobText (50–… chars), name?, source?, sourceUrl?, sourceSite? }`                                                                                                                                                                                          |
+| GET / DELETE | `/workspaces/:id`               | Workspace with job, requirements, latest analysis, questions, suggestions                                                                                                                                                                                                     |
+| GET          | `/workspaces/compare?ids=a,b,…` | 2–6 workspace UUIDs (others → `400`; workspaces you do not own are left out) → `{ workspaces[] (id, name, job, latestAnalysis, resumeVersionId), sameResumeVersion, overlap: { shared[] (concept, jobs[] of id, importance, state), unique: { [workspaceId]: concept[] } } }` |
+| PUT          | `/workspaces/:id/job`           | Replace job text and re-parse                                                                                                                                                                                                                                                 |
+| PUT          | `/workspaces/:id/base-version`  | Switch the resume version being analysed                                                                                                                                                                                                                                      |
+| POST         | `/workspaces/:id/requirements`  | `{ kind, text, importance, hard?, minYears? }`                                                                                                                                                                                                                                |
+| PUT / DELETE | `/requirements/:id`             | Edit / remove a requirement                                                                                                                                                                                                                                                   |
+| POST         | `/workspaces/:id/analyze`       | Run the analysis                                                                                                                                                                                                                                                              |
+| GET          | `/workspaces/:id/analyses`      | Analysis history                                                                                                                                                                                                                                                              |
+| POST         | `/questions/:id/answer`         | `{ response: yes\|no\|skipped\|deferred, text }` — `yes` needs ≥ 10 characters in the user's own words; re-runs the analysis                                                                                                                                                  |
+| POST         | `/workspaces/:id/suggestions`   | Generate suggestions                                                                                                                                                                                                                                                          |
+| PATCH        | `/suggestions/:id`              | `{ decision: accepted\|rejected\|pending, editedProposed? }`                                                                                                                                                                                                                  |
+| POST         | `/workspaces/:id/versions`      | `{ label? }` → new version from accepted suggestions: `{ versionId, resumeId, counts }`                                                                                                                                                                                       |
 
 ### Exports
 
@@ -118,6 +118,7 @@ All endpoints exchange JSON unless noted. Errors use one shape:
 | GET / DELETE | `/repos/:id`            | Repo, coverage, recent runs / unregister and delete all its indexed data (409 while indexing)                      |
 | POST         | `/repos/:id/index`      | Starts a background index job → `{ jobId }`                                                                        |
 | GET          | `/jobs/:id`             | Job status                                                                                                         |
+| DELETE       | `/jobs/:id`             | Cancel a running index job (SIGTERM, then SIGKILL after 3 s). The previous index is kept. Unknown id → `404`       |
 | GET          | `/repos/:id/unresolved` | Unresolved references with reasons                                                                                 |
 
 ### Exploration
@@ -139,10 +140,15 @@ All endpoints exchange JSON unless noted. Errors use one shape:
 
 ### Chat
 
-| Method | Path              | Notes                                                                                                                                                                                                           |
-| ------ | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/ai/status`      | Provider availability                                                                                                                                                                                           |
-| POST   | `/repos/:id/chat` | `{ question }` → `{ mode: model\|retrieval-only, answer, citations[] (source, filePath, startLine, endLine, symbol, note?), confidence: high\|medium\|low, gaps[], warnings[], sources[], facts[], provider? }` |
+| Method | Path                       | Notes                                                                                                                                                                                                           |
+| ------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/ai/status`               | Provider availability                                                                                                                                                                                           |
+| POST   | `/repos/:id/chat`          | `{ question }` → `{ mode: model\|retrieval-only, answer, citations[] (source, filePath, startLine, endLine, symbol, note?), confidence: high\|medium\|low, gaps[], warnings[], sources[], facts[], provider? }` |
+| POST   | `/repos/:id/chat/feedback` | `{ rating: up\|down, note? (≤1000 chars), confidence?, citations? }` → stored as a local analytics event. Unknown fields → `400`                                                                                |
+| GET    | `/settings`                | `{ dataLocation, database, worktrees, clones, firstRun, analytics: { storedLocally: true, transmitted: false } }`                                                                                               |
+| POST   | `/settings/welcome`        | Dismiss the first-run welcome screen                                                                                                                                                                            |
+| GET    | `/analytics?repo=`         | Local analytics summary for all repositories or one: indexing, questions, feedback (with recent notes), findings, patches, validation, merges                                                                   |
+| POST   | `/data/delete-all`         | `{ confirm: "DELETE" }` → clears the database (repos, indexes, investigations, analytics, settings). `409` while indexing. Repository files and the worktree and clone folders are not touched                  |
 
 ### Investigations
 
