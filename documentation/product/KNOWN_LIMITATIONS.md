@@ -18,6 +18,7 @@ Honest list of what does not work, or was not verified, in the current build.
 - Single-instance deployment: in-memory rate limiter, local-disk storage, outbox-directory mailer (no email is actually sent; no email verification).
 - No organisations/teams yet beyond the personal org created at signup.
 - Scores are heuristic and explainable, not predictions of ATS outcomes or hiring decisions.
+- PDF export needs fonts metric-compatible with the templates' Calibri and Arial (`fonts-crosextra-carlito`, `fonts-liberation` on Debian/Ubuntu). Without them LibreOffice substitutes other fonts, lines wrap differently, and re-parsing the exported PDF can split one job into two entries (reproduced 2026-11-03 with only DejaVu fonts). Making the parser robust to wrapping is a follow-up.
 
 ## CodeAtlas
 

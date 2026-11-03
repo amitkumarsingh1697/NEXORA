@@ -35,8 +35,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # PDF export tests convert DOCX with LibreOffice (research R7); the runner image does not include it.
+      # Carlito and Liberation are metric-compatible with the templates' Calibri and Arial; without them line wrapping changes.
       - name: Install LibreOffice
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer-nogui
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-writer-nogui fonts-crosextra-carlito fonts-liberation
       - name: Create test databases
         run: psql postgres://nexora:nexora_dev@127.0.0.1:5432/cvforge -f infrastructure/database/init.sql
       - run: pnpm format:check
