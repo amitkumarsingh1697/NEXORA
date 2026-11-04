@@ -26,6 +26,7 @@ import {
 } from '../db/schema';
 import { canonicalJson, sha256 } from '../lib/crypto';
 import { audit } from './audit';
+import { assertEmailVerified } from './auth';
 import { nextVersionNumber, ownedVersion, writeSections } from './resumes';
 import { ownedWorkspace, toCoreRequirement, workspaceJob } from './workspaces';
 
@@ -95,6 +96,7 @@ async function aiRewrites(
 }
 
 export async function generateWorkspaceSuggestions(ctx: Ctx, userId: string, workspaceId: string) {
+  await assertEmailVerified(ctx, userId);
   const ws = await ownedWorkspace(ctx, userId, workspaceId);
   const [analysis] = await ctx.db
     .select()

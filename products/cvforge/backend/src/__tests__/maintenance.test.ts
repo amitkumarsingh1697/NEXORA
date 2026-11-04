@@ -37,6 +37,7 @@ describe('retention sweep', () => {
     const second = await runMaintenance(env.ctx);
     expect(second.pairingCodes).toBe(1);
     expect(second.sessions).toBe(0);
+    expect(second.emailVerificationTokens).toBe(0); // signup link, 24 h TTL
     expect(await env.ctx.db.select().from(extensionPairingCodes)).toHaveLength(0);
 
     // Past the session TTL and the audit retention window, both are purged.
@@ -46,6 +47,7 @@ describe('retention sweep', () => {
     expect(auditBefore).toBeGreaterThan(0);
     const third = await runMaintenance(env.ctx);
     expect(third.sessions).toBe(1);
+    expect(third.emailVerificationTokens).toBe(1);
     expect(third.auditEvents).toBe(auditBefore);
     expect(await env.ctx.db.select().from(sessions)).toHaveLength(0);
 

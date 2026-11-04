@@ -17,6 +17,8 @@ CVForge runs as a web app (by default at `http://localhost:3000`) with an option
 
 Open **Sign up**, enter your name, email and a password of at least 12 characters, and accept the privacy notice. You land on the upload screen.
 
+CVForge sends a link to confirm your email address. Open it and click **Confirm email address**. Until you do, **Settings** shows a reminder with a **Send a new link** button. Depending on how CVForge is set up, uploading resumes and AI suggestions may wait until you confirm. (In local development the email is written to the outbox folder instead of being sent.)
+
 ### 2. Upload and confirm your resume
 
 1. Choose a Word (`.docx`) or PDF file of up to 10 MB and click **Upload and extract**.
@@ -108,24 +110,26 @@ On **Repositories**:
 - **Local folder:** enter the absolute path of a repository and click **Add and index**.
 - **Public clone:** enter an `https://` URL of a public repository and click **Clone and index**. CodeAtlas refuses other URL types and addresses on your local network, and it does not use your saved git credentials.
 
-Indexing runs in the background. While it runs you can click **Cancel indexing**; the previous index (if any) stays as it was. **Re-index** refreshes the map after you change code. **Remove** deletes CodeAtlas's data for that repository and never touches your files.
+Indexing runs in the background. While it runs you can click **Cancel indexing**; the previous index (if any) stays as it was. **Re-index** refreshes the map after you change code. When your project configuration and file list are unchanged, only changed files and the files that depend on them are analysed again, so re-indexing is much faster; **Overview** shows which mode ran and why. **Remove** deletes CodeAtlas's data for that repository and never touches your files.
 
 ### 4. Explore
 
 Open a repository to see these tabs:
 
-| Tab          | What it shows                                                                                                                                                  |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Overview     | Coverage report: files analysed, symbols, routes, how many calls were resolved, branch and commit, manifests, declared frameworks and what was skipped and why |
-| Modules      | Modules with size and test counts, and import cycles between modules                                                                                           |
-| Dependencies | The import graph for a module or the whole repository, optionally including external packages                                                                  |
-| Flows        | From a route or entry point, the chain of calls it makes                                                                                                       |
-| Risk         | Files ranked by churn, size and missing tests; import cycles; files that look like credentials (listed by path only, never read)                               |
-| Ownership    | Who changed which files, from git history                                                                                                                      |
-| Knowledge    | Markdown documents and architecture decision records                                                                                                           |
-| Search       | Full-text search over code and docs                                                                                                                            |
-| Ask          | Questions answered from the code, with citations                                                                                                               |
-| Investigate  | Take a bug from description to an approved, merged fix                                                                                                         |
+| Tab          | What it shows                                                                                                                                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Overview     | Coverage report: files analysed, symbols, routes, how many calls were resolved, branch and commit, manifests, declared frameworks, language adapters and unsupported languages, integrations found, incremental indexing status, and what was skipped and why                                     |
+| Structure    | A collapsible tree: modules, then files, then classes, functions and their members. Expands one level at a time, and can be filtered by language                                                                                                                                                  |
+| Modules      | Modules with size and test counts, and import cycles between modules                                                                                                                                                                                                                              |
+| Dependencies | The import graph for a module or the whole repository, optionally including external packages, filtered by language if you choose                                                                                                                                                                 |
+| Integrations | Environment variables, configuration files, HTTP services and databases the code uses, each with the lines that use them (inferred, never their values)                                                                                                                                           |
+| Flows        | From a route or entry point, the chain of calls it makes                                                                                                                                                                                                                                          |
+| Risk         | Files ranked by churn, size and missing tests; import cycles; files that look like credentials (listed by path only, never read)                                                                                                                                                                  |
+| Ownership    | Who changed which files, from git history                                                                                                                                                                                                                                                         |
+| Knowledge    | Markdown documents and architecture decision records, plus **Module documentation**: a generated page per module (exports, dependencies, routes, integrations, with citations). **Download Markdown** saves it; **Write overview with AI** adds a model-written summary when a model is available |
+| Search       | Full-text search over code and docs, optionally limited to one language                                                                                                                                                                                                                           |
+| Ask          | Questions answered from the code, with citations                                                                                                                                                                                                                                                  |
+| Investigate  | Take a bug from description to an approved, merged fix                                                                                                                                                                                                                                            |
 
 Every relationship is labelled **observed** (seen directly in code), **inferred** (likely, with the reason) or **unknown**. Click any node to see its details and the source lines behind it.
 

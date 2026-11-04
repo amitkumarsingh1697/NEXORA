@@ -31,7 +31,7 @@ const config: NextConfig = {
     '@nexora/ai',
     '@nexora/logging',
   ],
-  serverExternalPackages: ['pg', 'pino', 'pdfjs-dist', 'mammoth', 'jszip', 'docx'],
+  serverExternalPackages: ['pg', 'pino', 'pdfjs-dist', 'mammoth', 'jszip', 'docx', 'nodemailer'],
   poweredByHeader: false,
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];

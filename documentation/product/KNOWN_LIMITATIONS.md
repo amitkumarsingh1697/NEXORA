@@ -16,16 +16,20 @@ Honest list of what does not work, or was not verified, in the current build.
 - Complex layouts (multiple columns, tables, text boxes) reduce parse confidence; the user must review the confirm screen.
 - Two export templates only. The template is the only stored formatting choice besides section order; fonts, margins and spacing are fixed per template.
 - Job comparison matches requirements by skill-taxonomy concept. Responsibilities without a recognised skill are not compared across jobs.
-- Word documents that take longer than 20 seconds or more than 256 MB of memory to parse are refused as too complex. PDF parsing has no equivalent worker isolation yet.
-- Single-instance deployment: in-memory rate limiter, local-disk storage, outbox-directory mailer (no email is actually sent; no email verification).
+- Word and PDF documents that take longer than 20 seconds or more than 256 MB of memory to parse are refused as too complex.
+- Single-instance deployment: in-memory rate limiter and local-disk storage.
+- Email is written to an outbox folder unless SMTP is configured. SMTP delivery is tested against a local test server only, not a real provider. Email confirmation is enforced only when `REQUIRE_EMAIL_VERIFICATION=true`. There is no CAPTCHA or other bot protection, and no way to change the account's email address yet.
 - No organisations/teams yet beyond the personal org created at signup.
 - Scores are heuristic and explainable, not predictions of ATS outcomes or hiring decisions.
 - PDF export needs fonts metric-compatible with the templates' Calibri and Arial (`fonts-crosextra-carlito`, `fonts-liberation` on Debian/Ubuntu). Without them LibreOffice substitutes other fonts, lines wrap differently, and re-parsing the exported PDF can split one job into two entries (reproduced 2026-11-03 with only DejaVu fonts). Making the parser robust to wrapping is a follow-up.
 
 ## CodeAtlas
 
-- TypeScript and JavaScript only. Other languages appear as files without symbols.
-- Full re-index on every run (no incremental indexing); large repos are capped at 20,000 files and 512 KB per file.
+- TypeScript and JavaScript only, through the one language adapter. Other languages appear as files without symbols and are listed as unsupported in the coverage report.
+- Re-indexing is incremental only while the tsconfig files, package manifests, lockfiles and the set of files stay the same; otherwise it runs in full. A change to a widely imported file re-analyses most of the repository (221 of 451 files for one hono change). Project references and path plugins are untested. Large repos are capped at 20,000 files and 512 KB per file.
+- Service, database and configuration links are heuristics, labelled inferred. Clients created inside functions, and URLs built at run time, are grouped or missed. Configuration values are never read.
+- The structure tree goes module → file → symbol; modules are directories, with no separate package level.
+- Module overviews written by a model have not been evaluated with a real model.
 - Dynamic patterns (dependency injection containers, string-based dispatch, reflection) show up as unresolved or inferred edges, not observed ones.
 - Route detection covers Next.js app router and Express-style `app.get(...)` / `router.post(...)` calls; other frameworks are not recognised.
 - Ownership and churn need git history; a repository without commits (such as this monorepo today) has no ownership data.

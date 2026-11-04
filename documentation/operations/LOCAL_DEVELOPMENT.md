@@ -39,7 +39,7 @@ cp products/cvforge/web/.env.example products/cvforge/web/.env.local
 pnpm --filter @nexora/cvforge-web dev        # http://localhost:3000
 ```
 
-Password-reset emails are written to `MAIL_OUTBOX_DIR` (default `products/cvforge/web/.data/outbox`) instead of being sent.
+Password-reset and email-confirmation messages are written to `MAIL_OUTBOX_DIR` (default `products/cvforge/web/.data/outbox`) instead of being sent. To deliver real mail, set `MAIL_TRANSPORT=smtp` with `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` (see `.env.example`). SMTP is optional, and the provider you pick may charge for it. `SMTP_REQUIRE_TLS=true` (the default) refuses to send over an unencrypted connection. Set `REQUIRE_EMAIL_VERIFICATION=true` to block uploads and AI suggestions until the address is confirmed; in production this needs SMTP.
 
 **Extension**
 

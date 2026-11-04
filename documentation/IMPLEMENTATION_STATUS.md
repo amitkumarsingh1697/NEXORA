@@ -7,22 +7,22 @@ This is the single tracker required by spec §19.
 
 ## Last evidence run
 
-**Date:** 2026-11-03, in the build container, at the end of Sprint 2.
+**Date:** 2026-11-04, in the build container, at the end of Sprint 3.
 
 **Environment:**
 
 - Node 22.23.4, pnpm 10.28.0, PostgreSQL 16, LibreOffice 24.2.7.2
 - No Ollama; no Docker daemon
 
-| Command                                   | Result                                                                    |
-| ----------------------------------------- | ------------------------------------------------------------------------- |
-| `pnpm format:check`                       | clean                                                                     |
-| `pnpm check` (typecheck, lint, tests)     | pass: 258 tests                                                           |
-| `node skills/archlens/scripts/check.mjs`  | pass                                                                      |
-| `pnpm --filter @nexora/cvforge-web e2e`   | 3 passed, including axe scans of 11 screens (2026-11-03, end of Sprint 2) |
-| `pnpm --filter @nexora/codeatlas-web e2e` | 1 passed, including axe scans of 9 screens (2026-11-03, end of Sprint 2)  |
-| `pnpm audit --prod`                       | no known vulnerabilities (2026-11-03)                                     |
-| GitHub Actions CI on `main`               | green after PR #1 (2026-11-03)                                            |
+| Command                                   | Result                                                                              |
+| ----------------------------------------- | ----------------------------------------------------------------------------------- |
+| `pnpm format:check`                       | clean                                                                               |
+| `pnpm check` (typecheck, lint, tests)     | pass: 303 tests                                                                     |
+| `node skills/archlens/scripts/check.mjs`  | pass                                                                                |
+| `pnpm --filter @nexora/cvforge-web e2e`   | 4 passed, including axe scans of 13 screens (2026-11-04, end of Sprint 3)           |
+| `pnpm --filter @nexora/codeatlas-web e2e` | 1 passed, including axe scans of 12 screens (2026-11-04, end of Sprint 3)           |
+| `pnpm audit --prod`                       | no known vulnerabilities (2026-11-04)                                               |
+| GitHub Actions CI                         | green on `main` after PRs #1 and #2 (2026-11-03); Sprint 3 PR: see Repository below |
 
 Test counts by package:
 
@@ -31,11 +31,11 @@ Test counts by package:
 | validation        | 4     |
 | logging           | 1     |
 | ai                | 11    |
-| cvforge-core      | 58    |
+| cvforge-core      | 62    |
 | cvforge-extension | 16    |
-| cvforge-backend   | 34    |
-| codeatlas-core    | 108   |
-| codeatlas-service | 26    |
+| cvforge-backend   | 42    |
+| codeatlas-core    | 138   |
+| codeatlas-service | 29    |
 
 ## Requirement status summary
 
@@ -44,8 +44,8 @@ Counts are taken from REQUIREMENTS_TRACEABILITY.md.
 | Area                                                   | Tested | Implemented (no test) | In progress | Not started | Blocked |
 | ------------------------------------------------------ | -----: | --------------------: | ----------: | ----------: | ------: |
 | CVForge (RI-*)                                         |     44 |                     2 |           1 |           0 |       0 |
-| CodeAtlas (AB-*)                                       |     40 |                     0 |           2 |           5 |       0 |
-| Cross-cutting (AI, SEC, UX, DATA, COST, PERF, DOC, SK) |     13 |                     5 |           0 |           2 |       0 |
+| CodeAtlas (AB-*)                                       |     47 |                     0 |           0 |           0 |       0 |
+| Cross-cutting (AI, SEC, UX, DATA, COST, PERF, DOC, SK) |     14 |                     4 |           0 |           1 |       0 |
 
 **Verification blocked by environment**, so these items are not counted as "verified":
 
@@ -54,13 +54,13 @@ Counts are taken from REQUIREMENTS_TRACEABILITY.md.
 
 ## Sprint status
 
-| Sprint                                          | Status              | Evidence                                                                                                                                           |
-| ----------------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Baseline (spec phases 0–11, built 2026-11-02)   | Built               | Phase reports in the project thread; tests above                                                                                                   |
-| Sprint 0: governance and research               | **Done** 2026-11-03 | The 10 governance files exist; 12 sourced research entries; every spec requirement has an ID and status; ArchLens check passes; `pnpm check` green |
-| Sprint 1: spec compliance and security findings | **Done** 2026-11-03 | All 8 items; evidence below and in REQUIREMENTS_TRACEABILITY                                                                                       |
-| Sprint 2: product surface and robustness        | **Done** 2026-11-03 | All 7 items; evidence below, in REQUIREMENTS_TRACEABILITY and in `reports/SPRINT_2_REPORT.md`                                                      |
-| Sprint 3: CodeAtlas depth                       | Not started         |                                                                                                                                                    |
+| Sprint                                            | Status              | Evidence                                                                                                                                           |
+| ------------------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Baseline (spec phases 0–11, built 2026-11-02)     | Built               | Phase reports in the project thread; tests above                                                                                                   |
+| Sprint 0: governance and research                 | **Done** 2026-11-03 | The 10 governance files exist; 12 sourced research entries; every spec requirement has an ID and status; ArchLens check passes; `pnpm check` green |
+| Sprint 1: spec compliance and security findings   | **Done** 2026-11-03 | All 8 items; evidence below and in REQUIREMENTS_TRACEABILITY                                                                                       |
+| Sprint 2: product surface and robustness          | **Done** 2026-11-03 | All 7 items; evidence below, in REQUIREMENTS_TRACEABILITY and in `reports/SPRINT_2_REPORT.md`                                                      |
+| Sprint 3: CodeAtlas depth, plus CVForge hardening | **Done** 2026-11-04 | All 7 items plus PDF isolation, optional SMTP and email confirmation; evidence below and in `reports/SPRINT_3_REPORT.md`                           |
 
 ## Sprint 1 items
 
@@ -87,9 +87,25 @@ Counts are taken from REQUIREMENTS_TRACEABILITY.md.
 | S2-6 Cancellation and failure safety        | tested | `ca/service/test/jobs.test.ts`, `indexer.test.ts` "failure safety (S2-6)"                                                                      |
 | S2-7 User guide and test report             | done   | `product/USER_GUIDE.md`, `testing/TEST_REPORT.md`                                                                                              |
 
+## Sprint 3 items
+
+| Item                                       | Status | Evidence                                                                                                                                                                           |
+| ------------------------------------------ | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S3-1 `LanguageAdapter` interface           | tested | `adapters.ts`; `indexer.test.ts`; Overview lists adapters and unsupported languages (E2E)                                                                                          |
+| S3-2 Tree and language filter              | tested | `query/tree.ts`, `Structure.tsx`; `indexer.test.ts` tree section; service tests; E2E expand/collapse and filter with axe scans                                                     |
+| S3-3 Service calls and database access     | tested | `integrations.ts`; `indexer.test.ts` "integrations"; E2E Integrations tab                                                                                                          |
+| S3-4 Incremental indexing                  | tested | `ts-cache.ts`; `incremental.test.ts` (each scenario compared with a fresh full index); `migration.test.ts` v4→v5; equality on this repo and hono                                   |
+| S3-5 Module documentation                  | tested | `moduledoc.ts`, `moduleprose.ts`; `moduledoc.test.ts`; 2 service tests; E2E                                                                                                        |
+| S3-6 Benchmarks                            | done   | `testing/BENCHMARKS.md` (measured 2026-11-04)                                                                                                                                      |
+| S3-7 Configuration references              | tested | `integrations.ts`; `indexer.test.ts` "integrations"                                                                                                                                |
+| CVForge: PDF parsing isolation (risk K-07) | tested | `isolate.ts` `runPdfIsolated`; `isolate.test.ts` (4 PDF cases: text, timeout, heap cap, corrupt); CVForge E2E                                                                      |
+| CVForge: optional SMTP mail                | tested | `lib/mail.ts` `SmtpMailer`, `factory.ts` `createMailer`; `smtp-mailer.test.ts` against a local SMTP server (auth, delivery, TLS required, config validation)                       |
+| CVForge: email confirmation (risk S-03)    | tested | `services/auth.ts` `verifyEmail`/`resendVerification`/`assertEmailVerified`, migration `0001_email_verification.sql`; `email-verification.test.ts` (5); E2E `verify-email.spec.ts` |
+| Licence                                    | done   | Apache-2.0 (`LICENSE`), `license` field in every package                                                                                                                           |
+
 ## Repository
 
-| Item                       | Status                                                                                    |
-| -------------------------- | ----------------------------------------------------------------------------------------- |
-| Git commits and push       | Sprints 0–1 merged to `main` via PR #1; Sprint 2 on branch `claude/sprint-2` (2026-11-03) |
-| Remote repository location | github.com/amitkumarsingh1697/NEXORA (public)                                             |
+| Item                       | Status                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------- |
+| Git commits and push       | Sprints 0–2 merged to `main` via PRs #1 and #2; Sprint 3 on branch `claude/sprint-3` (2026-11-04) |
+| Remote repository location | github.com/amitkumarsingh1697/NEXORA (public)                                                     |

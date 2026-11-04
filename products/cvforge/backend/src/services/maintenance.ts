@@ -4,6 +4,7 @@ import {
   auditEvents,
   extensionPairingCodes,
   extensionRefreshTokens,
+  emailVerificationTokens,
   passwordResetTokens,
   sessions,
 } from '../db/schema';
@@ -13,6 +14,7 @@ export interface MaintenanceResult {
   exports: number;
   sessions: number;
   passwordResetTokens: number;
+  emailVerificationTokens: number;
   pairingCodes: number;
   refreshTokens: number;
   auditEvents: number;
@@ -37,6 +39,12 @@ export async function runMaintenance(ctx: Ctx): Promise<MaintenanceResult> {
         .delete(passwordResetTokens)
         .where(lt(passwordResetTokens.expiresAt, now))
         .returning({ id: passwordResetTokens.id }),
+    ),
+    emailVerificationTokens: await count(
+      ctx.db
+        .delete(emailVerificationTokens)
+        .where(lt(emailVerificationTokens.expiresAt, now))
+        .returning({ id: emailVerificationTokens.id }),
     ),
     pairingCodes: await count(
       ctx.db

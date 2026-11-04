@@ -79,13 +79,16 @@
 | S3-6 | Benchmarks                             | PERF-12-03           | Index time and memory recorded for this repo and one public medium repo, in `documentation/testing/BENCHMARKS.md`.                                                                             |
 | S3-7 | Configuration references               | AB-5.3-05            | `process.env.X` and config-file reads recorded as edges.                                                                                                                                       |
 
+**Status:** done 2026-11-04. Evidence per item is in [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) and [reports/SPRINT_3_REPORT.md](reports/SPRINT_3_REPORT.md).
+**Added to the sprint at the founder's request ("wrap up both products"):** CVForge PDF parsing in the isolated worker (closes risk K-07), optional SMTP delivery and email confirmation (mitigates risk S-03), and the Apache-2.0 licence.
+**Scope notes:** S3-2 has no package level between module and file, because modules are directories. S3-4 also re-analyses dependants of a changed file and falls back to a full run when a global-declaring file changes; every incremental scenario is compared with a fresh full index. S3-6 found and fixed one real bug (overload doc comments differed between modes).
+
 ---
 
 ## Blocked or external track (not sprint-scheduled)
 
-| Item                                                                 | Blocker                                        | Owner                                            |
-| -------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------ |
-| Real-model evaluation (CVForge phrasing, CodeAtlas chat and patches) | Ollama not installed in the build environment  | Founder's machine, or an environment with Ollama |
-| Live LinkedIn / Naukri / career-site verification                    | Needs a real browser session on live sites     | Founder (manual checklist in RELEASE_READINESS)  |
-| CI run                                                               | Repository location not chosen; nothing pushed | Founder decision                                 |
-| Legal review of privacy notice                                       | External                                       | Founder                                          |
+| Item                                                                 | Blocker                                       | Owner                                            |
+| -------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------ |
+| Real-model evaluation (CVForge phrasing, CodeAtlas chat and patches) | Ollama not installed in the build environment | Founder's machine, or an environment with Ollama |
+| Live LinkedIn / Naukri / career-site verification                    | Needs a real browser session on live sites    | Founder (manual checklist in RELEASE_READINESS)  |
+| Legal review of privacy notice                                       | External                                      | Founder                                          |
