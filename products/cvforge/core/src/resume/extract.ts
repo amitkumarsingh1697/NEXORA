@@ -2,7 +2,10 @@ import JSZip from 'jszip';
 import {
   DEFAULT_LIMITS,
   IsolationError,
+  PdfUnreadableError,
   runMammothIsolated,
+  runPdfIsolated,
+  type PdfTextItem,
   type IsolationLimits,
 } from './isolate';
 
@@ -88,34 +91,27 @@ export async function extractDocument(
   const kind = await sniffDocumentKind(bytes);
   if (!kind)
     throw new DocumentRejectedError('unsupported_type', 'Only PDF and DOCX files are supported.');
-  return kind === 'pdf' ? extractPdf(bytes) : extractDocx(bytes, opts.limits ?? DEFAULT_LIMITS);
+  const limits = opts.limits ?? DEFAULT_LIMITS;
+  return kind === 'pdf' ? extractPdf(bytes, limits) : extractDocx(bytes, limits);
 }
 
-interface PdfTextItem {
-  str: string;
-  transform: number[];
-  width: number;
-  fontName: string;
-}
-
-async function extractPdf(bytes: Uint8Array): Promise<ExtractionResult> {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  let doc;
-  let loadingTask;
+async function extractPdf(bytes: Uint8Array, limits: IsolationLimits): Promise<ExtractionResult> {
+  let pages;
   try {
-    loadingTask = pdfjs.getDocument({
-      data: new Uint8Array(bytes),
-      disableFontFace: true,
-      // GHSA-wgrm-67xf-hhpq (research R9): the installed pdf.js 6.x has no eval-based font
-      // path and no `isEvalSupported` option, so there is nothing to switch off here.
-      useSystemFonts: false,
-      verbosity: 0,
-    });
-    doc = await loadingTask.promise;
-  } catch {
+    pages = await runPdfIsolated(bytes, limits);
+  } catch (e) {
+    if (e instanceof IsolationError && e.kind !== 'failed')
+      throw new DocumentRejectedError(
+        'too_complex',
+        'This PDF is too complex to read safely. Try exporting it again from the original document.',
+        { cause: e },
+      );
     throw new DocumentRejectedError(
       'corrupt',
-      'The PDF could not be read. It may be damaged or password protected.',
+      e instanceof PdfUnreadableError
+        ? 'The PDF could not be read. It may be damaged or password protected.'
+        : 'The PDF could not be read.',
+      { cause: e },
     );
   }
   const fonts = new Set<string>();
@@ -123,20 +119,15 @@ async function extractPdf(bytes: Uint8Array): Promise<ExtractionResult> {
   let multiColumnLines = 0;
   let totalLines = 0;
   const marginTexts = new Map<string, number>();
-  for (let p = 1; p <= doc.numPages; p++) {
-    const page = await doc.getPage(p);
-    const viewport = page.getViewport({ scale: 1 });
-    const content = await page.getTextContent();
-    const items = (content.items as unknown[]).filter(
-      (i): i is PdfTextItem =>
-        typeof (i as PdfTextItem).str === 'string' && Array.isArray((i as PdfTextItem).transform),
-    );
+  for (const page of pages) {
+    const viewport = { width: page.width, height: page.height };
+    const items = page.items;
     // Group items into visual lines by baseline y (2pt tolerance).
     const rows: { y: number; items: PdfTextItem[] }[] = [];
     for (const it of items) {
       if (!it.str.trim()) continue;
       fonts.add(it.fontName);
-      const y = it.transform[5] ?? 0;
+      const y = it.y;
       let row = rows.find((r) => Math.abs(r.y - y) <= 2);
       if (!row) {
         row = { y, items: [] };
@@ -146,12 +137,12 @@ async function extractPdf(bytes: Uint8Array): Promise<ExtractionResult> {
     }
     rows.sort((a, b) => b.y - a.y);
     for (const row of rows) {
-      row.items.sort((a, b) => (a.transform[4] ?? 0) - (b.transform[4] ?? 0));
+      row.items.sort((a, b) => a.x - b.x);
       let line = '';
       let prevEnd: number | null = null;
       let bigGap = false;
       for (const it of row.items) {
-        const x = it.transform[4] ?? 0;
+        const x = it.x;
         if (prevEnd !== null) {
           const gap = x - prevEnd;
           if (gap > viewport.width * 0.12) bigGap = true;
@@ -168,10 +159,8 @@ async function extractPdf(bytes: Uint8Array): Promise<ExtractionResult> {
       if (inMargin) marginTexts.set(clean, (marginTexts.get(clean) ?? 0) + 1);
       allLines.push(clean);
     }
-    page.cleanup();
   }
-  const pageCount = doc.numPages;
-  await loadingTask.destroy();
+  const pageCount = pages.length;
   const text = allLines.join('\n');
   const headerFooterText =
     pageCount > 1 ? [...marginTexts.entries()].filter(([, n]) => n >= 2).map(([t]) => t) : [];
