@@ -23,7 +23,7 @@ import {
 } from '../db/schema';
 import { canonicalJson, sha256 } from '../lib/crypto';
 import { audit } from './audit';
-import { personalOrgId } from './auth';
+import { assertEmailVerified, personalOrgId } from './auth';
 
 export function userPrefix(userId: string) {
   return `users/${userId}`;
@@ -40,6 +40,7 @@ export async function uploadResume(
   userId: string,
   input: { filename: string; bytes: Uint8Array; title?: string },
 ) {
+  await assertEmailVerified(ctx, userId);
   const filename = input.filename.replace(/[^\w.\- ()]/g, '_').slice(0, 200) || 'resume';
   const usage = await storageUsage(ctx, userId);
   if (usage.used + input.bytes.length > usage.quota) {

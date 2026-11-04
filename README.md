@@ -67,3 +67,7 @@ Start at [documentation/README.md](documentation/README.md). End-user instructio
 - No secrets, tokens or resume contents in logs.
 - CodeAtlas never approves or merges on its own: a fast-forward merge happens only after a human approves the exact patch hash and types it back. It runs only allowlisted commands in isolated worktrees.
 - The extension reads a page only after the user clicks Extract, and never touches job-site cookies or credentials.
+
+## Licence
+
+[Apache License 2.0](LICENSE). Security reports: see [SECURITY.md](SECURITY.md). Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md).

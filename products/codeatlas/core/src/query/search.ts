@@ -104,11 +104,28 @@ export function search(
   db: Db,
   repoId: number,
   q: string,
-  opts: { limit?: number; kinds?: ('code' | 'doc' | 'text')[]; pathPrefix?: string } = {},
+  opts: {
+    limit?: number;
+    kinds?: ('code' | 'doc' | 'text')[];
+    pathPrefix?: string;
+    /** Only hits in files of this discovered language (AB-5.5-04). */
+    lang?: string;
+  } = {},
 ): SearchHit[] {
   const limit = Math.min(opts.limit ?? 20, 100);
   const terms = queryTerms(q);
   if (!terms.length) return [];
+  const langOf = opts.lang
+    ? new Map(
+        (
+          db
+            .prepare(
+              `SELECT key, json_extract(data, '$.lang') AS lang FROM nodes WHERE repo_id = ? AND kind = 'file'`,
+            )
+            .all(repoId) as { key: string; lang: string | null }[]
+        ).map((r) => [r.key, r.lang]),
+      )
+    : null;
   const sql = `SELECT c.id, c.file_path, c.start_line, c.end_line, c.symbol_key, c.kind, c.body, bm25(chunks_fts, 3.0, 6.0, 1.0, 1.5) AS score
     FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid
     WHERE chunks_fts MATCH ? AND c.repo_id = ? ORDER BY score LIMIT ?`;
@@ -137,6 +154,7 @@ export function search(
       if (partial && !covers(r)) continue;
       if (opts.kinds && !opts.kinds.includes(r.kind)) continue;
       if (opts.pathPrefix && !r.file_path.startsWith(opts.pathPrefix)) continue;
+      if (langOf && langOf.get(r.file_path) !== opts.lang) continue;
       seen.add(r.id);
       out.push({
         chunkId: r.id,
@@ -150,7 +168,7 @@ export function search(
       });
     }
   };
-  const fetch = limit * 4;
+  const fetch = limit * (langOf ? 12 : 4);
   if (terms.length > 1) take(stmt.all(ftsExpr(terms, 'AND'), repoId, fetch) as unknown as Raw[]);
   if (out.length < limit)
     take(stmt.all(ftsExpr(terms, 'OR'), repoId, fetch) as unknown as Raw[], terms.length > 1);

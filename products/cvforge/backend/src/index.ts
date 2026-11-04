@@ -14,5 +14,5 @@ export * as suggestionsService from './services/suggestions';
 export * as exportsService from './services/exports';
 export * as extensionService from './services/extension';
 export * as privacyService from './services/privacy';
-export { createContext } from './factory';
+export { createContext, createMailer } from './factory';
 export * as maintenanceService from './services/maintenance';

@@ -11,6 +11,7 @@ interface Me {
     country: string;
     careerStageOverride: string | null;
     aiAssistEnabled: boolean;
+    emailVerified: boolean;
   };
 }
 interface Sess {
@@ -68,6 +69,26 @@ export default function SettingsPage() {
     <div className="max-w-3xl space-y-6">
       <PageHeader title="Settings" description={me.data?.user.email} />
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
+      {me.data && !me.data.user.emailVerified && (
+        <Alert tone="warning" title="Email address not confirmed">
+          <p>We sent a confirmation link to {me.data.user.email} when you signed up.</p>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="mt-2"
+            loading={busy === 'verify'}
+            onClick={() =>
+              void act(
+                'verify',
+                () => api('/api/auth/verify/resend', { method: 'POST' }),
+                'A new confirmation link is on its way.',
+              )
+            }
+          >
+            Send a new link
+          </Button>
+        </Alert>
+      )}
       <Card title="Profile and analysis">
         <form
           className="grid gap-4 md:grid-cols-2"

@@ -142,7 +142,8 @@ test('complete resume intelligence journey', async ({ page }) => {
     const d = await download;
     expect(d.suggestedFilename()).toMatch(new RegExp(`_v2_classic\\.${format}$`));
   }
-  await expect(page.getByText('Matches version').first()).toBeVisible();
+  // Both exports were re-read (the PDF through the isolated pdf.js worker) and verified.
+  await expect(page.getByText('Matches version')).toHaveCount(2);
   await expectAccessible(page, 'exports');
 
   // Job comparison (RI-4.4-04): a second job, analysed against the newer version

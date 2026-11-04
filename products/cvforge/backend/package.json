@@ -1,6 +1,7 @@
 {
   "name": "@nexora/cvforge-backend",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "description": "CVForge persistence, authentication, storage and application services.",
@@ -20,6 +21,7 @@
     "@nexora/logging": "workspace:*",
     "@nexora/validation": "workspace:*",
     "drizzle-orm": "0.45.4",
+    "nodemailer": "10.1.7",
     "pg": "8.23.1",
     "zod": "4.6.7"
   },

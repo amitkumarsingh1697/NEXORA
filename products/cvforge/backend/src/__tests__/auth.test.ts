@@ -56,8 +56,9 @@ describe('authentication', () => {
     const s = await auth.login(env.ctx, { email: 'amit@example.com', password: PASSWORD });
     await auth.requestPasswordReset(env.ctx, { email: 'amit@example.com' });
     await auth.requestPasswordReset(env.ctx, { email: 'unknown@example.com' }); // no error, no mail
-    expect(env.ctx.mail.sent).toHaveLength(1);
-    const token = /token=([^\s]+)/.exec(env.ctx.mail.sent[0]!.text)![1]!;
+    const resets = () => env.ctx.mail.sent.filter((m) => m.subject.includes('Reset'));
+    expect(resets()).toHaveLength(1);
+    const token = /token=([^\s]+)/.exec(resets()[0]!.text)![1]!;
     const newPw = 'another long password 123';
     await auth.resetPassword(env.ctx, { token: decodeURIComponent(token), password: newPw });
     expect(await auth.getSessionUser(env.ctx, s.token)).toBeNull();
@@ -67,7 +68,7 @@ describe('authentication', () => {
     await auth.login(env.ctx, { email: 'amit@example.com', password: newPw });
 
     await auth.requestPasswordReset(env.ctx, { email: 'amit@example.com' });
-    const t2 = decodeURIComponent(/token=([^\s]+)/.exec(env.ctx.mail.sent[1]!.text)![1]!);
+    const t2 = decodeURIComponent(/token=([^\s]+)/.exec(resets()[1]!.text)![1]!);
     env.clock.now = new Date(env.clock.now.getTime() + 31 * 60_000);
     await expect(
       auth.resetPassword(env.ctx, { token: t2, password: PASSWORD }),

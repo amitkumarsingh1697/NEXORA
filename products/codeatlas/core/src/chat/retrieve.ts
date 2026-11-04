@@ -82,7 +82,7 @@ export function extractEntities(q: string): string[] {
   return [...out].slice(0, 6);
 }
 
-function clip(
+export function clip(
   body: string,
   start: number,
   focus?: number,
@@ -101,7 +101,7 @@ function clip(
   };
 }
 
-function chunkForSymbol(db: Db, repoId: number, key: string): SearchHit | null {
+export function chunkForSymbol(db: Db, repoId: number, key: string): SearchHit | null {
   const r = db
     .prepare(
       'SELECT id, file_path, start_line, end_line, symbol_key, kind, body FROM chunks WHERE repo_id = ? AND symbol_key = ? ORDER BY start_line LIMIT 1',

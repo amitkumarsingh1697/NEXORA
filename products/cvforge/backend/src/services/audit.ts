@@ -10,6 +10,8 @@ export type AuditAction =
   | 'user.password_reset_requested'
   | 'user.password_reset'
   | 'user.password_changed'
+  | 'user.email_verification_sent'
+  | 'user.email_verified'
   | 'user.sessions_revoked'
   | 'user.settings_updated'
   | 'user.data_exported'

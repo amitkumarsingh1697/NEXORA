@@ -20,13 +20,17 @@ All notable changes to this repository. Format: [Keep a Changelog](https://keepa
 
 - Sprint 2: CodeAtlas local analytics for every spec §5.11 metric (schema v4, never transmitted), 👍/👎 answer feedback with a note, Settings screen (AI status, data location, analytics, delete all local data with typed confirmation), first-run welcome screen, indexing cancellation (`DELETE /api/jobs/:id` and Cancel buttons) and a clear error when SQLite lacks FTS5. CVForge job comparison with shared-skill overlap and a resume-version warning; preferred template stored on each version, with template and section order diffed as formatting changes. Automated axe accessibility scans in both E2E suites. User guide and test report.
 
+- Sprint 3: CodeAtlas `LanguageAdapter` interface (TypeScript/JavaScript is the one adapter; other languages are listed as unsupported). Integrations: environment variables, configuration files, HTTP service calls and database clients as inferred edges with evidence, plus an Integrations tab. Incremental indexing that re-analyses only changed files and their dependants and is checked against full indexing node by node (schema v5, `index_cache`). Structure tree (module → file → symbol) loaded one level at a time, and a language filter on Structure, Dependencies and Search. Module documentation with citations, Markdown download and an optional grounded model overview. Benchmarks for this repository and hono (`documentation/testing/BENCHMARKS.md`). CVForge email confirmation (single-use 24-hour links, resend from Settings, optional enforcement with `REQUIRE_EMAIL_VERIFICATION`) and optional SMTP delivery through nodemailer; the outbox remains the default.
+- Licence: Apache-2.0, with SECURITY.md and CONTRIBUTING.md.
+
 ### Changed
 
-- CodeAtlas runs left `running` by a crash are marked failed at startup. Light-theme colours for "observed" and "inferred" darkened to meet contrast. CVForge inline links are underlined and decided suggestions are no longer dimmed.
+- CodeAtlas runs left `running` by a crash are marked failed at startup. Sprint 3: parsed source files are shared across tsconfig programs, cutting a cold index of this repository from 22 s to 13 s; a doc comment on overloaded methods is no longer lost. Light-theme colours for "observed" and "inferred" darkened to meet contrast. CVForge inline links are underlined and decided suggestions are no longer dimmed.
 
 ### Security
 
-- CVForge: Word documents are parsed by mammoth in a worker thread with a 20 s timeout and a 256 MB heap cap (research R8, risk K-07).
+- CVForge: Word documents are parsed by mammoth in a worker thread with a 20 s timeout and a 256 MB heap cap (research R8, risk K-07). Since Sprint 3, PDFs are parsed by pdf.js in the same kind of worker (research R17).
+- CVForge: SMTP requires TLS by default and never logs message bodies or credentials; confirmation and reset tokens are stored only as hashes.
 
 - CVForge extension: `storage.local` and `storage.session` restricted to trusted extension contexts, so content scripts cannot read the refresh token (research R4).
 - pdf.js: confirmed the installed 6.5.438 is not affected by GHSA-wgrm-67xf-hhpq; the `isEvalSupported` option no longer exists (research R9 corrected).

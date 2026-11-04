@@ -61,12 +61,108 @@ export interface MammothOutput {
   html: { value: string; messages: { message: string }[] };
 }
 
-export function runMammothIsolated(
+/**
+ * pdf.js in a worker (S3 follow-up to R8/K-07): the worker loads the document and returns only
+ * positioned text items per page; layout analysis stays in the caller. pdf.js is ESM, so the
+ * worker imports it by file URL after resolving it from the same search paths as mammoth.
+ */
+const PDF_WORKER_SOURCE = `
+const { parentPort, workerData } = require('node:worker_threads');
+const { pathToFileURL } = require('node:url');
+(async () => {
+  let task;
+  try {
+    const entry = require.resolve('pdfjs-dist/legacy/build/pdf.mjs', { paths: workerData.searchFrom });
+    const pdfjs = await import(pathToFileURL(entry).href);
+    task = pdfjs.getDocument({
+      data: new Uint8Array(workerData.bytes),
+      disableFontFace: true,
+      useSystemFonts: false,
+      verbosity: 0,
+    });
+    let doc;
+    try {
+      doc = await task.promise;
+    } catch (e) {
+      parentPort.postMessage({ ok: false, unreadable: true, error: String((e && e.message) || e).slice(0, 200) });
+      return;
+    }
+    const pages = [];
+    for (let p = 1; p <= doc.numPages; p++) {
+      const page = await doc.getPage(p);
+      const viewport = page.getViewport({ scale: 1 });
+      const content = await page.getTextContent();
+      const items = [];
+      for (const i of content.items) {
+        if (typeof i.str !== 'string' || !Array.isArray(i.transform)) continue;
+        items.push({ str: i.str, x: i.transform[4] || 0, y: i.transform[5] || 0, width: i.width || 0, fontName: String(i.fontName || '') });
+      }
+      pages.push({ width: viewport.width, height: viewport.height, items });
+      page.cleanup();
+    }
+    parentPort.postMessage({ ok: true, pages });
+  } catch (e) {
+    parentPort.postMessage({ ok: false, error: String((e && e.message) || e).slice(0, 200) });
+  } finally {
+    if (task) await task.destroy().catch(() => undefined);
+  }
+})();
+`;
+
+export interface PdfTextItem {
+  str: string;
+  x: number;
+  y: number;
+  width: number;
+  fontName: string;
+}
+
+export interface PdfPageText {
+  width: number;
+  height: number;
+  items: PdfTextItem[];
+}
+
+/** The document could not be opened at all (damaged, encrypted): not a resource problem. */
+export class PdfUnreadableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PdfUnreadableError';
+  }
+}
+
+export async function runPdfIsolated(
+  bytes: Uint8Array,
+  limits: IsolationLimits = DEFAULT_LIMITS,
+): Promise<PdfPageText[]> {
+  const m = await runIsolated<{
+    ok: boolean;
+    unreadable?: boolean;
+    error?: string;
+    pages?: PdfPageText[];
+  }>(PDF_WORKER_SOURCE, bytes, limits);
+  if (m.unreadable) throw new PdfUnreadableError(m.error ?? 'The PDF could not be opened.');
+  if (!m.ok || !m.pages) throw new IsolationError('failed', m.error ?? 'Parsing failed.');
+  return m.pages;
+}
+
+export async function runMammothIsolated(
   bytes: Uint8Array,
   limits: IsolationLimits = DEFAULT_LIMITS,
 ): Promise<MammothOutput> {
+  const m = await runIsolated<{ ok: boolean; error?: string } & Partial<MammothOutput>>(
+    WORKER_SOURCE,
+    bytes,
+    limits,
+  );
+  if (!m.ok) throw new IsolationError('failed', m.error ?? 'Parsing failed.');
+  return { raw: m.raw as MammothOutput['raw'], html: m.html as MammothOutput['html'] };
+}
+
+/** Run a parser worker over untrusted bytes with a timeout, a heap cap, no environment and no stdin. */
+function runIsolated<T>(source: string, bytes: Uint8Array, limits: IsolationLimits): Promise<T> {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(WORKER_SOURCE, {
+    const worker = new Worker(source, {
       eval: true,
       workerData: { searchFrom: searchFrom(), bytes: new Uint8Array(bytes) },
       resourceLimits: {
@@ -92,13 +188,7 @@ export function runMammothIsolated(
         ),
       limits.timeoutMs,
     );
-    worker.once('message', (m: { ok: boolean; error?: string } & Partial<MammothOutput>) =>
-      finish(() =>
-        m.ok
-          ? resolve({ raw: m.raw as MammothOutput['raw'], html: m.html as MammothOutput['html'] })
-          : reject(new IsolationError('failed', m.error ?? 'Parsing failed.')),
-      ),
-    );
+    worker.once('message', (m: T) => finish(() => resolve(m)));
     worker.once('error', (e: Error & { code?: string }) =>
       finish(() =>
         reject(

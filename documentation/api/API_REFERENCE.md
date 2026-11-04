@@ -30,21 +30,23 @@ All endpoints exchange JSON unless noted. Errors use one shape:
 
 ### Auth and account
 
-| Method       | Path                 | Body / result                                                                                                   |
-| ------------ | -------------------- | --------------------------------------------------------------------------------------------------------------- |
-| POST         | `/auth/signup`       | `{ email, password, displayName?, acceptPrivacy: true }` → sets session cookie                                  |
-| POST         | `/auth/login`        | `{ email, password }` → sets cookie. Rate-limited: 10 per 15 min per email and per IP                           |
-| POST         | `/auth/logout`       | Revokes the current session                                                                                     |
-| GET          | `/auth/me`           | Current user                                                                                                    |
-| POST         | `/auth/forgot`       | `{ email }` → always `200` (no account enumeration); 5 per hour                                                 |
-| POST         | `/auth/reset`        | `{ token, password }` (token valid 30 min, single use; revokes all sessions)                                    |
-| POST         | `/auth/password`     | `{ currentPassword, newPassword }`                                                                              |
-| GET / DELETE | `/auth/sessions`     | List sessions / revoke all other sessions                                                                       |
-| DELETE       | `/auth/sessions/:id` | Revoke one                                                                                                      |
-| PUT          | `/account/settings`  | `{ displayName?, country?, careerStageOverride?: early\|mid\|senior\|lead\|executive\|null, aiAssistEnabled? }` |
-| GET          | `/account/storage`   | Bytes used and quota                                                                                            |
-| GET          | `/account/export`    | Download all account data as JSON (attachment)                                                                  |
-| POST         | `/account/delete`    | `{ password, confirm: "DELETE" }` → deletes everything, clears cookie                                           |
+| Method       | Path                  | Body / result                                                                                                   |
+| ------------ | --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| POST         | `/auth/signup`        | `{ email, password, displayName?, acceptPrivacy: true }` → sets session cookie                                  |
+| POST         | `/auth/login`         | `{ email, password }` → sets cookie. Rate-limited: 10 per 15 min per email and per IP                           |
+| POST         | `/auth/logout`        | Revokes the current session                                                                                     |
+| GET          | `/auth/me`            | Current user, including `emailVerified`                                                                         |
+| POST         | `/auth/forgot`        | `{ email }` → always `200` (no account enumeration); 5 per hour                                                 |
+| POST         | `/auth/reset`         | `{ token, password }` (token valid 30 min, single use; revokes all sessions)                                    |
+| POST         | `/auth/password`      | `{ currentPassword, newPassword }`                                                                              |
+| POST         | `/auth/verify`        | `{ token }` → confirms the email address (link valid 24 h, single use). Invalid or expired → `412`              |
+| POST         | `/auth/verify/resend` | Signed in. Sends a new confirmation link → `{ sent }` (`false` when already confirmed). 5 per hour              |
+| GET / DELETE | `/auth/sessions`      | List sessions / revoke all other sessions                                                                       |
+| DELETE       | `/auth/sessions/:id`  | Revoke one                                                                                                      |
+| PUT          | `/account/settings`   | `{ displayName?, country?, careerStageOverride?: early\|mid\|senior\|lead\|executive\|null, aiAssistEnabled? }` |
+| GET          | `/account/storage`    | Bytes used and quota                                                                                            |
+| GET          | `/account/export`     | Download all account data as JSON (attachment)                                                                  |
+| POST         | `/account/delete`     | `{ password, confirm: "DELETE" }` → deletes everything, clears cookie                                           |
 
 ### Resumes and versions
 
@@ -110,45 +112,50 @@ All endpoints exchange JSON unless noted. Errors use one shape:
 
 ### Repositories and indexing
 
-| Method       | Path                    | Notes                                                                                                              |
-| ------------ | ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| GET          | `/health`               | `{ status: "ok" }`                                                                                                 |
-| GET          | `/repos`                | Registered repos with latest coverage                                                                              |
-| POST         | `/repos`                | `{ path }` — absolute local path; must be inside `CODEATLAS_ALLOWED_ROOTS` if set; CodeAtlas's own home is refused |
-| GET / DELETE | `/repos/:id`            | Repo, coverage, recent runs / unregister and delete all its indexed data (409 while indexing)                      |
-| POST         | `/repos/:id/index`      | Starts a background index job → `{ jobId }`                                                                        |
-| GET          | `/jobs/:id`             | Job status                                                                                                         |
-| DELETE       | `/jobs/:id`             | Cancel a running index job (SIGTERM, then SIGKILL after 3 s). The previous index is kept. Unknown id → `404`       |
-| GET          | `/repos/:id/unresolved` | Unresolved references with reasons                                                                                 |
+| Method       | Path                    | Notes                                                                                                                                                           |
+| ------------ | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET          | `/health`               | `{ status: "ok" }`                                                                                                                                              |
+| GET          | `/repos`                | Registered repos with latest coverage                                                                                                                           |
+| POST         | `/repos`                | `{ path }` — absolute local path; must be inside `CODEATLAS_ALLOWED_ROOTS` if set; CodeAtlas's own home is refused                                              |
+| GET / DELETE | `/repos/:id`            | Repo, coverage, recent runs / unregister and delete all its indexed data (409 while indexing)                                                                   |
+| POST         | `/repos/:id/index`      | Starts a background index job → `{ jobId }`. Incremental when a previous index can be reused; the coverage report's `incremental[]` says which mode ran and why |
+| GET          | `/jobs/:id`             | Job status                                                                                                                                                      |
+| DELETE       | `/jobs/:id`             | Cancel a running index job (SIGTERM, then SIGKILL after 3 s). The previous index is kept. Unknown id → `404`                                                    |
+| GET          | `/repos/:id/unresolved` | Unresolved references with reasons                                                                                                                              |
 
 ### Exploration
 
-| Method | Path                            | Query                                                   |
-| ------ | ------------------------------- | ------------------------------------------------------- |
-| GET    | `/repos/:id/views/modules`      |                                                         |
-| GET    | `/repos/:id/views/dependencies` | `module`, `external=1`, `limit` (≤ 1000, default 250)   |
-| GET    | `/repos/:id/flows`              | Flow start candidates (routes, entrypoints)             |
-| GET    | `/repos/:id/views/flow`         | `start` (node id), `depth` (≤ 8, default 4)             |
-| GET    | `/repos/:id/views/risk`         |                                                         |
-| GET    | `/repos/:id/views/ownership`    |                                                         |
-| GET    | `/repos/:id/views/knowledge`    |                                                         |
-| GET    | `/repos/:id/search`             | `q` — BM25 over code and docs                           |
-| GET    | `/repos/:id/find`               | `q` — node name lookup                                  |
-| GET    | `/repos/:id/nodes/:nodeId`      | Node with incoming/outgoing edges and evidence          |
-| GET    | `/repos/:id/impact/:nodeId`     | Transitive dependents                                   |
-| GET    | `/repos/:id/source`             | `path`, `start`, `end` — refuses paths outside the repo |
+| Method | Path                            | Query                                                                                                                                                    |
+| ------ | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/repos/:id/views/modules`      |                                                                                                                                                          |
+| GET    | `/repos/:id/views/dependencies` | `module`, `external=1`, `limit` (≤ 1000, default 250), `lang`                                                                                            |
+| GET    | `/repos/:id/languages`          | Languages with file counts, for the filter                                                                                                               |
+| GET    | `/repos/:id/tree`               | One level of the structure tree: none (modules), `module`, `file` or `symbol`; optional `lang`. Items carry `expand` when they have children             |
+| GET    | `/repos/:id/views/integrations` | Environment variables, config files, HTTP services and databases with the code that uses them (inferred edges with evidence)                             |
+| GET    | `/repos/:id/module-doc`         | `module` → `{ doc, markdown }`: exports, dependencies, dependants, routes, entrypoints, integrations, docs, each with a citation. Unknown module → `404` |
+| GET    | `/repos/:id/flows`              | Flow start candidates (routes, entrypoints)                                                                                                              |
+| GET    | `/repos/:id/views/flow`         | `start` (node id), `depth` (≤ 8, default 4)                                                                                                              |
+| GET    | `/repos/:id/views/risk`         |                                                                                                                                                          |
+| GET    | `/repos/:id/views/ownership`    |                                                                                                                                                          |
+| GET    | `/repos/:id/views/knowledge`    |                                                                                                                                                          |
+| GET    | `/repos/:id/search`             | `q` — BM25 over code and docs; optional `lang`                                                                                                           |
+| GET    | `/repos/:id/find`               | `q` — node name lookup                                                                                                                                   |
+| GET    | `/repos/:id/nodes/:nodeId`      | Node with incoming/outgoing edges and evidence                                                                                                           |
+| GET    | `/repos/:id/impact/:nodeId`     | Transitive dependents                                                                                                                                    |
+| GET    | `/repos/:id/source`             | `path`, `start`, `end` — refuses paths outside the repo                                                                                                  |
 
 ### Chat
 
-| Method | Path                       | Notes                                                                                                                                                                                                           |
-| ------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/ai/status`               | Provider availability                                                                                                                                                                                           |
-| POST   | `/repos/:id/chat`          | `{ question }` → `{ mode: model\|retrieval-only, answer, citations[] (source, filePath, startLine, endLine, symbol, note?), confidence: high\|medium\|low, gaps[], warnings[], sources[], facts[], provider? }` |
-| POST   | `/repos/:id/chat/feedback` | `{ rating: up\|down, note? (≤1000 chars), confidence?, citations? }` → stored as a local analytics event. Unknown fields → `400`                                                                                |
-| GET    | `/settings`                | `{ dataLocation, database, worktrees, clones, firstRun, analytics: { storedLocally: true, transmitted: false } }`                                                                                               |
-| POST   | `/settings/welcome`        | Dismiss the first-run welcome screen                                                                                                                                                                            |
-| GET    | `/analytics?repo=`         | Local analytics summary for all repositories or one: indexing, questions, feedback (with recent notes), findings, patches, validation, merges                                                                   |
-| POST   | `/data/delete-all`         | `{ confirm: "DELETE" }` → clears the database (repos, indexes, investigations, analytics, settings). `409` while indexing. Repository files and the worktree and clone folders are not touched                  |
+| Method | Path                             | Notes                                                                                                                                                                                                           |
+| ------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/ai/status`                     | Provider availability                                                                                                                                                                                           |
+| POST   | `/repos/:id/chat`                | `{ question }` → `{ mode: model\|retrieval-only, answer, citations[] (source, filePath, startLine, endLine, symbol, note?), confidence: high\|medium\|low, gaps[], warnings[], sources[], facts[], provider? }` |
+| POST   | `/repos/:id/module-doc/overview` | `{ module }` → grounded model overview of the module, with citations; falls back to retrieval-only when no model is available                                                                                   |
+| POST   | `/repos/:id/chat/feedback`       | `{ rating: up\|down, note? (≤1000 chars), confidence?, citations? }` → stored as a local analytics event. Unknown fields → `400`                                                                                |
+| GET    | `/settings`                      | `{ dataLocation, database, worktrees, clones, firstRun, analytics: { storedLocally: true, transmitted: false } }`                                                                                               |
+| POST   | `/settings/welcome`              | Dismiss the first-run welcome screen                                                                                                                                                                            |
+| GET    | `/analytics?repo=`               | Local analytics summary for all repositories or one: indexing, questions, feedback (with recent notes), findings, patches, validation, merges                                                                   |
+| POST   | `/data/delete-all`               | `{ confirm: "DELETE" }` → clears the database (repos, indexes, investigations, analytics, settings). `409` while indexing. Repository files and the worktree and clone folders are not touched                  |
 
 ### Investigations
 

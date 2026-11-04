@@ -134,11 +134,13 @@ export function modulesView(db: Db, repoId: number): GraphView & { cycles: Cycle
 export function dependencyView(
   db: Db,
   repoId: number,
-  opts: { module?: string; includeExternal?: boolean; limit?: number } = {},
+  opts: { module?: string; includeExternal?: boolean; limit?: number; lang?: string } = {},
 ): GraphView {
   const limit = opts.limit ?? 250;
   let files = allNodes(db, repoId, ['file']).filter(
-    (f) => f.data.lang === 'typescript' || f.data.lang === 'javascript',
+    (f) =>
+      (f.data.lang === 'typescript' || f.data.lang === 'javascript') &&
+      (!opts.lang || f.data.lang === opts.lang),
   );
   if (opts.module) files = files.filter((f) => f.module === opts.module);
   const imports = allEdges(db, repoId, ['imports']);
@@ -581,7 +583,97 @@ export function knowledgeView(
   };
 }
 
+export interface IntegrationUse {
+  nodeId: number;
+  key: string;
+  kind: string;
+  edge: string;
+  confidence: Confidence;
+  path: string | null;
+  line: number | null;
+  detail: string | null;
+}
+
+export interface IntegrationTarget {
+  id: number;
+  kind: 'config' | 'service' | 'file';
+  key: string;
+  name: string;
+  category: 'environment variable' | 'configuration file' | 'http' | 'database';
+  uses: IntegrationUse[];
+}
+
+const INTEGRATION_EDGES = ['reads_config', 'writes_config', 'calls_service', 'accesses_db'];
+
+/** Environment variables, configuration files, HTTP services and databases, with who uses them (S3-3, S3-7). */
+export function integrationsView(
+  db: Db,
+  repoId: number,
+): { config: IntegrationTarget[]; services: IntegrationTarget[]; notes: string[] } {
+  const edges = allEdges(db, repoId, INTEGRATION_EDGES);
+  const ids = [...new Set(edges.flatMap((e) => [e.src, e.dst]))];
+  const byId = new Map(nodesByIds(db, repoId, ids).map((n) => [n.id, n]));
+  const targets = new Map<number, IntegrationTarget>();
+  for (const e of edges) {
+    const dst = byId.get(e.dst);
+    const src = byId.get(e.src);
+    if (!dst || !src) continue;
+    let t = targets.get(dst.id);
+    if (!t) {
+      const category: IntegrationTarget['category'] =
+        dst.kind === 'service'
+          ? dst.key.startsWith('db:')
+            ? 'database'
+            : 'http'
+          : dst.key.startsWith('env:')
+            ? 'environment variable'
+            : 'configuration file';
+      t = {
+        id: dst.id,
+        kind: dst.kind as IntegrationTarget['kind'],
+        key: dst.key,
+        name: dst.kind === 'file' ? dst.key : dst.name,
+        category,
+        uses: [],
+      };
+      targets.set(dst.id, t);
+    }
+    t.uses.push({
+      nodeId: src.id,
+      key: src.key,
+      kind: src.kind,
+      edge: e.kind,
+      confidence: e.confidence,
+      path: e.evidencePath,
+      line: e.evidenceLine,
+      detail: e.detail,
+    });
+  }
+  const all = [...targets.values()].map((t) => ({
+    ...t,
+    uses: t.uses.sort((a, b) => a.key.localeCompare(b.key)),
+  }));
+  const order = (a: IntegrationTarget, b: IntegrationTarget) =>
+    a.category.localeCompare(b.category) || a.name.localeCompare(b.name);
+  return {
+    config: all
+      .filter((t) => t.category.includes('config') || t.category.includes('variable'))
+      .sort(order),
+    services: all.filter((t) => t.category === 'http' || t.category === 'database').sort(order),
+    notes: [
+      'Environment variable reads are observed: the name is written in the code.',
+      'Configuration files, HTTP services and databases are inferred from the calls that reach them; the real target is only certain at runtime.',
+      'Computed variable names and URLs are not guessed. URLs built at runtime are grouped under "HTTP (URL not known statically)".',
+      'Only TypeScript and JavaScript are analysed for these links.',
+    ],
+  };
+}
+
 const IMPACT_KINDS = [
+  'reads_config',
+  'writes_config',
+  'calls_service',
+  'accesses_db',
   'calls',
   'imports',
   'renders',

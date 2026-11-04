@@ -8,12 +8,15 @@ import { readGitHistory } from './git';
 import { detectFrameworks, findManifests, type Framework, type Manifest } from './manifests';
 import { GraphBuilder, splitTerms, type ChunkRec, type Confidence, type NodeRef } from './model';
 import {
-  indexTypeScript,
-  isTestPath,
-  nearest,
-  type PackageInfo,
-  type TsIndexStats,
-} from './ts-indexer';
+  DEFAULT_ADAPTERS,
+  type AdapterCache,
+  runAdapters,
+  unsupportedLanguageOf,
+  type AdapterCoverage,
+  type LanguageAdapter,
+} from './adapters';
+import type { IncrementalInfo } from './ts-cache';
+import { isTestPath, nearest, type PackageInfo, type TsIndexStats } from './ts-indexer';
 
 export interface CoverageReport {
   repoId: number;
@@ -46,18 +49,37 @@ export interface CoverageReport {
   symbols: number;
   routes: number;
   docs: number;
+  /** Language adapters that ran, and how many files each analysed structurally (AB-5.3-06). */
+  adapters: AdapterCoverage[];
+  /** Source files in languages no adapter supports, by language. Indexed as text only. */
+  unsupportedLanguages: Record<string, number>;
   imports: TsIndexStats['imports'];
   calls: TsIndexStats['calls'] & { resolutionRate: number };
   edgesByConfidence: Record<Confidence, number>;
+  /** Per adapter: whether files were re-analysed or reused from the previous index, and why. */
+  incremental: (IncrementalInfo & { adapter: string })[];
+  /** Configuration, outbound HTTP and database links found by the S3-3/S3-7 heuristics. */
+  integrations: {
+    envVars: number;
+    configFiles: number;
+    configReads: number;
+    services: { http: number; db: number };
+    serviceCalls: number;
+    dbAccesses: number;
+  };
   unresolvedRecorded: number;
   unresolvedDropped: number;
   limitations: string[];
 }
 
 export interface IndexOptions {
+  /** Language adapters to run; defaults to the shipped set. */
+  adapters?: LanguageAdapter[];
   /** Called with coarse progress messages (never file contents). */
   onProgress?: (msg: string) => void;
   now?: () => Date;
+  /** Analyse every file even if a previous index could be reused (S3-4). */
+  full?: boolean;
 }
 
 const CHUNK_MAX_LINES = 150;
@@ -160,7 +182,15 @@ export function indexRepository(
     .run(repo.id, now().toISOString());
   const runId = Number(run.lastInsertRowid);
   try {
-    const report = buildAndPersist(db, repo, progress, now, started);
+    const report = buildAndPersist(
+      db,
+      repo,
+      progress,
+      now,
+      started,
+      opts.adapters ?? DEFAULT_ADAPTERS,
+      !opts.full,
+    );
     db.prepare(
       "UPDATE index_runs SET status = 'succeeded', finished_at = ?, coverage = ?, duration_ms = ? WHERE id = ?",
     ).run(now().toISOString(), JSON.stringify(report), report.durationMs, runId);
@@ -184,6 +214,8 @@ function buildAndPersist(
   progress: (m: string) => void,
   now: () => Date,
   started: number,
+  adapters: LanguageAdapter[],
+  incremental: boolean,
 ): CoverageReport {
   progress('Discovering files');
   const disc = discoverFiles(repo.root);
@@ -266,14 +298,20 @@ function buildAndPersist(
     }
   }
 
-  progress('Analysing TypeScript and JavaScript');
-  const tsStats = indexTypeScript(
-    repo.root,
+  progress(`Analysing code (${adapters.map((a) => a.id).join(', ')})`);
+  const tsStats = runAdapters(
+    adapters,
+    { root: repo.root, allPaths: paths, graph, moduleOf },
     disc.files.filter((f) => texts.has(f.path)),
-    paths,
-    graph,
-    moduleOf,
+    incremental ? { previous: loadCaches(db, repo.id) } : undefined,
   );
+  const handled = new Set(adapters.flatMap((a) => a.languages));
+  const unsupportedLanguages: Record<string, number> = {};
+  for (const f of disc.files) {
+    if (handled.has(f.lang)) continue;
+    const language = unsupportedLanguageOf(f.path);
+    if (language) unsupportedLanguages[language] = (unsupportedLanguages[language] ?? 0) + 1;
+  }
 
   // Entry points declared in package.json (observed: they are declared).
   for (const p of packages) {
@@ -349,10 +387,32 @@ function buildAndPersist(
   }
 
   progress('Saving index');
-  persist(db, repo.id, graph);
+  persist(db, repo.id, graph, tsStats.caches);
 
   const edgesByConfidence: Record<Confidence, number> = { observed: 0, inferred: 0, unknown: 0 };
   for (const e of graph.edges) edgesByConfidence[e.confidence]++;
+  const integrations: CoverageReport['integrations'] = {
+    envVars: 0,
+    configFiles: 0,
+    configReads: 0,
+    services: { http: 0, db: 0 },
+    serviceCalls: 0,
+    dbAccesses: 0,
+  };
+  for (const n of graph.nodes.values()) {
+    if (n.kind === 'config' && n.key.startsWith('env:')) integrations.envVars++;
+    else if (n.kind === 'service' && n.key.startsWith('db:')) integrations.services.db++;
+    else if (n.kind === 'service') integrations.services.http++;
+  }
+  const configFiles = new Set<string>();
+  for (const e of graph.edges) {
+    if (e.kind === 'reads_config' || e.kind === 'writes_config') {
+      integrations.configReads += e.count;
+      if (!e.dst.key.startsWith('env:')) configFiles.add(GraphBuilder.id(e.dst));
+    } else if (e.kind === 'calls_service') integrations.serviceCalls += e.count;
+    else if (e.kind === 'accesses_db') integrations.dbAccesses += e.count;
+  }
+  integrations.configFiles = configFiles.size;
   const skipped: Record<string, number> = {};
   for (const s of disc.skipped) skipped[s.reason] = (skipped[s.reason] ?? 0) + 1;
   const callTotal =
@@ -381,9 +441,7 @@ function buildAndPersist(
   if (unsupported)
     limitations.push(`Searchable as text only, not analysed structurally: ${unsupported}.`);
   if (tsStats.filesFailed.length)
-    limitations.push(
-      `${tsStats.filesFailed.length} TypeScript/JavaScript files could not be fully analysed.`,
-    );
+    limitations.push(`${tsStats.filesFailed.length} source files could not be fully analysed.`);
   if (tsStats.calls.dynamic)
     limitations.push(
       `${tsStats.calls.dynamic} call sites target callbacks, parameters or computed members; their targets are only known at runtime.`,
@@ -429,6 +487,8 @@ function buildAndPersist(
         .filter((f) => basename(f.path) === 'package.json')
         .map((f) => ({ path: f.path, text: texts.get(f.path) ?? '' })),
     ),
+    adapters: tsStats.coverage,
+    unsupportedLanguages,
     packages: packages.length,
     symbols: tsStats.symbols,
     routes: tsStats.routes,
@@ -441,6 +501,8 @@ function buildAndPersist(
         : 1,
     },
     edgesByConfidence,
+    incremental: tsStats.incremental,
+    integrations,
     unresolvedRecorded: graph.unresolved.length,
     unresolvedDropped: graph.unresolvedDropped,
     limitations,
@@ -454,8 +516,45 @@ function buildAndPersist(
   return report;
 }
 
-function persist(db: Db, repoId: number, graph: GraphBuilder): void {
+function loadCaches(db: Db, repoId: number): Record<string, AdapterCache> {
+  const out: Record<string, AdapterCache> = {};
+  const rows = db
+    .prepare('SELECT adapter, path, data FROM index_cache WHERE repo_id = ?')
+    .all(repoId) as { adapter: string; path: string; data: string }[];
+  for (const r of rows) {
+    const c = (out[r.adapter] ??= { configHash: '', files: {} });
+    if (r.path === '') {
+      const head = JSON.parse(r.data) as { configHash: string; extra?: Record<string, string> };
+      c.configHash = head.configHash;
+      if (head.extra) c.extra = head.extra;
+    } else c.files[r.path] = JSON.parse(r.data) as unknown;
+  }
+  // A cache without its fingerprint row is incomplete: ignore it, which forces a full analysis.
+  for (const [k, c] of Object.entries(out)) if (!c.configHash) delete out[k];
+  return out;
+}
+
+function persist(
+  db: Db,
+  repoId: number,
+  graph: GraphBuilder,
+  caches: Record<string, AdapterCache>,
+): void {
   tx(db, () => {
+    db.prepare('DELETE FROM index_cache WHERE repo_id = ?').run(repoId);
+    const insCache = db.prepare(
+      'INSERT INTO index_cache (repo_id, adapter, path, data) VALUES (?, ?, ?, ?)',
+    );
+    for (const [adapter, c] of Object.entries(caches)) {
+      insCache.run(
+        repoId,
+        adapter,
+        '',
+        JSON.stringify({ configHash: c.configHash, extra: c.extra ?? {} }),
+      );
+      for (const [path, data] of Object.entries(c.files))
+        insCache.run(repoId, adapter, path, JSON.stringify(data));
+    }
     db.prepare(
       'DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE repo_id = ?)',
     ).run(repoId);

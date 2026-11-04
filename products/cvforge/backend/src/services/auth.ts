@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AppError, emailSchema, parseOrThrow, passwordSchema } from '@nexora/validation';
 import type { Ctx } from '../context';
 import {
+  emailVerificationTokens,
   organizationMembers,
   organizations,
   passwordResetTokens,
@@ -33,6 +34,7 @@ export type PublicUser = {
   country: string;
   careerStageOverride: string | null;
   aiAssistEnabled: boolean;
+  emailVerified: boolean;
   createdAt: Date;
 };
 
@@ -44,6 +46,7 @@ function toPublic(u: typeof users.$inferSelect): PublicUser {
     country: u.country,
     careerStageOverride: u.careerStageOverride,
     aiAssistEnabled: u.aiAssistEnabled,
+    emailVerified: u.emailVerifiedAt !== null,
     createdAt: u.createdAt,
   };
 }
@@ -52,6 +55,8 @@ function toPublic(u: typeof users.$inferSelect): PublicUser {
 let dummyHash: Promise<string> | null = null;
 const loginLimiter = new RateLimiter(10, 15 * 60 * 1000);
 const resetLimiter = new RateLimiter(5, 60 * 60 * 1000);
+const verifyLimiter = new RateLimiter(5, 60 * 60 * 1000);
+const VERIFY_TTL_MS = 24 * 60 * 60_000;
 
 export async function signUp(ctx: Ctx, input: unknown): Promise<PublicUser> {
   const data = parseOrThrow(signUpSchema, input);
@@ -61,7 +66,7 @@ export async function signUp(ctx: Ctx, input: unknown): Promise<PublicUser> {
     .where(sql`lower(${users.email}) = ${data.email}`);
   if (existing.length) throw new AppError('CONFLICT', 'An account with this email already exists.');
   const passwordHash = await hashPassword(data.password);
-  return ctx.db.transaction(async (tx) => {
+  const created = await ctx.db.transaction(async (tx) => {
     const [org] = await tx
       .insert(organizations)
       .values({ name: data.displayName || data.email, kind: 'personal' })
@@ -81,8 +86,96 @@ export async function signUp(ctx: Ctx, input: unknown): Promise<PublicUser> {
       .insert(organizationMembers)
       .values({ organizationId: org.id, userId: user.id, role: 'owner' });
     await audit(ctx, user.id, 'user.signup', { type: 'user', id: user.id }, {}, tx);
-    return toPublic(user);
+    return user;
   });
+  // The account exists either way; a failed send is logged (ids only) and can be retried.
+  try {
+    await sendVerification(ctx, created);
+  } catch (e) {
+    ctx.log.warn(
+      { userId: created.id, error: e instanceof Error ? e.message : 'unknown' },
+      'verification email not sent',
+    );
+  }
+  return toPublic(created);
+}
+
+async function sendVerification(ctx: Ctx, user: typeof users.$inferSelect): Promise<void> {
+  const token = randomToken();
+  await ctx.db.insert(emailVerificationTokens).values({
+    userId: user.id,
+    email: user.email,
+    tokenHash: sha256(token),
+    expiresAt: new Date(ctx.now().getTime() + VERIFY_TTL_MS),
+  });
+  const link = `${ctx.cfg.APP_ORIGIN}/verify-email?token=${encodeURIComponent(token)}`;
+  await ctx.mail.send({
+    to: user.email,
+    subject: 'Confirm your CVForge email address',
+    text: `Use this link within 24 hours to confirm your email address:\n${link}\n\nIf you did not create a CVForge account, ignore this email.`,
+  });
+  await audit(ctx, user.id, 'user.email_verification_sent', { type: 'user', id: user.id });
+}
+
+/** Send a new verification link to a signed-in user whose address is not yet verified. */
+export async function resendVerification(ctx: Ctx, userId: string): Promise<{ sent: boolean }> {
+  const [user] = await ctx.db.select().from(users).where(eq(users.id, userId));
+  if (!user) throw new AppError('NOT_FOUND', 'User not found.');
+  if (user.emailVerifiedAt) return { sent: false };
+  verifyLimiter.check(`verify:${userId}`);
+  await sendVerification(ctx, user);
+  return { sent: true };
+}
+
+/** Confirm an email address from a link. Single use, expires after 24 hours. */
+export async function verifyEmail(ctx: Ctx, input: unknown): Promise<void> {
+  const { token } = parseOrThrow(z.object({ token: z.string().min(10).max(200) }), input);
+  await ctx.db.transaction(async (tx) => {
+    const [t] = await tx
+      .update(emailVerificationTokens)
+      .set({ usedAt: ctx.now() })
+      .where(
+        and(
+          eq(emailVerificationTokens.tokenHash, sha256(token)),
+          isNull(emailVerificationTokens.usedAt),
+          gt(emailVerificationTokens.expiresAt, ctx.now()),
+        ),
+      )
+      .returning();
+    if (!t)
+      throw new AppError(
+        'PRECONDITION_FAILED',
+        'This confirmation link is invalid or has expired.',
+      );
+    const [u] = await tx
+      .update(users)
+      .set({ emailVerifiedAt: sql`coalesce(${users.emailVerifiedAt}, ${ctx.now()})` })
+      .where(and(eq(users.id, t.userId), sql`lower(${users.email}) = lower(${t.email})`))
+      .returning({ id: users.id });
+    if (!u)
+      throw new AppError(
+        'PRECONDITION_FAILED',
+        'This confirmation link is invalid or has expired.',
+      );
+    await audit(ctx, t.userId, 'user.email_verified', { type: 'user', id: t.userId }, {}, tx);
+  });
+}
+
+/**
+ * When REQUIRE_EMAIL_VERIFICATION is on, stop unverified accounts from using storage
+ * and model calls (risk S-03). A no-op otherwise.
+ */
+export async function assertEmailVerified(ctx: Ctx, userId: string): Promise<void> {
+  if (ctx.cfg.REQUIRE_EMAIL_VERIFICATION !== 'true') return;
+  const [u] = await ctx.db
+    .select({ at: users.emailVerifiedAt })
+    .from(users)
+    .where(eq(users.id, userId));
+  if (!u?.at)
+    throw new AppError(
+      'PRECONDITION_FAILED',
+      'Confirm your email address first. You can send a new link from Settings.',
+    );
 }
 
 export async function personalOrgId(ctx: Ctx, userId: string): Promise<string> {

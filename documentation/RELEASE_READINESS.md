@@ -86,17 +86,17 @@ Last evidence run: see the table at the top of [IMPLEMENTATION_STATUS.md](IMPLEM
 
 ## Future operating costs (spec §10; nothing purchased)
 
-| Item                         | Needed for                       | Notes                                                                                                                                   |
-| ---------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Domain                       | Public CVForge                   | Annual fee                                                                                                                              |
-| Hosting (Node service)       | Public CVForge                   | Single instance initially (S-02)                                                                                                        |
-| Managed PostgreSQL + backups | Public CVForge                   | Encryption at rest expected from the provider                                                                                           |
-| Object storage               | Multi-instance CVForge           | Implement `ObjectStorage` for S3-compatible storage                                                                                     |
-| Bandwidth                    | Public CVForge                   | Small (documents only)                                                                                                                  |
-| Hosted inference             | Optional only                    | Consent-gated; never mandatory                                                                                                          |
-| Email delivery               | Password reset, verification     | Implement `Mailer`                                                                                                                      |
-| Monitoring                   | Production                       | Health endpoint exists                                                                                                                  |
-| CI/CD                        | Repository                       | GitHub Actions running on the public repository; minutes are free for public repos at the time of writing, confirm before going private |
-| Browser extension publishing | Store listings                   | Chrome Web Store one-time developer fee; confirm current pricing before paying                                                          |
-| Desktop code signing         | Future CodeAtlas desktop (Tauri) | Not in v1                                                                                                                               |
-| Legal and security review    | Launch                           | P-02, S-01                                                                                                                              |
+| Item                         | Needed for                         | Notes                                                                                                                                                             |
+| ---------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Domain                       | Public CVForge                     | Annual fee                                                                                                                                                        |
+| Hosting (Node service)       | Public CVForge                     | Single instance initially (S-02)                                                                                                                                  |
+| Managed PostgreSQL + backups | Public CVForge                     | Encryption at rest expected from the provider                                                                                                                     |
+| Object storage               | Multi-instance CVForge             | Implement `ObjectStorage` for S3-compatible storage                                                                                                               |
+| Bandwidth                    | Public CVForge                     | Small (documents only)                                                                                                                                            |
+| Hosted inference             | Optional only                      | Consent-gated; never mandatory                                                                                                                                    |
+| Email delivery               | Password reset, email confirmation | `SmtpMailer` works with any SMTP provider; choose one (many have free tiers, some charge per message) and set `MAIL_TRANSPORT=smtp`. The outbox stays the default |
+| Monitoring                   | Production                         | Health endpoint exists                                                                                                                                            |
+| CI/CD                        | Repository                         | GitHub Actions running on the public repository; minutes are free for public repos at the time of writing, confirm before going private                           |
+| Browser extension publishing | Store listings                     | Chrome Web Store one-time developer fee; confirm current pricing before paying                                                                                    |
+| Desktop code signing         | Future CodeAtlas desktop (Tauri)   | Not in v1                                                                                                                                                         |
+| Legal and security review    | Launch                             | P-02, S-01                                                                                                                                                        |

@@ -3,6 +3,8 @@ import { api } from '../api';
 import { setQuery, useRoute } from '../router';
 import type { GraphView, NodeRow } from '../types';
 import { FlowGraph } from '../components/FlowGraph';
+import { LanguageFilter } from './Structure';
+import { ModuleDocs } from './ModuleDocs';
 import { Graph, PALETTE } from '../components/Graph';
 import {
   Button,
@@ -126,6 +128,11 @@ export function Modules({ repoId, onOpen }: { repoId: number; onOpen: Open }) {
 export function Dependencies({ repoId, onOpen }: { repoId: number; onOpen: Open }) {
   const { query } = useRoute();
   const external = query.get('external') === '1';
+  const lang = query.get('lang') ?? '';
+  const langs = useAsync(
+    () => api<{ languages: { lang: string; files: number }[] }>(`/api/repos/${repoId}/languages`),
+    [repoId],
+  );
   const modules = useAsync(() => api<GraphView>(`/api/repos/${repoId}/views/modules`), [repoId]);
   // Default to the largest module; "*" means all modules.
   const largest = modules.data?.nodes
@@ -137,10 +144,10 @@ export function Dependencies({ repoId, onOpen }: { repoId: number; onOpen: Open 
     () =>
       modules.data
         ? api<GraphView>(
-            `/api/repos/${repoId}/views/dependencies?module=${module === '*' ? '' : encodeURIComponent(module)}&external=${external ? 1 : 0}`,
+            `/api/repos/${repoId}/views/dependencies?module=${module === '*' ? '' : encodeURIComponent(module)}&external=${external ? 1 : 0}${lang ? `&lang=${lang}` : ''}`,
           )
         : new Promise<GraphView>(() => undefined),
-    [repoId, module, external, !!modules.data],
+    [repoId, module, external, lang, !!modules.data],
   );
   const groups = [
     ...new Set((v.data?.nodes ?? []).map((n) => n.group).filter((g): g is string => !!g)),
@@ -163,6 +170,11 @@ export function Dependencies({ repoId, onOpen }: { repoId: number; onOpen: Open 
               </option>
             ))}
           </select>
+          <LanguageFilter
+            value={lang}
+            languages={langs.data?.languages ?? []}
+            only={['typescript', 'javascript']}
+          />
           <label className="flex items-center gap-1.5 text-xs">
             <input
               type="checkbox"
@@ -509,66 +521,69 @@ export function KnowledgePage({ repoId, onOpen }: { repoId: number; onOpen: Open
   if (v.loading) return <Spinner />;
   if (v.error || !v.data) return <ErrorBox error={v.error} />;
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card title={`Documentation (${v.data.docs.length})`}>
-        {!v.data.docs.length && <Empty>No markdown documentation found.</Empty>}
-        <ul className="space-y-2 text-sm">
-          {v.data.docs.map((d) => (
-            <li key={d.id}>
-              <button
-                className="font-medium text-accent hover:underline"
-                onClick={() => onOpen(d.id)}
-              >
-                {d.title}
-              </button>{' '}
-              {d.adr && (
-                <span className="rounded bg-accent/10 px-1 text-[10px] font-semibold text-accent">
-                  ADR
-                </span>
-              )}
-              <p className="font-mono text-xs text-muted">{d.path}</p>
-              {d.mentions.length > 0 && (
-                <p className="text-xs text-muted">
-                  Describes:{' '}
-                  {d.mentions
-                    .slice(0, 6)
-                    .map((m) => m.key.split('#').pop())
-                    .join(', ')}
-                  {d.mentions.length > 6 ? '…' : ''}
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
-      </Card>
-      <div className="space-y-4">
-        <Card title="Widely used but undocumented">
-          {!v.data.undocumentedHotspots.length ? (
-            <Empty>None.</Empty>
-          ) : (
-            <ul className="space-y-1 text-sm">
-              {v.data.undocumentedHotspots.map((h) => (
-                <li key={h.path} className="flex justify-between gap-3">
-                  <span className="truncate font-mono text-xs">{h.path}</span>
-                  <span className="text-xs text-muted">imported by {h.fanIn}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-        <Card title="Modules with docs">
-          <ul className="space-y-1 text-sm">
-            {v.data.modules.map((m) => (
-              <li key={m.module} className="flex justify-between">
-                <span>{m.module}</span>
-                <span className={cn('text-xs', m.documented ? 'text-observed' : 'text-muted')}>
-                  {m.documented ? `${m.docCount} docs` : 'none'}
-                </span>
+    <div className="space-y-4">
+      <ModuleDocs repoId={repoId} />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card title={`Documentation (${v.data.docs.length})`}>
+          {!v.data.docs.length && <Empty>No markdown documentation found.</Empty>}
+          <ul className="space-y-2 text-sm">
+            {v.data.docs.map((d) => (
+              <li key={d.id}>
+                <button
+                  className="font-medium text-accent hover:underline"
+                  onClick={() => onOpen(d.id)}
+                >
+                  {d.title}
+                </button>{' '}
+                {d.adr && (
+                  <span className="rounded bg-accent/10 px-1 text-[10px] font-semibold text-accent">
+                    ADR
+                  </span>
+                )}
+                <p className="font-mono text-xs text-muted">{d.path}</p>
+                {d.mentions.length > 0 && (
+                  <p className="text-xs text-muted">
+                    Describes:{' '}
+                    {d.mentions
+                      .slice(0, 6)
+                      .map((m) => m.key.split('#').pop())
+                      .join(', ')}
+                    {d.mentions.length > 6 ? '…' : ''}
+                  </p>
+                )}
               </li>
             ))}
           </ul>
         </Card>
-        <Notes notes={v.data.notes} />
+        <div className="space-y-4">
+          <Card title="Widely used but undocumented">
+            {!v.data.undocumentedHotspots.length ? (
+              <Empty>None.</Empty>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {v.data.undocumentedHotspots.map((h) => (
+                  <li key={h.path} className="flex justify-between gap-3">
+                    <span className="truncate font-mono text-xs">{h.path}</span>
+                    <span className="text-xs text-muted">imported by {h.fanIn}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+          <Card title="Modules with docs">
+            <ul className="space-y-1 text-sm">
+              {v.data.modules.map((m) => (
+                <li key={m.module} className="flex justify-between">
+                  <span>{m.module}</span>
+                  <span className={cn('text-xs', m.documented ? 'text-observed' : 'text-muted')}>
+                    {m.documented ? `${m.docCount} docs` : 'none'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+          <Notes notes={v.data.notes} />
+        </div>
       </div>
     </div>
   );
@@ -587,13 +602,20 @@ interface Hit {
 export function SearchPage({ repoId, onOpen }: { repoId: number; onOpen: Open }) {
   const { query } = useRoute();
   const q = query.get('q') ?? '';
+  const lang = query.get('lang') ?? '';
   const [text, setText] = useState(q);
+  const langs = useAsync(
+    () => api<{ languages: { lang: string; files: number }[] }>(`/api/repos/${repoId}/languages`),
+    [repoId],
+  );
   const hits = useAsync(
     () =>
       q
-        ? api<{ hits: Hit[] }>(`/api/repos/${repoId}/search?q=${encodeURIComponent(q)}`)
+        ? api<{ hits: Hit[] }>(
+            `/api/repos/${repoId}/search?q=${encodeURIComponent(q)}${lang ? `&lang=${lang}` : ''}`,
+          )
         : Promise.resolve({ hits: [] }),
-    [repoId, q],
+    [repoId, q, lang],
   );
   const nodes = useAsync(
     () =>
@@ -620,6 +642,7 @@ export function SearchPage({ repoId, onOpen }: { repoId: number; onOpen: Open })
           aria-label="Search"
           className="flex-1 rounded-md border border-line bg-panel px-3 py-2 text-sm"
         />
+        <LanguageFilter value={lang} languages={langs.data?.languages ?? []} />
         <Button type="submit">Search</Button>
       </form>
       {nodes.data && nodes.data.nodes.length > 0 && (

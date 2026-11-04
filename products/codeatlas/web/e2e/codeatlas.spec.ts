@@ -58,6 +58,45 @@ test('index a repository, explore it, ask a question, and take a bug through rev
     await expect(page.getByText('.github/workflows/ci.yml')).toBeVisible();
     await expectAccessible(page, 'overview and coverage');
 
+    // Structure: expand module -> file -> class, collapse again, filter by language (S3-2).
+    await page.getByRole('button', { name: 'Structure', exact: true }).click();
+    const tree = page.getByRole('list', { name: 'Repository structure' });
+    await tree.getByRole('button', { name: 'Expand fixture-app' }).click();
+    await tree.getByRole('button', { name: 'Expand src/lib/math.ts' }).click();
+    await tree.getByRole('button', { name: 'Expand Calculator' }).click();
+    await expect(tree.getByRole('button', { name: 'run', exact: true })).toBeVisible();
+    await expect(tree.getByRole('button', { name: 'Collapse Calculator' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    await expectAccessible(page, 'structure tree');
+    await tree.getByRole('button', { name: 'Collapse Calculator' }).click();
+    await expect(tree.getByRole('button', { name: 'run', exact: true })).toHaveCount(0);
+    await page.getByRole('combobox', { name: 'Language' }).selectOption('javascript');
+    const jsTree = page.getByRole('list', { name: 'Repository structure' });
+    await jsTree.getByRole('button', { name: 'Expand fixture-app' }).click();
+    await expect(jsTree.getByRole('button', { name: 'src/legacy.js', exact: true })).toBeVisible();
+    await expect(jsTree.getByRole('button', { name: 'src/lib/math.ts', exact: true })).toHaveCount(
+      0,
+    );
+
+    // Integrations tab renders its four groups (S3-3, S3-7).
+    await page.getByRole('button', { name: 'Integrations', exact: true }).click();
+    await expect(page.getByText(/^Environment variables \(\d+\)$/)).toBeVisible();
+    await expect(page.getByText(/^Databases \(\d+\)$/)).toBeVisible();
+    await expectAccessible(page, 'integrations');
+
+    // Module documentation from the index, then an overview (no model: evidence only) (S3-5).
+    await page.getByRole('button', { name: 'Knowledge', exact: true }).click();
+    await expect(page.getByText('Module documentation')).toBeVisible();
+    await expect(page.getByText(/Exports \(\d+\)/)).toBeVisible();
+    await expect(page.getByText('src/lib/math.ts:4').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Write overview with AI' }).click();
+    await expect(
+      page.getByText('These are the most relevant places in the repository:'),
+    ).toBeVisible();
+    await expectAccessible(page, 'module documentation');
+
     // Risk findings: the fixture's import cycle and the unread .env file (S1-4).
     await page.getByRole('button', { name: 'Risk', exact: true }).click();
     await expect(page.getByText('src/ring/a.ts · src/ring/b.ts')).toBeVisible();

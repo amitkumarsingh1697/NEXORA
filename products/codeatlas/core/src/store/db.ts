@@ -8,7 +8,7 @@ import { DatabaseSync } from 'node:sqlite';
  */
 export type Db = DatabaseSync;
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -34,11 +34,12 @@ CREATE TABLE IF NOT EXISTS index_runs (
   duration_ms INTEGER
 );
 
--- Generic graph: files, symbols, modules (packages), external packages, routes, docs, entrypoints.
+-- Generic graph: files, symbols, modules (packages), external packages, routes, docs, entrypoints,
+-- configuration (environment variables, config files) and services (HTTP hosts, databases).
 CREATE TABLE IF NOT EXISTS nodes (
   id INTEGER PRIMARY KEY,
   repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('file','symbol','module','external','route','doc','entrypoint')),
+  kind TEXT NOT NULL CHECK (kind IN ('file','symbol','module','external','route','doc','entrypoint','config','service')),
   key TEXT NOT NULL,
   name TEXT NOT NULL,
   file_path TEXT,
@@ -68,6 +69,16 @@ CREATE TABLE IF NOT EXISTS edges (
 CREATE INDEX IF NOT EXISTS edges_src ON edges(src, kind);
 CREATE INDEX IF NOT EXISTS edges_dst ON edges(dst, kind);
 CREATE INDEX IF NOT EXISTS edges_repo_kind ON edges(repo_id, kind);
+
+-- Per-file analysis kept for incremental indexing (S3-4). path '' holds the config fingerprint
+-- and hashes of dependencies that are not analysed themselves.
+CREATE TABLE IF NOT EXISTS index_cache (
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  adapter TEXT NOT NULL,
+  path TEXT NOT NULL,
+  data TEXT NOT NULL,
+  PRIMARY KEY (repo_id, adapter, path)
+);
 
 -- Things the indexer saw but could not resolve. Reported, never guessed.
 CREATE TABLE IF NOT EXISTS unresolved (
@@ -192,6 +203,7 @@ export function openDb(file: string): Db {
       `Database schema v${before} is newer than this CodeAtlas (v${SCHEMA_VERSION}).`,
     );
   if (before && Number(before) < 3) migrateToV3(db);
+  if (before && Number(before) < 5) migrateToV5(db);
   try {
     db.exec(SCHEMA);
   } catch (e) {
@@ -244,6 +256,53 @@ ALTER TABLE investigations_v3 RENAME TO investigations;`);
       const broken = db.prepare('PRAGMA foreign_key_check').all();
       if (broken.length)
         throw new Error(`Migration to v3 left ${broken.length} broken references.`);
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+}
+
+/**
+ * v4 -> v5: adds 'config' and 'service' to the nodes kind CHECK (S3-3, S3-7).
+ * Same 12-step rebuild as v3; edges reference nodes(id), which are copied unchanged.
+ */
+function migrateToV5(db: Db): void {
+  const has = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'nodes'")
+    .get() as { sql: string } | undefined;
+  if (!has || has.sql.includes("'service'")) return;
+  db.exec('PRAGMA foreign_keys = OFF');
+  try {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.exec(`CREATE TABLE nodes_v5 (
+  id INTEGER PRIMARY KEY,
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('file','symbol','module','external','route','doc','entrypoint','config','service')),
+  key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  file_path TEXT,
+  module TEXT,
+  symbol_kind TEXT,
+  exported INTEGER NOT NULL DEFAULT 0,
+  start_line INTEGER,
+  end_line INTEGER,
+  data TEXT NOT NULL DEFAULT '{}',
+  UNIQUE (repo_id, kind, key)
+);
+INSERT INTO nodes_v5 SELECT id, repo_id, kind, key, name, file_path, module, symbol_kind, exported, start_line, end_line, data FROM nodes;
+DROP TABLE nodes;
+ALTER TABLE nodes_v5 RENAME TO nodes;
+CREATE INDEX IF NOT EXISTS nodes_repo_kind ON nodes(repo_id, kind);
+CREATE INDEX IF NOT EXISTS nodes_repo_file ON nodes(repo_id, file_path);
+CREATE INDEX IF NOT EXISTS nodes_repo_name ON nodes(repo_id, name);`);
+      const broken = db.prepare('PRAGMA foreign_key_check').all();
+      if (broken.length)
+        throw new Error(`Migration to v5 left ${broken.length} broken references.`);
       db.exec('COMMIT');
     } catch (e) {
       db.exec('ROLLBACK');

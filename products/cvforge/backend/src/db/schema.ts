@@ -43,6 +43,7 @@ export const users = pgTable(
     aiAssistEnabled: boolean('ai_assist_enabled').notNull().default(true),
     privacyConsentVersion: text('privacy_consent_version').notNull(),
     privacyConsentAt: timestamp('privacy_consent_at', { withTimezone: true }).notNull(),
+    emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
@@ -105,6 +106,26 @@ export const passwordResetTokens = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('pwreset_token_hash_uq').on(t.tokenHash)],
+);
+
+export const emailVerificationTokens = pgTable(
+  'email_verification_tokens',
+  {
+    id: id(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** The address the link was sent to; verifying only counts if it still matches. */
+    email: text('email').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('email_verify_token_hash_uq').on(t.tokenHash),
+    index('email_verify_user_idx').on(t.userId),
+  ],
 );
 
 /* ---------------------------------------------------------------- resumes */
