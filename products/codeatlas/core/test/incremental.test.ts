@@ -146,6 +146,33 @@ describe('incremental indexing (S3-4)', () => {
     expect(info).toMatchObject({ mode: 'incremental', reanalysed: 1 });
   });
 
+  it('keeps doc comments of overloaded methods the same way in both modes', () => {
+    writeFileSync(
+      join(root, 'src/req.ts'),
+      [
+        'export class Req {',
+        '  /** Reads a header. */',
+        '  header(name: string): string;',
+        '  header(): Record<string, string>;',
+        '  header(name?: string) {',
+        "    return name ? '' : {};",
+        '  }',
+        '}',
+        "export const user = (r: Req) => r.header('x');",
+        '',
+      ].join('\n'),
+    );
+    expectSameAsFull(); // new file: full
+    edit('src/req.ts', (s) => s.replace("r.header('x')", "r.header('y')"));
+    expect(expectSameAsFull()).toMatchObject({ mode: 'incremental', reanalysed: 1 });
+    const doc = db
+      .prepare(
+        "SELECT json_extract(data, '$.doc') AS doc FROM nodes WHERE key = 'src/req.ts#Req.header'",
+      )
+      .get() as { doc: string | null };
+    expect(doc.doc).toBe('Reads a header.');
+  });
+
   it('falls back to a full analysis when tsconfig changes', () => {
     edit('tsconfig.json', (s) => s.replace('"strict":true', '"strict":false'));
     expect(expectSameAsFull()).toMatchObject({ mode: 'full', reused: 0 });

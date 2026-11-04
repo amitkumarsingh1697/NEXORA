@@ -47,6 +47,10 @@ export interface ChunkRec {
   body: string;
 }
 
+function definedOnly(o: Record<string, unknown> | undefined): Record<string, unknown> {
+  return o ? Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) : {};
+}
+
 const RANK: Record<Confidence, number> = { observed: 3, inferred: 2, unknown: 1 };
 
 /** One change to the graph, as recorded for the incremental-indexing cache. */
@@ -81,7 +85,9 @@ export class GraphBuilder {
         ...prev,
         ...Object.fromEntries(Object.entries(n).filter(([, v]) => v !== undefined)),
         startLine: prev.startLine ?? n.startLine,
-        data: { ...prev.data, ...n.data },
+        // Undefined values do not erase known ones (e.g. the doc comment on the first
+        // overload of a method survives the later, undocumented overloads).
+        data: { ...prev.data, ...definedOnly(n.data) },
       });
     } else this.nodes.set(id, n);
     return { kind: n.kind, key: n.key };
@@ -120,7 +126,7 @@ export class GraphBuilder {
   mergeData(ref: NodeRef, data: Record<string, unknown>): void {
     this.recorder?.push({ t: 'd', ref: { ...ref }, data: structuredClone(data) });
     const n = this.get(ref);
-    if (n) n.data = { ...n.data, ...data };
+    if (n) n.data = { ...n.data, ...definedOnly(data) };
   }
 
   /** Apply a recorded change. */
