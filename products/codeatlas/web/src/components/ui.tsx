@@ -28,7 +28,7 @@ export function Button({
       className={cn(
         'inline-flex items-center gap-1.5 rounded-md font-medium transition disabled:cursor-not-allowed disabled:opacity-50',
         small ? 'px-2.5 py-1 text-xs' : 'px-3.5 py-2 text-sm',
-        variant === 'primary' && 'bg-accent text-accent-ink hover:opacity-90',
+        variant === 'primary' && 'bg-accent text-accent-ink hover:brightness-90',
         variant === 'secondary' && 'border border-line bg-panel hover:bg-canvas',
         variant === 'danger' && 'border border-danger/40 text-danger hover:bg-danger/10',
         variant === 'ghost' && 'text-muted hover:text-ink',

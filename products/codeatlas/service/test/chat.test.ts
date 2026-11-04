@@ -59,6 +59,40 @@ afterAll(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
+describe('module documentation over HTTP (S3-5)', () => {
+  it('serves deterministic docs and Markdown, and 404s unknown modules', async () => {
+    const r = await noModel.api<{ doc: { module: string }; markdown: string }>(
+      `/api/repos/${repoB}/module-doc?module=fixture-app`,
+    );
+    expect(r.status).toBe(200);
+    expect(r.body.doc.module).toBe('fixture-app');
+    expect(r.body.markdown).toMatch(/^# Module fixture-app/);
+    expect((await noModel.api(`/api/repos/${repoB}/module-doc?module=nope`)).status).toBe(404);
+  });
+
+  it('writes a grounded overview with a model, and evidence only without one', async () => {
+    const withAi = await withModel.api<{ mode: string }>(
+      `/api/repos/${repoA}/module-doc/overview`,
+      { method: 'POST', body: { module: 'fixture-app' } },
+    );
+    expect(withAi.status).toBe(200);
+    expect(withAi.body.mode).toBe('model');
+    const without = await noModel.api<{ mode: string }>(`/api/repos/${repoB}/module-doc/overview`, {
+      method: 'POST',
+      body: { module: 'fixture-app' },
+    });
+    expect(without.body.mode).toBe('retrieval-only');
+    expect(
+      (
+        await noModel.api(`/api/repos/${repoB}/module-doc/overview`, {
+          method: 'POST',
+          body: { module: 'fixture-app', extra: 1 },
+        })
+      ).status,
+    ).toBe(400);
+  });
+});
+
 describe('chat over HTTP', () => {
   it('answers with citations from the model', async () => {
     const r = await withModel.api<{

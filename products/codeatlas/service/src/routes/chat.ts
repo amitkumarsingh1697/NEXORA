@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { createProvider, type ModelProvider } from '@nexora/ai';
-import { answerQuestion, recordEvent, retrieve } from '@nexora/codeatlas-core';
+import {
+  answerQuestion,
+  describeModule,
+  moduleDoc,
+  recordEvent,
+  retrieve,
+} from '@nexora/codeatlas-core';
+import { HttpError } from '../http';
 import type { ServiceContext } from '../server';
 import { repoOr404, track } from '../server';
 
@@ -31,6 +38,17 @@ export function chatRoutes(provider?: ModelProvider) {
         confidence: answer.confidence,
       });
       return answer;
+    });
+    // Optional model-written module overview (S3-5), grounded like chat answers.
+    ctx.router.add('POST', '/api/repos/:id/module-doc/overview', async (req) => {
+      const repo = repoOr404(ctx, req.params.id);
+      const { module } = z.strictObject({ module: z.string().min(1).max(300) }).parse(req.body);
+      const doc = moduleDoc(ctx.db, repo.id, module);
+      if (!doc) throw new HttpError(404, 'NOT_FOUND', 'Module not found.');
+      return describeModule(p, ctx.db, repo.id, doc, {
+        contextWindowTokens: ctx.cfg.ai.AI_CONTEXT_TOKENS,
+        timeoutMs: ctx.cfg.ai.AI_TIMEOUT_MS,
+      });
     });
     ctx.router.add('POST', '/api/repos/:id/chat/feedback', (req) => {
       const repo = repoOr404(ctx, req.params.id);

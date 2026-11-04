@@ -12,7 +12,7 @@ interface Caps {
   local: boolean;
 }
 
-interface Answer {
+export interface Answer {
   mode: 'model' | 'retrieval-only';
   answer: string;
   citations: {
@@ -61,7 +61,15 @@ function AnswerText({ text, onCite }: { text: string; onCite: (id: string) => vo
   );
 }
 
-function AnswerView({ repoId, a }: { repoId: number; a: Answer }) {
+export function AnswerView({
+  repoId,
+  a,
+  feedback = true,
+}: {
+  repoId: number;
+  a: Answer;
+  feedback?: boolean;
+}) {
   const [open, setOpen] = useState<string | null>(a.citations[0]?.source ?? null);
   const cited = a.citations.find((c) => c.source === open);
   return (
@@ -151,7 +159,7 @@ function AnswerView({ repoId, a }: { repoId: number; a: Answer }) {
           </ul>
         </details>
       )}
-      <Feedback repoId={repoId} a={a} />
+      {feedback && <Feedback repoId={repoId} a={a} />}
     </div>
   );
 }

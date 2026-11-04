@@ -86,6 +86,17 @@ test('index a repository, explore it, ask a question, and take a bug through rev
     await expect(page.getByText(/^Databases \(\d+\)$/)).toBeVisible();
     await expectAccessible(page, 'integrations');
 
+    // Module documentation from the index, then an overview (no model: evidence only) (S3-5).
+    await page.getByRole('button', { name: 'Knowledge', exact: true }).click();
+    await expect(page.getByText('Module documentation')).toBeVisible();
+    await expect(page.getByText(/Exports \(\d+\)/)).toBeVisible();
+    await expect(page.getByText('src/lib/math.ts:4').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Write overview with AI' }).click();
+    await expect(
+      page.getByText('These are the most relevant places in the repository:'),
+    ).toBeVisible();
+    await expectAccessible(page, 'module documentation');
+
     // Risk findings: the fixture's import cycle and the unread .env file (S1-4).
     await page.getByRole('button', { name: 'Risk', exact: true }).click();
     await expect(page.getByText('src/ring/a.ts · src/ring/b.ts')).toBeVisible();

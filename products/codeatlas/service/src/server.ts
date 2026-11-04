@@ -20,6 +20,8 @@ import {
   impactOf,
   indexRuns,
   integrationsView,
+  moduleDoc,
+  moduleDocMarkdown,
   repoLanguages,
   treeChildren,
   knowledgeView,
@@ -300,6 +302,13 @@ function registerCoreRoutes(ctx: ServiceContext): void {
     });
     if (module) track(ctx, 'module_explored', repo.id, {});
     return view;
+  });
+  r.add('GET', '/api/repos/:id/module-doc', (req) => {
+    const repo = repoOr404(ctx, req.params.id);
+    const name = req.query.get('module') ?? '';
+    const doc = name.length <= 300 ? moduleDoc(ctx.db, repo.id, name) : null;
+    if (!doc) throw new HttpError(404, 'NOT_FOUND', 'Module not found.');
+    return { doc, markdown: moduleDocMarkdown(doc) };
   });
   r.add('GET', '/api/repos/:id/languages', (req) => ({
     languages: repoLanguages(ctx.db, repoOr404(ctx, req.params.id).id),
