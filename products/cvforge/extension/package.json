@@ -1,6 +1,7 @@
 {
   "name": "@nexora/cvforge-extension",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "description": "CVForge browser extension (Chrome/Edge, Manifest V3) for user-initiated job description capture.",

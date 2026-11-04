@@ -3,6 +3,8 @@ export * from './store/analytics';
 export * from './indexer/model';
 export * from './indexer/files';
 export * from './indexer/manifests';
+export * from './indexer/adapters';
+export { declaresGlobals, dirtyFiles, type IncrementalInfo } from './indexer/ts-cache';
 export {
   indexRepository,
   upsertRepo,
@@ -14,6 +16,7 @@ export { splitMarkdown } from './indexer/docs';
 export * from './query/graph';
 export * from './query/search';
 export * from './query/views';
+export * from './query/tree';
 export * from './query/cycles';
 export * from './chat/redact';
 export * from './chat/retrieve';

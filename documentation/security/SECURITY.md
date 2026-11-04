@@ -2,7 +2,7 @@
 
 ## Reporting
 
-NEXORA is pre-release and not publicly deployed. Report issues privately to the founder; do not open public issues for vulnerabilities.
+See the repository [SECURITY.md](../../SECURITY.md) for how to report a vulnerability privately. Do not open public issues for vulnerabilities.
 
 ## Controls: CVForge
 

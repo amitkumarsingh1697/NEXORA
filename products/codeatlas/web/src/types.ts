@@ -61,6 +61,30 @@ export interface Coverage {
     resolutionRate: number;
   };
   edgesByConfidence: Record<Confidence, number>;
+  /** Absent in indexes built before Sprint 3. */
+  adapters?: {
+    id: string;
+    name: string;
+    languages: string[];
+    filesAnalysed: number;
+    filesFailed: number;
+  }[];
+  unsupportedLanguages?: Record<string, number>;
+  incremental?: {
+    adapter: string;
+    mode: 'full' | 'incremental';
+    reason: string;
+    reanalysed: number;
+    reused: number;
+  }[];
+  integrations?: {
+    envVars: number;
+    configFiles: number;
+    configReads: number;
+    services: { http: number; db: number };
+    serviceCalls: number;
+    dbAccesses: number;
+  };
   unresolvedRecorded: number;
   limitations: string[];
 }

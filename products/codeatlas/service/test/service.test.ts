@@ -74,8 +74,33 @@ describe('indexing and views over HTTP', () => {
     expect(detail.body.runs).toHaveLength(1);
   });
 
+  it('serves the tree level by level and validates the language filter', async () => {
+    const mods = await svc.api<{ items: { label: string; expand: { module: string } }[] }>(
+      `/api/repos/${repoId}/tree`,
+    );
+    expect(mods.status).toBe(200);
+    const mod = mods.body.items[0]!.expand.module;
+    const files = await svc.api<{ items: { label: string }[] }>(
+      `/api/repos/${repoId}/tree?module=${encodeURIComponent(mod)}&lang=javascript`,
+    );
+    expect(files.body.items.map((f) => f.label)).toEqual(['src/legacy.js']);
+    const langs = await svc.api<{ languages: { lang: string }[] }>(
+      `/api/repos/${repoId}/languages`,
+    );
+    expect(langs.body.languages.map((l) => l.lang)).toContain('typescript');
+    expect((await svc.api(`/api/repos/${repoId}/tree?lang=cobol`)).status).toBe(400);
+    expect((await svc.api(`/api/repos/${repoId}/search?q=add&lang=cobol`)).status).toBe(400);
+  });
+
   it('serves every view', async () => {
-    for (const v of ['modules', 'dependencies?external=1', 'risk', 'ownership', 'knowledge']) {
+    for (const v of [
+      'modules',
+      'dependencies?external=1',
+      'risk',
+      'ownership',
+      'knowledge',
+      'integrations',
+    ]) {
       const r = await svc.api(`/api/repos/${repoId}/views/${v}`);
       expect(r.status, v).toBe(200);
     }

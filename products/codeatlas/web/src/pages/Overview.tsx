@@ -126,6 +126,13 @@ export function Overview({ repoId }: { repoId: number }) {
                   Indexed {new Date(c.indexedAt).toLocaleString()} in{' '}
                   {(c.durationMs / 1000).toFixed(1)}s
                 </p>
+                {c.incremental?.map((i) => (
+                  <p key={i.adapter} className="text-muted">
+                    {i.mode === 'incremental'
+                      ? `Incremental: ${i.reanalysed} files re-analysed, ${i.reused} reused from the previous index.`
+                      : `Full analysis (${i.reason}).`}
+                  </p>
+                ))}
               </div>
               <div className="space-y-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
@@ -150,8 +157,39 @@ export function Overview({ repoId }: { repoId: number }) {
                   by name · {c.calls.dynamic} dynamic · {c.calls.unresolved} unresolved ·{' '}
                   {c.calls.external + c.calls.builtin} to libraries/runtime
                 </p>
+                {c.integrations && (
+                  <p className="text-muted">
+                    Integrations: {c.integrations.envVars} environment variables ·{' '}
+                    {c.integrations.configFiles} configuration files ·{' '}
+                    {c.integrations.services.http} HTTP services · {c.integrations.services.db}{' '}
+                    databases (see the Integrations tab)
+                  </p>
+                )}
               </div>
             </div>
+            {c.adapters && (
+              <div className="mt-4 text-sm">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Language analysis
+                </h3>
+                <ul className="mt-1 space-y-0.5">
+                  {c.adapters.map((a) => (
+                    <li key={a.id}>
+                      {a.name}: {a.filesAnalysed} files analysed
+                      {a.filesFailed ? `, ${a.filesFailed} failed` : ''}
+                    </li>
+                  ))}
+                </ul>
+                {Object.keys(c.unsupportedLanguages ?? {}).length > 0 && (
+                  <p className="mt-1 text-muted">
+                    Searchable as text only, no structure:{' '}
+                    {Object.entries(c.unsupportedLanguages ?? {})
+                      .map(([lang, n]) => `${n} ${lang}`)
+                      .join(' · ')}
+                  </p>
+                )}
+              </div>
+            )}
             {!!(c.manifests?.length || c.frameworks?.length) && (
               <div className="mt-4 grid gap-6 text-sm md:grid-cols-2">
                 <div>

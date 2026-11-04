@@ -2,6 +2,7 @@
   "name": "nexora",
   "private": true,
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "description": "NEXORA monorepo: CVForge (Resume Intelligence) and CodeAtlas (Architecture Brain)",
   "type": "module",
   "packageManager": "pnpm@10.28.0",

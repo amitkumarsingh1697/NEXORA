@@ -1,8 +1,23 @@
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import ts from 'typescript';
 import type { DiscoveredFile } from './files';
-import { GraphBuilder, type Confidence, type NodeRef } from './model';
+import { IntegrationDetector } from './integrations';
+import { GraphBuilder, type Confidence, type GraphOp, type NodeRef } from './model';
+import {
+  applyDelta,
+  configFingerprint,
+  declaresGlobals,
+  dirtyFiles,
+  fileDependencies,
+  sha256,
+  statsDelta,
+  statsSnapshot,
+  type IncrementalInfo,
+  type PendingInferred,
+  type TsCacheState,
+  type TsFileCache,
+} from './ts-cache';
 
 /**
  * TypeScript/JavaScript indexer built on the TypeScript Compiler API.
@@ -129,17 +144,18 @@ interface Ctx {
   moduleOf: (path: string) => string;
   /** bare name -> symbol keys (for inferred fallback) */
   byName: Map<string, Set<string>>;
-  pendingInferred: {
-    owner: NodeRef;
-    name: string;
-    path: string;
-    line: number;
-    text: string;
-    kind: 'calls' | 'instantiates';
-  }[];
+  byNameRecorder: [string, string][] | null;
+  integrations: IntegrationDetector;
+  pendingInferred: PendingInferred[];
 }
 
 function rel(ctx: Ctx, abs: string): string | null {
+  const r = repoPathOf(ctx, abs);
+  return r !== null && ctx.repoFiles.has(r) ? r : null;
+}
+
+/** Repository-relative path of any file inside the repository (outside node_modules), discovered or not. */
+function repoPathOf(ctx: Ctx, abs: string): string | null {
   let real = abs;
   try {
     real = realpathSync(abs);
@@ -149,7 +165,7 @@ function rel(ctx: Ctx, abs: string): string | null {
   const r = toPosix(relative(ctx.root, real));
   if (r.startsWith('..') || r.includes('/node_modules/') || r.startsWith('node_modules/'))
     return null;
-  return ctx.repoFiles.has(r) ? r : null;
+  return r;
 }
 
 function lineOf(sf: ts.SourceFile, pos: number): number {
@@ -298,6 +314,33 @@ const BRANCH_KINDS = new Set([
   ts.SyntaxKind.ConditionalExpression,
 ]);
 
+function sharedSourceHost(
+  host: ts.CompilerHost,
+  options: ts.CompilerOptions,
+  cache: Map<string, ts.SourceFile>,
+): ts.CompilerHost {
+  const getSourceFile = host.getSourceFile.bind(host);
+  host.getSourceFile = (fileName, langOrOptions, onError, shouldCreateNew) => {
+    const o = typeof langOrOptions === 'object' ? langOrOptions : undefined;
+    const key = [
+      fileName,
+      o ? o.languageVersion : langOrOptions,
+      o?.impliedNodeFormat ?? '',
+      o?.jsDocParsingMode ?? '',
+      options.moduleDetection ?? '',
+      options.jsx ?? '',
+    ].join('|');
+    if (!shouldCreateNew) {
+      const hit = cache.get(key);
+      if (hit) return hit;
+    }
+    const sf = getSourceFile(fileName, langOrOptions, onError, shouldCreateNew);
+    if (sf) cache.set(key, sf);
+    return sf;
+  };
+  return host;
+}
+
 function loadCompilerOptions(root: string, tsconfigRel: string | undefined): ts.CompilerOptions {
   let base: ts.CompilerOptions = {};
   if (tsconfigRel !== undefined) {
@@ -341,7 +384,8 @@ export function indexTypeScript(
   allPaths: Set<string>,
   graph: GraphBuilder,
   moduleOf: (p: string) => string,
-): TsIndexStats {
+  cache?: { previous: TsCacheState | null },
+): TsIndexStats & { cache: TsCacheState; incremental: IncrementalInfo } {
   const stats: TsIndexStats = {
     programs: 0,
     filesParsed: 0,
@@ -358,6 +402,8 @@ export function indexTypeScript(
     stats,
     moduleOf,
     byName: new Map(),
+    byNameRecorder: null,
+    integrations: new IntegrationDetector({ graph, repoFiles: allPaths }),
     pendingInferred: [],
   };
   const code = files.filter((f) => f.lang === 'typescript' || f.lang === 'javascript');
@@ -374,32 +420,150 @@ export function indexTypeScript(
     groups.set(g, list);
   }
 
+  // Incremental indexing (S3-4): decide which files to analyse, replay the rest.
+  const readRepo = (p: string): string | null => {
+    try {
+      return readFileSync(join(ctx.root, p), 'utf8');
+    } catch {
+      return null;
+    }
+  };
+  const shas = new Map<string, string>();
+  const globals = new Set<string>();
+  for (const f of code) {
+    const text = readRepo(f.path) ?? '';
+    shas.set(f.path, sha256(text));
+    if (declaresGlobals(f.path, text)) globals.add(f.path);
+  }
+  const configHash = configFingerprint(allPaths, readRepo);
+  const previous = cache?.previous ?? null;
+  const extraGlobals = new Set<string>();
+  let dirty: Set<string> | null = null;
+  let reason: string;
+  if (!cache) reason = 'incremental indexing not requested';
+  else if (!previous) reason = 'no previous index to reuse';
+  else if (previous.configHash !== configHash)
+    reason = 'project configuration, dependencies or the set of files changed';
+  else {
+    const extraNow: Record<string, string> = {};
+    for (const p of Object.keys(previous.extra ?? {})) {
+      const text = readRepo(p);
+      extraNow[p] = text === null ? '<missing>' : sha256(text);
+      if (text !== null && declaresGlobals(p, text)) extraGlobals.add(p);
+    }
+    dirty = dirtyFiles(previous, shas, globals, extraNow);
+    // A changed declaration file that declares globals affects every file.
+    for (const p of extraGlobals) if (extraNow[p] !== previous.extra?.[p]) dirty = null;
+    reason = dirty
+      ? `${dirty.size} changed or dependent files re-analysed`
+      : 'a global declaration changed, or every file was affected';
+  }
+  const analyse = (path: string) => !dirty || dirty.has(path);
+  const out: TsCacheState = { configHash, files: {} };
+  const entryFor = (path: string): TsFileCache => {
+    let e = out.files[path];
+    if (!e) {
+      e = {
+        sha: shas.get(path) ?? '',
+        deps: [],
+        p1: [],
+        p2: [],
+        byName: [],
+        pending: [],
+        s1: { counts: {}, failed: [] },
+        s2: { counts: {}, failed: [] },
+      };
+      out.files[path] = e;
+    }
+    return e;
+  };
+  /** Run one file's work for a pass, recording its graph changes and counters. */
+  const recorded = (path: string, pass: 1 | 2, fn: () => void): void => {
+    const e = entryFor(path);
+    const before = statsSnapshot(stats);
+    const failedBefore = stats.filesFailed.length;
+    const pendingBefore = ctx.pendingInferred.length;
+    const ops: GraphOp[] = [];
+    graph.recorder = ops;
+    ctx.byNameRecorder = pass === 1 ? e.byName : null;
+    try {
+      fn();
+    } finally {
+      graph.recorder = null;
+      ctx.byNameRecorder = null;
+    }
+    const delta = statsDelta(before, statsSnapshot(stats), failedBefore, stats.filesFailed);
+    if (pass === 1) {
+      e.p1 = ops;
+      e.s1 = delta;
+    } else {
+      e.p2 = ops;
+      e.s2 = delta;
+      e.pending = ctx.pendingInferred.slice(pendingBefore).map((x) => structuredClone(x));
+    }
+  };
+  const replay = (path: string, pass: 1 | 2): void => {
+    const e = previous?.files[path];
+    if (!e) throw new Error(`Incremental index cache has no entry for ${path}.`);
+    out.files[path] = e;
+    for (const op of pass === 1 ? e.p1 : e.p2) graph.replay(op);
+    if (pass === 1) {
+      for (const [bare, key] of e.byName) addByName(ctx, bare, key);
+      applyDelta(stats, e.s1);
+    } else {
+      ctx.pendingInferred.push(...e.pending.map((x) => structuredClone(x)));
+      applyDelta(stats, e.s2);
+    }
+  };
+
   const programs: {
     program: ts.Program;
     checker: ts.TypeChecker;
-    files: DiscoveredFile[];
     options: ts.CompilerOptions;
     host: ts.CompilerHost;
   }[] = [];
+  const programOf = new Map<string, (typeof programs)[number]>();
+  // Parsed source files are shared between the per-tsconfig programs, the way the
+  // TypeScript language service shares them between projects (DocumentRegistry).
+  // Without this, every program re-parses the same lib and node_modules .d.ts files.
+  const sourceCache = new Map<string, ts.SourceFile>();
   for (const [group, list] of groups) {
+    const todo = list.filter((f) => analyse(f.path));
+    if (!todo.length) continue;
     const options = loadCompilerOptions(ctx.root, group === '\0none' ? undefined : group);
-    const host = ts.createCompilerHost(options, true);
+    const host = sharedSourceHost(ts.createCompilerHost(options, true), options, sourceCache);
+    // Global-declaring files are compiled too, so re-analysed files see the same types:
+    // analysed ones in this group, and declaration files any file in this group references.
+    const roots = dirty
+      ? list.filter((f) => dirty.has(f.path) || globals.has(f.path)).map((f) => f.path)
+      : list.map((f) => f.path);
+    if (dirty)
+      for (const g of extraGlobals)
+        if (list.some((f) => previous?.files[f.path]?.deps.includes(g))) roots.push(g);
     const program = ts.createProgram({
-      rootNames: list.map((f) => join(ctx.root, f.path)),
+      rootNames: roots.map((p) => join(ctx.root, p)),
       options,
       host,
     });
-    programs.push({ program, checker: program.getTypeChecker(), files: list, options, host });
+    const entry = { program, checker: program.getTypeChecker(), options, host };
+    programs.push(entry);
+    for (const f of todo) programOf.set(f.path, entry);
     stats.programs++;
   }
+  const ordered = [...groups.values()].flat();
 
   // Pass 1: declarations, imports, routes.
-  for (const p of programs) {
-    for (const f of p.files) {
+  for (const f of ordered) {
+    const p = programOf.get(f.path);
+    if (!p) {
+      replay(f.path, 1);
+      continue;
+    }
+    recorded(f.path, 1, () => {
       const sf = p.program.getSourceFile(join(ctx.root, f.path));
       if (!sf) {
         stats.filesFailed.push({ path: f.path, error: 'not loaded by compiler' });
-        continue;
+        return;
       }
       try {
         collectDeclarations(ctx, sf, f.path);
@@ -409,14 +573,29 @@ export function indexTypeScript(
       } catch (e) {
         stats.filesFailed.push({ path: f.path, error: e instanceof Error ? e.message : String(e) });
       }
-    }
+      entryFor(f.path).deps = fileDependencies(sf, p.options, p.host, (abs) =>
+        repoPathOf(ctx, abs),
+      );
+    });
   }
 
-  // Pass 2: calls, heritage, JSX, express-style routes, complexity.
-  for (const p of programs) {
-    for (const f of p.files) {
+  // Module-level database and HTTP clients in every repository file each program loaded,
+  // so later passes recognise them across files.
+  for (const p of programs)
+    for (const sf of p.program.getSourceFiles())
+      if (!sf.isDeclarationFile && rel(ctx, sf.fileName))
+        ctx.integrations.collectClients(sf, p.checker);
+
+  // Pass 2: calls, heritage, JSX, express-style routes, complexity, integrations.
+  for (const f of ordered) {
+    const p = programOf.get(f.path);
+    if (!p) {
+      replay(f.path, 2);
+      continue;
+    }
+    recorded(f.path, 2, () => {
       const sf = p.program.getSourceFile(join(ctx.root, f.path));
-      if (!sf) continue;
+      if (!sf) return;
       try {
         collectReferences(ctx, sf, f.path, p.checker);
       } catch (e) {
@@ -425,8 +604,22 @@ export function indexTypeScript(
           error: `reference pass: ${e instanceof Error ? e.message : String(e)}`,
         });
       }
-    }
+    });
   }
+  // Remember the content of in-repo dependencies that are not analysed themselves.
+  out.extra = {};
+  for (const e of Object.values(out.files))
+    for (const d of e.deps)
+      if (!shas.has(d) && !(d in out.extra)) {
+        const text = readRepo(d);
+        out.extra[d] = text === null ? '<missing>' : sha256(text);
+      }
+  const incremental: IncrementalInfo = {
+    mode: dirty ? 'incremental' : 'full',
+    reason,
+    reanalysed: programOf.size,
+    reused: ordered.length - programOf.size,
+  };
 
   // Inferred fallback: untyped call matched to the only declaration with that name.
   for (const c of ctx.pendingInferred) {
@@ -476,7 +669,14 @@ export function indexTypeScript(
       });
     }
   }
-  return stats;
+  return { ...stats, cache: out, incremental };
+}
+
+function addByName(ctx: Ctx, bare: string, key: string): void {
+  const set = ctx.byName.get(bare) ?? new Set<string>();
+  set.add(key);
+  ctx.byName.set(bare, set);
+  ctx.byNameRecorder?.push([bare, key]);
 }
 
 function symbolKey(path: string, qname: string): string {
@@ -528,10 +728,7 @@ function collectDeclarations(ctx: Ctx, sf: ts.SourceFile, path: string): void {
         d.kind === 'class' ||
         d.kind === 'constructor'
       ) {
-        const bare = d.qname.split('.').pop() as string;
-        const set = ctx.byName.get(bare) ?? new Set<string>();
-        set.add(key);
-        ctx.byName.set(bare, set);
+        addByName(ctx, d.qname.split('.').pop() as string, key);
       }
       ctx.stats.symbols++;
     }
@@ -934,6 +1131,7 @@ function collectReferences(
   };
 
   const visit = (node: ts.Node): void => {
+    ctx.integrations.visit(node, sf, path, checker, () => ownerOf(node));
     if (
       BRANCH_KINDS.has(node.kind) ||
       (ts.isBinaryExpression(node) &&
@@ -1012,18 +1210,13 @@ function collectReferences(
   };
   visit(sf);
 
-  for (const [key, c] of complexity) {
-    const n = ctx.graph.get({ kind: 'symbol', key });
-    if (n) n.data = { ...n.data, complexity: c };
-  }
-  const fileNode = ctx.graph.get(fileRef);
-  if (fileNode)
-    fileNode.data = {
-      ...fileNode.data,
-      resolvedCalls,
-      unresolvedCalls,
-      complexity: [...complexity.values()].reduce((a, b) => a + b, 0),
-    };
+  for (const [key, c] of complexity)
+    ctx.graph.mergeData({ kind: 'symbol', key }, { complexity: c });
+  ctx.graph.mergeData(fileRef, {
+    resolvedCalls,
+    unresolvedCalls,
+    complexity: [...complexity.values()].reduce((a, b) => a + b, 0),
+  });
 }
 
 function detectExpressRoute(

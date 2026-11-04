@@ -15,6 +15,9 @@ import {
   flowView,
   impactOf,
   indexRepository,
+  integrationsView,
+  repoLanguages,
+  treeChildren,
   knowledgeView,
   modulesView,
   nextRoutePath,
@@ -492,5 +495,276 @@ describe('failure safety (S2-6)', () => {
     );
     const other = new Error('disk I/O error');
     expect(explainSchemaError(other)).toBe(other);
+  });
+});
+
+describe('language adapters (S3-1)', () => {
+  it('reports each adapter and the languages nothing analyses', () => {
+    expect(report.adapters).toEqual([
+      expect.objectContaining({
+        id: 'typescript',
+        languages: ['typescript', 'javascript'],
+        filesAnalysed: report.files.structurallyAnalysed,
+      }),
+    ]);
+    expect(report.unsupportedLanguages).toEqual({ Python: 1 });
+  });
+
+  it('claims no structure for a language without an adapter', () => {
+    const other = openDb(':memory:');
+    const r = indexRepository(other, root, { adapters: [] });
+    expect(r.adapters).toEqual([]);
+    expect(r.files.structurallyAnalysed).toBe(0);
+    expect(r.symbols).toBe(0);
+    expect(r.unsupportedLanguages.TypeScript).toBeGreaterThan(0);
+    expect(r.unsupportedLanguages.Python).toBe(1);
+    // Every file is still registered, just without symbols.
+    const files = other.prepare("SELECT COUNT(*) AS n FROM nodes WHERE kind = 'file'").get() as {
+      n: number;
+    };
+    expect(files.n).toBe(r.files.discovered);
+  });
+
+  it('refuses two adapters claiming the same language', () => {
+    const dup = {
+      id: 'dup',
+      name: 'dup',
+      languages: ['typescript' as const],
+      analyse: () => ({ filesParsed: 0, filesFailed: [], symbols: 0, routes: 0 }),
+    };
+    const other = openDb(':memory:');
+    expect(() => indexRepository(other, root, { adapters: [dup, { ...dup, id: 'dup2' }] })).toThrow(
+      /Two language adapters claim typescript/,
+    );
+  });
+});
+
+describe('configuration, services and databases (S3-3, S3-7)', () => {
+  const FILES: Record<string, string> = {
+    'src/config.ts': [
+      "import 'dotenv/config';",
+      "import { readFileSync } from 'node:fs';",
+      "import { join } from 'node:path';",
+      'export const port = Number(process.env.PORT ?? 3000);',
+      'export function settings() {',
+      '  const { DATABASE_URL, API_KEY: key } = process.env;',
+      "  const raw = readFileSync(join(__dirname, 'settings.json'), 'utf8');",
+      "  const other = readFileSync('/etc/app/app.yaml', 'utf8');",
+      "  return { DATABASE_URL, key, raw, other, mode: import.meta.env.MODE, flag: process.env['FEATURE_X'] };",
+      '}',
+      'export function dynamic(name: string) {',
+      '  return process.env[name];',
+      '}',
+      'export function setDebug() {',
+      "  process.env.DEBUG = '1';",
+      '}',
+      '',
+    ].join('\n'),
+    'src/settings.json': '{"theme":"dark"}\n',
+    'src/db.ts': "import { Pool } from 'pg';\nexport const pool = new Pool();\n",
+    'src/users.ts': [
+      "import { pool } from './db';",
+      "import { PrismaClient } from '@prisma/client';",
+      "import axios from 'axios';",
+      'const prisma = new PrismaClient();',
+      "const api = axios.create({ baseURL: 'https://api.example.com/v1' });",
+      'export async function listUsers() {',
+      "  return pool.query('SELECT 1');",
+      '}',
+      'export async function countPosts() {',
+      '  return prisma.post.count();',
+      '}',
+      'export async function remote() {',
+      "  await fetch('https://billing.example.org/invoices', { method: 'POST' });",
+      '  await fetch(`/api/items/${1}`);',
+      "  return api.get('/users');",
+      '}',
+      'export async function anyUrl(u: string) {',
+      '  return axios.get(u);',
+      '}',
+      '',
+    ].join('\n'),
+    'src/local.ts': [
+      'function fetch(x: string): string {',
+      '  return x;',
+      '}',
+      "export const notHttp = () => fetch('https://not-a-request.example');",
+      '',
+    ].join('\n'),
+  };
+  let r2: string;
+  let d2: Db;
+  let id2: number;
+  let rep2: CoverageReport;
+  beforeAll(() => {
+    r2 = mkdtempSync(join(tmpdir(), 'codeatlas-integrations-'));
+    for (const [p, c] of Object.entries(FILES)) {
+      mkdirSync(dirname(join(r2, p)), { recursive: true });
+      writeFileSync(join(r2, p), c);
+    }
+    d2 = openDb(':memory:');
+    rep2 = indexRepository(d2, r2);
+    id2 = rep2.repoId;
+  });
+  afterAll(() => rmSync(r2, { recursive: true, force: true }));
+
+  const into = (kind: string, key: string, edgeKind: string) => {
+    const n = nodeByKey(d2, id2, kind, key);
+    if (!n) return [];
+    return edgesTo(d2, id2, n.id, [edgeKind]).map((e) => {
+      const src = d2.prepare('SELECT key FROM nodes WHERE id = ?').get(e.src) as { key: string };
+      return { src: src.key, confidence: e.confidence, line: e.evidenceLine, detail: e.detail };
+    });
+  };
+
+  it('links literal environment variable reads to config nodes as observed', () => {
+    expect(into('config', 'env:PORT', 'reads_config')).toEqual([
+      expect.objectContaining({ src: 'src/config.ts#port', confidence: 'observed', line: 4 }),
+    ]);
+    for (const name of ['DATABASE_URL', 'API_KEY', 'MODE', 'FEATURE_X'])
+      expect(into('config', `env:${name}`, 'reads_config')).toEqual([
+        expect.objectContaining({ src: 'src/config.ts#settings', confidence: 'observed' }),
+      ]);
+    expect(into('config', 'env:DEBUG', 'writes_config')).toEqual([
+      expect.objectContaining({ src: 'src/config.ts#setDebug', confidence: 'observed' }),
+    ]);
+  });
+
+  it('records a computed variable name as unresolved instead of guessing', () => {
+    expect(unresolvedList(d2, id2).filter((u) => u.kind === 'config')).toEqual([
+      expect.objectContaining({ filePath: 'src/config.ts', line: 12 }),
+    ]);
+  });
+
+  it('links configuration files as inferred: to the repo file when it exists, otherwise a config node', () => {
+    expect(into('file', 'src/settings.json', 'reads_config')).toEqual([
+      expect.objectContaining({ src: 'src/config.ts#settings', confidence: 'inferred' }),
+    ]);
+    expect(into('config', 'file:/etc/app/app.yaml', 'reads_config')).toHaveLength(1);
+    expect(into('config', 'file:.env', 'reads_config')).toEqual([
+      expect.objectContaining({ src: 'src/config.ts', confidence: 'inferred' }),
+    ]);
+  });
+
+  it('links database clients, including one imported from another file, as inferred', () => {
+    const pg = into('service', 'db:pg', 'accesses_db');
+    expect(pg.map((e) => e.src).sort()).toEqual(['src/db.ts#pool', 'src/users.ts#listUsers']);
+    expect(pg.every((e) => e.confidence === 'inferred')).toBe(true);
+    expect(into('service', 'db:@prisma/client', 'accesses_db').map((e) => e.src)).toContain(
+      'src/users.ts#countPosts',
+    );
+    expect(nodeByKey(d2, id2, 'service', 'db:pg')?.name).toBe('PostgreSQL (pg)');
+  });
+
+  it('links outbound HTTP by host, relative path or as not known statically', () => {
+    expect(into('service', 'http:billing.example.org', 'calls_service')).toEqual([
+      expect.objectContaining({ src: 'src/users.ts#remote', confidence: 'inferred' }),
+    ]);
+    expect(into('service', 'http:billing.example.org', 'calls_service')[0]!.detail).toMatch(
+      /^POST \/invoices/,
+    );
+    expect(into('service', 'http:same-origin', 'calls_service')[0]!.detail).toMatch(
+      /\/api\/items\//,
+    );
+    // axios.create({ baseURL }) carries its host to later calls.
+    expect(into('service', 'http:api.example.com', 'calls_service')[0]!.detail).toMatch(
+      /^GET \/v1\/users/,
+    );
+    expect(into('service', 'http:dynamic', 'calls_service').map((e) => e.src)).toEqual([
+      'src/users.ts#anyUrl',
+    ]);
+  });
+
+  it('summarises integrations in the coverage report', () => {
+    expect(rep2.integrations).toEqual({
+      envVars: 6,
+      configFiles: 3,
+      // PORT, DATABASE_URL, API_KEY, MODE, FEATURE_X, DEBUG (write), settings.json, app.yaml, .env
+      configReads: 9,
+      // billing.example.org, same origin, api.example.com, not known statically
+      services: { http: 4, db: 2 },
+      serviceCalls: 4,
+      // new Pool(), pool.query(), new PrismaClient(), prisma.post.count()
+      dbAccesses: 4,
+    });
+    expect(report.integrations.serviceCalls).toBe(0);
+  });
+
+  it('integrations view groups targets with their uses and evidence', () => {
+    const v = integrationsView(d2, id2);
+    expect(v.config.map((c) => `${c.category}:${c.name}`)).toEqual([
+      'configuration file:.env',
+      'configuration file:/etc/app/app.yaml',
+      'configuration file:src/settings.json',
+      'environment variable:API_KEY',
+      'environment variable:DATABASE_URL',
+      'environment variable:DEBUG',
+      'environment variable:FEATURE_X',
+      'environment variable:MODE',
+      'environment variable:PORT',
+    ]);
+    const pg = v.services.find((s) => s.key === 'db:pg');
+    expect(pg?.category).toBe('database');
+    expect(pg?.uses.map((u) => [u.key, u.path, u.confidence])).toEqual([
+      ['src/db.ts#pool', 'src/db.ts', 'inferred'],
+      ['src/users.ts#listUsers', 'src/users.ts', 'inferred'],
+    ]);
+    // Impact analysis walks back from a variable to the code that reads it.
+    const port = nodeByKey(d2, id2, 'config', 'env:PORT');
+    expect(impactOf(d2, id2, port!.id).affected.map((n) => n.key)).toContain('src/config.ts#port');
+  });
+
+  it('does not treat a local function named fetch as HTTP', () => {
+    expect(into('service', 'http:not-a-request.example', 'calls_service')).toEqual([]);
+  });
+});
+
+describe('tree and language filter (S3-2)', () => {
+  it('drills down repository → module → file → symbol → member', () => {
+    const modules = treeChildren(db, repoId);
+    expect(modules).toEqual([
+      expect.objectContaining({
+        kind: 'module',
+        label: 'fixture-app',
+        expand: { module: 'fixture-app' },
+      }),
+    ]);
+    const files = treeChildren(db, repoId, { module: 'fixture-app' });
+    const math = files.find((f) => f.label === 'src/lib/math.ts');
+    expect(math).toMatchObject({ kind: 'file', lang: 'typescript', childCount: 3 });
+    const symbols = treeChildren(db, repoId, math!.expand as { file: string });
+    expect(symbols.map((s) => [s.label, s.symbolKind, s.line])).toEqual([
+      ['add', 'function', 4],
+      ['Calculator', 'class', 9],
+      ['PI', 'variable', 15],
+    ]);
+    const members = treeChildren(db, repoId, symbols[1]!.expand as { symbol: string });
+    expect(members.map((m) => [m.label, m.symbolKind])).toEqual([['run', 'method']]);
+    expect(members[0]!.expand).toBeUndefined();
+    // Files without symbols cannot be expanded; unknown parents give nothing.
+    expect(files.find((f) => f.label === 'docs/README.md')?.expand).toBeUndefined();
+    expect(treeChildren(db, repoId, { file: 'nope.ts' })).toEqual([]);
+  });
+
+  it('filters the tree, dependency graph and search by language', () => {
+    expect(repoLanguages(db, repoId)).toEqual(
+      expect.arrayContaining([
+        { lang: 'typescript', files: expect.any(Number) },
+        { lang: 'javascript', files: 1 },
+      ]),
+    );
+    const js = treeChildren(db, repoId, { module: 'fixture-app', lang: 'javascript' });
+    expect(js.map((f) => f.label)).toEqual(['src/legacy.js']);
+    expect(treeChildren(db, repoId, { lang: 'javascript' })[0]?.childCount).toBe(1);
+    const graph = dependencyView(db, repoId, { lang: 'javascript' });
+    expect(graph.nodes.map((n) => n.label)).toEqual(['src/legacy.js']);
+    expect(
+      search(db, repoId, 'computeTotal', { lang: 'javascript' }).map((h) => h.filePath),
+    ).toEqual(['src/legacy.js']);
+    expect(
+      search(db, repoId, 'computeTotal', { lang: 'typescript' }).every(
+        (h) => h.filePath !== 'src/legacy.js',
+      ),
+    ).toBe(true);
   });
 });

@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { Ask } from './pages/Ask';
+import { IntegrationsPage } from './pages/Integrations';
 import { Investigate } from './pages/Investigate';
 import { Overview } from './pages/Overview';
+import { StructurePage } from './pages/Structure';
 import {
   Dependencies,
   Flows,
@@ -26,9 +28,11 @@ export interface TabDef {
 /** Repository tabs. Feature modules (Ask, Investigate) append to this list. */
 export const TABS: TabDef[] = [
   { id: 'overview', label: 'Overview', render: (p) => <Overview repoId={p.repoId} /> },
+  { id: 'structure', label: 'Structure', render: (p) => <StructurePage {...p} /> },
   { id: 'modules', label: 'Modules', render: (p) => <Modules {...p} /> },
   { id: 'dependencies', label: 'Dependencies', render: (p) => <Dependencies {...p} /> },
   { id: 'flows', label: 'Flows', render: (p) => <Flows {...p} /> },
+  { id: 'integrations', label: 'Integrations', render: (p) => <IntegrationsPage {...p} /> },
   { id: 'risk', label: 'Risk', render: (p) => <Risk {...p} /> },
   { id: 'ownership', label: 'Ownership', render: (p) => <OwnershipPage repoId={p.repoId} /> },
   { id: 'knowledge', label: 'Knowledge', render: (p) => <KnowledgePage {...p} /> },

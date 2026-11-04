@@ -19,6 +19,9 @@ import {
   getRepo,
   impactOf,
   indexRuns,
+  integrationsView,
+  repoLanguages,
+  treeChildren,
   knowledgeView,
   latestCoverage,
   listRepos,
@@ -121,6 +124,14 @@ function intParam(v: string | undefined, name: string): number {
   const n = Number(v);
   if (!Number.isInteger(n) || n <= 0) throw new HttpError(400, 'BAD_PARAM', `Invalid ${name}.`);
   return n;
+}
+
+const LANGS = new Set(['typescript', 'javascript', 'markdown', 'json', 'text', 'unsupported']);
+/** Optional language filter; only the languages discovery assigns are accepted. */
+function langParam(v: string | null): string | undefined {
+  if (!v) return undefined;
+  if (!LANGS.has(v)) throw new HttpError(400, 'BAD_PARAM', 'Invalid language.');
+  return v;
 }
 
 export function repoOr404(ctx: ServiceContext, idParam: string | undefined) {
@@ -285,9 +296,29 @@ function registerCoreRoutes(ctx: ServiceContext): void {
       module,
       includeExternal: req.query.get('external') === '1',
       limit: Math.min(Number(req.query.get('limit')) || 250, 1000),
+      lang: langParam(req.query.get('lang')),
     });
     if (module) track(ctx, 'module_explored', repo.id, {});
     return view;
+  });
+  r.add('GET', '/api/repos/:id/languages', (req) => ({
+    languages: repoLanguages(ctx.db, repoOr404(ctx, req.params.id).id),
+  }));
+  r.add('GET', '/api/repos/:id/tree', (req) => {
+    const repo = repoOr404(ctx, req.params.id);
+    const opt = (k: string) => {
+      const v = req.query.get(k);
+      if (v !== null && v.length > 2000) throw new HttpError(400, 'BAD_PARAM', `${k} is too long.`);
+      return v ?? undefined;
+    };
+    return {
+      items: treeChildren(ctx.db, repo.id, {
+        module: opt('module'),
+        file: opt('file'),
+        symbol: opt('symbol'),
+        lang: langParam(req.query.get('lang')),
+      }),
+    };
   });
   r.add('GET', '/api/repos/:id/flows', (req) => ({
     starts: flowStarts(ctx.db, repoOr404(ctx, req.params.id).id),
@@ -307,6 +338,9 @@ function registerCoreRoutes(ctx: ServiceContext): void {
   r.add('GET', '/api/repos/:id/views/knowledge', (req) =>
     knowledgeView(ctx.db, repoOr404(ctx, req.params.id).id),
   );
+  r.add('GET', '/api/repos/:id/views/integrations', (req) =>
+    integrationsView(ctx.db, repoOr404(ctx, req.params.id).id),
+  );
   r.add('GET', '/api/repos/:id/nodes/:nodeId', (req) => {
     const d = nodeDetail(
       ctx.db,
@@ -321,7 +355,12 @@ function registerCoreRoutes(ctx: ServiceContext): void {
   );
   r.add('GET', '/api/repos/:id/search', (req) => {
     const q = (req.query.get('q') ?? '').slice(0, 500);
-    return { hits: search(ctx.db, repoOr404(ctx, req.params.id).id, q, { limit: 30 }) };
+    return {
+      hits: search(ctx.db, repoOr404(ctx, req.params.id).id, q, {
+        limit: 30,
+        lang: langParam(req.query.get('lang')),
+      }),
+    };
   });
   r.add('GET', '/api/repos/:id/find', (req) => ({
     nodes: findNodes(
