@@ -29,6 +29,7 @@ All notable changes to this repository. Format: [Keep a Changelog](https://keepa
 
 ### Fixed
 
+- CVForge suggestions: "Undo decision" now mounts as its own button instead of reusing the Accept button's element, which briefly faded from green through unreadable colours after a decision (caught by the accessibility scan in the journey e2e test, which failed intermittently in CI on main).
 - CVForge resume extraction (reported 2026-11-06 with a real three-page PDF resume): PDF lines that wrap are rejoined using the page layout, so a wrapped bullet no longer becomes a new job, project or custom item; column gaps (title ↔ dates, company ↔ location) are kept as tabs; an ALL-CAPS name or headline is no longer read as a section, so Personal information fills in; skills are split only outside brackets and inherit their category across wrapped lines; experience, project and education entries are anchored on their date lines with the description paragraph kept as the entry's first bullet; education reads degree, field, grade and Indian school certificates (HSC/SSC, Class XII); "Key Achievement" is recognised; a "Personal Details" block fills Personal information and Languages; hyperlink targets are read from DOCX and PDF links, and a link label without an address is flagged instead of invented; over-long text no longer fails the upload. Word's private-use bullet glyphs are recognised. Bullet boxes in the editor size to their text.
 
 ### Security
