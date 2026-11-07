@@ -772,7 +772,9 @@ function SuggestionsTab({
                 </Button>
               </>
             ) : (
-              <Button size="sm" variant="ghost" onClick={() => decide(s, 'pending')}>
+              // A distinct key makes React mount a new button here instead of reusing the
+              // Accept button's element, which would fade from green through unreadable colours.
+              <Button key="undo" size="sm" variant="ghost" onClick={() => decide(s, 'pending')}>
                 Undo decision
               </Button>
             )}
