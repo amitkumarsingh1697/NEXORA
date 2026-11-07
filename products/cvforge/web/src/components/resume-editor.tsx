@@ -120,7 +120,8 @@ function Bullets({
           </span>
           <Textarea
             aria-label={`Bullet ${i + 1}`}
-            rows={2}
+            // Whole bullets are often 2-4 lines; size the box so none is cut off on load.
+            rows={Math.min(8, Math.max(2, Math.ceil(b.text.length / 100)))}
             value={b.text}
             onChange={(e) =>
               onChange(items.map((x) => (x.id === b.id ? { ...x, text: e.target.value } : x)))

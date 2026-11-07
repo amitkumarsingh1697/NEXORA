@@ -5,6 +5,7 @@ import {
   PdfUnreadableError,
   runMammothIsolated,
   runPdfIsolated,
+  type PdfPageText,
   type PdfTextItem,
   type IsolationLimits,
 } from './isolate';
@@ -119,45 +120,36 @@ async function extractPdf(bytes: Uint8Array, limits: IsolationLimits): Promise<E
   let multiColumnLines = 0;
   let totalLines = 0;
   const marginTexts = new Map<string, number>();
-  for (const page of pages) {
-    const viewport = { width: page.width, height: page.height };
-    const items = page.items;
-    // Group items into visual lines by baseline y (2pt tolerance).
-    const rows: { y: number; items: PdfTextItem[] }[] = [];
-    for (const it of items) {
-      if (!it.str.trim()) continue;
-      fonts.add(it.fontName);
-      const y = it.y;
-      let row = rows.find((r) => Math.abs(r.y - y) <= 2);
-      if (!row) {
-        row = { y, items: [] };
-        rows.push(row);
-      }
-      row.items.push(it);
-    }
-    rows.sort((a, b) => b.y - a.y);
-    for (const row of rows) {
-      row.items.sort((a, b) => a.x - b.x);
-      let line = '';
-      let prevEnd: number | null = null;
-      let bigGap = false;
-      for (const it of row.items) {
-        const x = it.x;
-        if (prevEnd !== null) {
-          const gap = x - prevEnd;
-          if (gap > viewport.width * 0.12) bigGap = true;
-          line += gap > 1.5 ? ' ' : '';
-        }
-        line += it.str;
-        prevEnd = x + it.width;
-      }
-      const clean = line.replace(/\s+/g, ' ').trim();
-      if (!clean) continue;
+  let prev: PdfRow | null = null;
+  const pageRowsList = pages.map((page) => pageRows(page));
+  // The text column's edges, over the whole document: a short last page must not make every
+  // one of its lines look as if it reached the right margin.
+  const bodyRows = pageRowsList.flat().filter((r) => !r.inMargin);
+  const column = {
+    left: bodyRows.reduce((m, r) => Math.min(m, r.startX), Infinity),
+    right: bodyRows.reduce((m, r) => Math.max(m, r.right), 0),
+  };
+  for (const [pi, page] of pages.entries()) {
+    const rows = pageRowsList[pi] ?? [];
+    for (const it of page.items) if (it.str.trim()) fonts.add(it.fontName);
+    for (const [idx, row] of rows.entries()) {
       totalLines++;
-      if (bigGap) multiColumnLines++;
-      const inMargin = row.y > viewport.height * 0.95 || row.y < viewport.height * 0.05;
-      if (inMargin) marginTexts.set(clean, (marginTexts.get(clean) ?? 0) + 1);
-      allLines.push(clean);
+      if (row.bigGap) multiColumnLines++;
+      if (row.inMargin) {
+        marginTexts.set(row.text, (marginTexts.get(row.text) ?? 0) + 1);
+        // Margin text (page numbers, running headers) never continues a body line.
+        allLines.push(row.text);
+        prev = null;
+        continue;
+      }
+      if (prev && continuesLine(prev, row, idx === 0, column)) {
+        const last = allLines.length - 1;
+        allLines[last] = joinWrapped(allLines[last] ?? '', row.text);
+        prev = { ...row, textX: prev.textX, startX: prev.startX };
+      } else {
+        allLines.push(row.text);
+        prev = row;
+      }
     }
   }
   const pageCount = pages.length;
@@ -230,7 +222,13 @@ async function extractDocx(bytes: Uint8Array, limits: IsolationLimits): Promise<
   // the parser can tell bullets from headings. Fall back to raw text if HTML is empty.
   const fromHtml = htmlToLines(html.value);
   const lines = (fromHtml.length ? fromHtml : raw.value.split(/\r?\n/))
-    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .map((l) =>
+      l
+        .split('\t')
+        .map((p) => p.replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+        .join('\t'),
+    )
     .filter(Boolean);
   const text = lines.join('\n');
   const warnings: string[] = [];
@@ -272,10 +270,154 @@ function decodeEntities(s: string): string {
 /** Convert mammoth's HTML to text lines, prefixing list items with a bullet. */
 export function htmlToLines(html: string): string[] {
   const text = html
+    // Keep hyperlink targets whose label does not show them ("LinkedIn" -> profile URL).
+    .replace(
+      /<a\s[^>]*href="(https?:[^"]+|mailto:[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi,
+      (_m, href: string, label: string) => {
+        const target = decodeEntities(href).replace(/^mailto:/i, '');
+        const shown = label.replace(/<[^>]+>/g, '');
+        const bare = target.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '');
+        return shown.toLowerCase().includes(bare.toLowerCase()) ? label : `${label} (${target})`;
+      },
+    )
     .replace(/<li[^>]*>/gi, '\n\u2022 ')
     .replace(/<\/(p|h[1-6]|li|tr|div)>/gi, '\n')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/t[dh]>/gi, ' ')
     .replace(/<[^>]+>/g, '');
   return decodeEntities(text).split('\n');
+}
+
+// Includes the Symbol/Wingdings private-use bullets that Word writes into PDFs.
+const BULLET_GLYPH = /^[•●▪◦‣∙·○■□►▸➢➤✓✔❖\uF0B7\uF0A7\uF076\uF0D8\uF0FC\uF06C\uF0A8\-*–]$/;
+
+interface PdfRow {
+  y: number;
+  text: string;
+  /** x of the first item (a bullet glyph, if any). */
+  startX: number;
+  /** x where the text itself starts (after a bullet glyph). */
+  textX: number;
+  right: number;
+  size: number;
+  firstFont: string;
+  lastFont: string;
+  bullet: boolean;
+  /** The row has a gap wide enough to be separate columns (title ... dates). */
+  bigGap: boolean;
+  /** The row has any tab-separated run (company <gap> location). */
+  hasTab: boolean;
+  inMargin: boolean;
+}
+
+/**
+ * Group a page's text items into visual rows (2pt baseline tolerance), in reading order.
+ * Runs separated by a gap wider than about half an em are joined with a tab, so that
+ * right-aligned dates and locations stay distinguishable from the text before them.
+ */
+function pageRows(page: PdfPageText): PdfRow[] {
+  const groups: { y: number; items: PdfTextItem[] }[] = [];
+  for (const it of page.items) {
+    if (!it.str.trim()) continue;
+    let row = groups.find((r) => Math.abs(r.y - it.y) <= 2);
+    if (!row) {
+      row = { y: it.y, items: [] };
+      groups.push(row);
+    }
+    row.items.push(it);
+  }
+  groups.sort((a, b) => b.y - a.y);
+  const rows: PdfRow[] = [];
+  for (const g of groups) {
+    g.items.sort((a, b) => a.x - b.x);
+    let line = '';
+    let prevEnd: number | null = null;
+    let prevStr = '';
+    let bigGap = false;
+    let hasTab = false;
+    const size = Math.max(...g.items.map((i) => i.size || 0)) || 10;
+    for (const it of g.items) {
+      if (prevEnd !== null) {
+        const gap = it.x - prevEnd;
+        if (gap > page.width * 0.12) bigGap = true;
+        const afterGlyph = BULLET_GLYPH.test(prevStr.trim());
+        if (gap > size * 0.55 && !afterGlyph) {
+          line += '\t';
+          hasTab = true;
+        } else if (gap > 1.5 && !/\s$/.test(line) && !/^\s/.test(it.str)) line += ' ';
+      }
+      line += it.str;
+      prevEnd = it.x + it.width;
+      prevStr = it.str;
+    }
+    // Link targets that the visible text does not spell out are appended, so a "LinkedIn"
+    // label still yields the profile address.
+    for (const l of page.links ?? []) {
+      const [x1 = 0, y1 = 0, x2 = 0, y2 = 0] = l.rect;
+      if (g.y < Math.min(y1, y2) - 2 || g.y > Math.max(y1, y2) + 2) continue;
+      if (!g.items.some((i) => i.x < Math.max(x1, x2) && i.x + i.width > Math.min(x1, x2)))
+        continue;
+      const target = l.url.replace(/^mailto:/i, '');
+      const bare = target.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '');
+      if (!line.toLowerCase().includes(bare.toLowerCase())) line += ` | ${target}`;
+    }
+    const text = line
+      .split('\t')
+      .map((p) => p.replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .join('\t');
+    if (!text) continue;
+    const first = g.items[0] as PdfTextItem;
+    const bullet =
+      BULLET_GLYPH.test(first.str.trim()) ||
+      /^\s*[•●▪◦‣∙·○■□►▸➢➤✓✔❖\uF0B7\uF0A7\uF076\uF0D8\uF0FC\uF06C\uF0A8]\s/.test(first.str);
+    const textItem = (BULLET_GLYPH.test(first.str.trim()) ? g.items[1] : first) ?? first;
+    const last = g.items[g.items.length - 1] as PdfTextItem;
+    rows.push({
+      y: g.y,
+      text,
+      startX: first.x,
+      textX: textItem.x,
+      right: last.x + last.width,
+      size,
+      firstFont: textItem.fontName,
+      lastFont: last.fontName,
+      bullet,
+      bigGap,
+      hasTab: hasTab && text.includes('\t'),
+      inMargin: g.y > page.height * 0.95 || g.y < page.height * 0.05,
+    });
+  }
+  return rows;
+}
+
+/**
+ * Decide whether `row` is a soft-wrapped continuation of `prev` (the previous row's text
+ * reached the right margin and this row carries on in the same font, size and indent).
+ * Without this, every wrapped line of a bullet or paragraph reads as a new line, and the
+ * parser mistakes the second half of a bullet for a new job title or company.
+ */
+function continuesLine(
+  prev: PdfRow,
+  row: PdfRow,
+  firstOnPage: boolean,
+  column: { left: number; right: number },
+) {
+  if (row.bullet || prev.hasTab || row.hasTab) return false;
+  if (prev.lastFont !== row.firstFont) return false;
+  if (Math.abs(prev.size - row.size) > 0.6) return false;
+  const gap = prev.y - row.y;
+  if (!firstOnPage && (gap <= 0 || gap > row.size * 1.75)) return false;
+  // Continuation rows align with the text of the line they continue (hanging indent).
+  if (row.startX < Math.min(prev.startX, prev.textX) - 2 || row.startX > prev.textX + 3)
+    return false;
+  const firstWord = row.text.split(/\s/)[0] ?? '';
+  const wordWidth = firstWord.length * row.size * 0.5;
+  if (prev.right - column.left < (column.right - column.left) * 0.6) return false;
+  return column.right - prev.right < wordWidth + row.size * 1.5;
+}
+
+function joinWrapped(a: string, b: string): string {
+  if (/[A-Za-z]-$/.test(a) && /^[A-Za-z]/.test(b)) return a + b;
+  return `${a} ${b}`;
 }
