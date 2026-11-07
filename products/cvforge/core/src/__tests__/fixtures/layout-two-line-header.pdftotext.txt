@@ -1,0 +1,286 @@
+ARJUN VERMA
+Senior Java Full Stack Developer | AI-Agentic Development
++91-9000000001 | arjun.verma@example.com | LinkedIn
+
+PROFESSIONAL SUMMARY
+Full Stack Java Developer with 7+ years of experience across product and service-based firms, specializing in Investment Banking &
+Global Capital Markets (IBD/GCM), Architectural Hardware Distribution, and Data Transfer & Conversion domains. Adept at building
+scalable, high-performance applications across the full stack, with a strong grasp of cloud platforms, modern development
+frameworks, and agile delivery practices. Increasingly focused on AI-agentic development — building LLM-powered tools and agents
+that automate real engineering workflows — alongside proven ability to lead teams, drive technical excellence, and deliver solutions
+aligned with complex business needs.
+
+TECHNICAL SKILLS
+Backend: Java (8 & 17), Java Collections, Spring Framework (Core, Boot, MVC), Hibernate (JPA), RESTful API Development,
+Microservices Architecture, Unit Testing (JUnit, Mockito), Functional Testing, BDD (Cucumber with Gherkin), Elastic Stack
+(Elasticsearch, Kibana), Build Tools (Ant, Maven, Gradle)
+AI & Agentic Development: GitHub Copilot, Claude Code, Cursor (AI-augmented development workflows); LLM API Integration
+(function-calling, tool-use); Prompt Engineering; Agentic Workflow Design; Retrieval-Augmented Generation (RAG) concepts
+System Design & Problem Solving: Data Structures & Algorithms (DSA), High-Level Design (HLD), Low-Level Design (LLD), Scalable
+System Design
+Database: MySQL, MongoDB, BigQuery, Oracle, SQL Server, CData, Liquibase
+Cloud & Monitoring: Google Cloud Platform (GCP), Amazon Web Services (AWS), Datadog, Splunk
+Frontend: GWT, SmartGWT, Angular 11, JavaScript, HTML5, CSS3
+DevOps & Tools: Docker, Git, Jenkins, Bitbucket, Swagger, Autosys, Gradle, Maven, Ant, Batchmon, OneUI, Gerrit
+Reporting & Data Engineering: Jasper, Cloud Data Fusion (CDF), Data Transfer Service (DTS)
+Extra: Software Development Methodologies (Scrum, Agile, Kanban), R Programming, Unity3D, Unreal Engine, Blender, Sandbox
+
+PROFESSIONAL EXPERIENCE
+Senior Developer
+Northwind (Client: Contoso) Noida, India
+
+October 2024 - Current
+
+●
+
+Working with a modern tech stack that includes Java 17, Docker, Google Cloud Platform (GCP), BigQuery, Cloud Data Fusion
+(CDF), and Data Transfer Service (DTS), along with multiple databases such as CData, MySQL, SQL Server, MongoDB, and
+Oracle, to build scalable, cloud-native data integration solutions.
+
+●
+
+Designed and developed custom plugins for Google Cloud Data Transfer Service (DTS), including data connectors for Stripe
+and MySQL, enabling efficient and secure data ingestion.
+
+●
+
+Contributed to Google Cloud Data Fusion (CDF) by building new plugins such as Wrangler, FTP, and HTTP, and by enhancing
+error management capabilities across multiple connectors.
+
+●
+
+Integrated OAuth 2.0 authentication for the HTTP plugin to support source, sink, and streaming pipelines, ensuring secure
+and compliant data transfers.
+
+●
+
+Led a team in the end-to-end development of a new plugin from scratch — defining architecture, managing sprints,
+conducting code reviews, and ensuring timely delivery.
+
+●
+
+Authored comprehensive JUnit test cases to improve code quality and maintain high test coverage across plugin modules.
+
+●
+
+Delivered key feature milestones on or ahead of schedule while aligning with evolving product requirements and
+stakeholder expectations.
+
+●
+
+Collaborated with cross-functional teams and actively contributed to design discussions to enhance the scalability,
+maintainability, and seamless delivery of cloud-native data integration solutions.
+
+Key Project: AI-Powered PR/CL Code Review Agent
+○ Designed and built an AI-powered code review agent (Java/Spring Boot backend integrated with an LLM API) that
+automatically analyzes pull/change-list diffs and generates structured review feedback — covering style issues,
+potential bugs, and missing test coverage.
+
+○
+
+Adopted team-wide as part of the standard PR workflow, reducing code review turnaround time by 60-70%.
+
+○
+
+Demonstrates practical agentic tool-use: automated diff retrieval, LLM-based reasoning over code, and structured
+feedback generation integrated directly into the existing review process.
+
+Associate Technical Lead
+Fabrikam (Client: Tailspin Hardware Inc) Gurgaon, India
+
+September 2021 - October 2024
+
+●
+
+Worked in the Architectural Hardware Distribution domain, contributing to the development of enterprise-grade solutions
+for managing hardware ordering, reporting, and project tracking.
+
+●
+
+Leveraged a robust tech stack — including Java, Spring, Spring Boot, Hibernate, MySQL, GWT, SmartGWT, AWS, and
+Datadog — to develop and maintain scalable, full-stack web applications.
+
+●
+
+Developed and delivered 10+ new features and enhancements to the core product, improving user experience and
+operational efficiency.
+
+●
+
+Designed and implemented critical software components for a new module, contributing to the foundational architecture of
+the application.
+
+●
+
+Engineered a comprehensive ordering system integrated with detailed hardware and material reporting, streamlining
+inventory and procurement workflows.
+
+●
+
+Improved the accuracy of key reporting systems by 4% through enhanced data integration and processing logic.
+
+●
+
+Consistently met regulatory milestones and achieved 100% on-time delivery across all project phases, ensuring alignment
+with client expectations and timelines.
+
+●
+
+Mentored junior developers, leading to a 30% increase in team productivity through knowledge sharing and improved code
+quality practices.
+
+Senior Software Engineer
+Litware (Client: Woodgrove Investment Bank Ltd) Pune, India
+
+December 2019 - September 2021
+
+●
+
+Worked in the Investment Banking and Global Capital Markets (IBD/GCM) domain, specifically on Capital Markets, Equity
+Syndication, IPOs, Block Trades, Deal Creation, Orders, and Trade Management for institutional investment platforms.
+
+●
+
+Leveraged a comprehensive tech stack — including Java, Spring, Spring Boot, Hibernate, REST APIs, MySQL, MongoDB,
+Liquibase, Autosys, Elastic Stack, Kibana, OneUI, Batchmon, Ant, Maven, Gradle, and Web Farm environments — to develop
+and maintain complex enterprise-grade applications.
+
+●
+
+Designed and implemented new services for deal generation and order placement, streamlining workflows across multiple
+business units.
+
+●
+
+Refactored a legacy deal-making application to support cross-platform use (iPad and Windows), improving stability and user
+experience for deal, trade, and order management operations.
+
+●
+
+Developed reusable software components adopted across multiple projects, reducing development effort by 50% and
+standardizing code practices.
+
+●
+
+Re-engineered performance-critical modules within a single sprint to rely on a centralized utility library, achieving a 68%
+performance improvement.
+
+●
+
+Consistently achieved 100% on-time project delivery, aligning development with regulatory compliance and market
+timelines.
+
+●
+
+Deployed applications in web farm environments (server farm) to ensure high availability and load-balanced performance
+across distributed systems.
+
+Software Engineer
+Q7Logic Technology Noida, India
+
+March 2019 - November 2019
+
+●
+
+Contributed to the development of an AI and IoT-based room security product, focused on intelligent access control and
+real-time monitoring.
+
+●
+
+Collaborated with a team of 5 senior developers to analyze requirements, design system architecture, and implement new
+features and enhancements.
+
+●
+
+Increased test coverage of the main product from 5% to 25%, and up to 80% for supporting modules, while actively
+contributing to new feature development.
+
+●
+
+Delivered all project milestones 100% on time, ensuring compliance with regulatory and security standards.
+
+●
+
+Participated in regular sprint planning, code reviews, and debugging sessions to support continuous delivery and team
+collaboration.
+
+●
+
+Gained hands-on exposure to cross-functional coordination, working with QA and DevOps teams for smooth deployment
+and release cycles.
+
+CERTIFICATIONS
+●
+
+Oracle Certified Professional: Java SE 8 Programmer
+
+●
+
+Oracle Certified Associate: Java SE 8 Programmer
+
+KEY ACHIEVEMENT
+Best Annual Performance
+Consistently awarded the highest annual performance rating throughout my tenure, placing me among the top ~5% of employees.
+
+LEADERSHIP & MENTORSHIP
+●
+
+Mentored junior developers across multiple projects, offering guidance on code quality, design patterns, and best practices,
+leading to a 30% increase in team productivity.
+
+●
+
+Led a small team in the complete development lifecycle of a custom plugin for Google Cloud Data Fusion, including
+architecture design, task delegation, sprint planning, and performance reviews.
+
+●
+
+Conducted internal knowledge-sharing sessions on unit testing, cloud plugin development, and OAuth integration, fostering
+a culture of continuous learning and technical growth.
+
+●
+
+Actively participated in peer code reviews and architectural discussions, helping elevate code standards and ensuring
+maintainable and scalable solutions across the team.
+
+EDUCATION
+Dr. A.B.C. Example Technical University
+
+August 2015 - June 2019
+
+BTech - Computer Science and Engineering, 71.18%
+
+Elm Public School
+
+April 2013 - March 2014
+
+Higher Secondary Certificate, 68%
+
+Elm Public School
+
+April 2011 - March 2012
+
+Secondary School Certificate, CGPA: 7.8
+
+PERSONAL PROJECTS
+Prompt Smith – AI Prompt Refinement Engine
+Built a full-stack tool (Node.js/Python backend + LLM API) that takes a vague user prompt (e.g. "build a UI page for a PUBG game")
+and expands it into a detailed, structured prompt — covering tech stack, typography, color system, and layout specifics — that users
+can paste directly into any AI coding agent (Claude, etc.) for significantly more accurate first-pass output and reduced token waste
+from re-prompting. Includes a direct code-generation mode and a Figma plugin integration for design-to-prompt workflows.
+Airline Reservation System
+Designed and developed a web-based airline reservation system using Java 8, Spring Boot, Angular 8, and MySQL, supporting flight
+bookings, cancellations, and real-time seat availability. Demonstrated full-stack proficiency and REST API integration in a
+microservices setup.
+Banking Management System
+Built a secure and modular banking system with features like account creation, fund transfer, and transaction history using Java 8,
+Spring Boot, Angular 8, and MySQL. Focused on implementing core banking logic with role-based access control and form validations.
+Campus Planner – Classroom Scheduling System
+Developed a smart scheduling solution using Java, MySQL, HTML, CSS, and JavaScript to optimize classroom and faculty allocations.
+Helped simulate real-time conflict resolution and timetable generation for educational institutions.
+Grade Sense – Student Performance Predictor
+Created a data-driven application to predict student performance based on academic and behavioral metrics. Used Python, R
+Programming, HTML, CSS, and JavaScript for data analysis, visualization, and front-end presentation. Integrated basic machine
+learning algorithms for outcome predictions.
+
+

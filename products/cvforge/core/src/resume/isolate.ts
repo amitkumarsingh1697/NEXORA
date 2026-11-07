@@ -95,9 +95,22 @@ const { pathToFileURL } = require('node:url');
       const items = [];
       for (const i of content.items) {
         if (typeof i.str !== 'string' || !Array.isArray(i.transform)) continue;
-        items.push({ str: i.str, x: i.transform[4] || 0, y: i.transform[5] || 0, width: i.width || 0, fontName: String(i.fontName || '') });
+        const size = Math.abs(i.transform[3] || 0) || Math.abs(i.height || 0);
+        items.push({ str: i.str, x: i.transform[4] || 0, y: i.transform[5] || 0, width: i.width || 0, size, fontName: String(i.fontName || '') });
       }
-      pages.push({ width: viewport.width, height: viewport.height, items });
+      // Link annotations carry addresses that are not in the text layer (a "LinkedIn" label
+      // linking to the profile). Only http(s) and mailto targets are kept, with their rectangle.
+      const links = [];
+      try {
+        for (const a of await page.getAnnotations()) {
+          const url = typeof a.url === 'string' ? a.url : '';
+          if (a.subtype === 'Link' && /^(https?:|mailto:)/i.test(url) && Array.isArray(a.rect) && url.length <= 500)
+            links.push({ url, rect: a.rect.slice(0, 4).map(Number) });
+        }
+      } catch (e) {
+        // Annotations are optional extra signal; the text layer is still returned.
+      }
+      pages.push({ width: viewport.width, height: viewport.height, items, links });
       page.cleanup();
     }
     parentPort.postMessage({ ok: true, pages });
@@ -114,13 +127,22 @@ export interface PdfTextItem {
   x: number;
   y: number;
   width: number;
+  /** Font size in PDF points (vertical scale of the text matrix). */
+  size: number;
   fontName: string;
+}
+
+export interface PdfLink {
+  url: string;
+  /** [x1, y1, x2, y2] in PDF user space. */
+  rect: number[];
 }
 
 export interface PdfPageText {
   width: number;
   height: number;
   items: PdfTextItem[];
+  links: PdfLink[];
 }
 
 /** The document could not be opened at all (damaged, encrypted): not a resource problem. */
