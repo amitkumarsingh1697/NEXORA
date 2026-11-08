@@ -180,7 +180,7 @@ function render(
     }
   }
   const all = [...boxes.values()];
-  const width = Math.max(320, ...all.map((b) => b.x + b.w + MARGIN));
+  const width = Math.max(items.length ? 320 : 760, ...all.map((b) => b.x + b.w + MARGIN));
   const height = Math.max(160, ...all.map((b) => b.y + b.h + MARGIN));
 
   const parts: string[] = [];
@@ -272,7 +272,7 @@ function render(
   }
   if (!items.length)
     parts.push(
-      `<text x="24" y="70" fill="#64748b" font-family="Inter,system-ui,sans-serif">Nothing to draw: ${kind === 'class' ? 'no classes or interfaces were found here' : 'no database tables were found'}.</text>`,
+      `<text x="24" y="70" fill="#64748b" font-family="Inter,system-ui,sans-serif">Nothing to draw: ${kind === 'class' ? 'no classes or interfaces were found here' : 'no database tables were found in the schema formats this brain reads (SQL, Prisma, Drizzle)'}.</text>`,
     );
   parts.push('</svg>');
   return {

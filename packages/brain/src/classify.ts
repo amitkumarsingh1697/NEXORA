@@ -10,6 +10,11 @@ export interface PlacementHints {
   kind?: NeuronKind;
   /** Package names the file imports (for example "react", "express", "drizzle-orm"). */
   imports?: readonly string[];
+  /**
+   * The UI framework the file's own workspace package depends on (from its package.json),
+   * if any. A browser app keeps its HTTP client in src/api/; that is not server code.
+   */
+  uiPackage?: string;
 }
 
 const FRONTEND_PACKAGES =
@@ -21,6 +26,11 @@ const DATABASE_PACKAGES =
 
 const BACKEND_WORDS =
   'api|apis|server|servers|backend|routes?|controllers?|handlers?|middlewares?|services|resolvers|graphql|rpc|lambdas?|functions|workers?|jobs|cron';
+/** Backend words that a browser app also uses for its own client code (src/api/, services/). */
+const CLIENT_SIDE_WORDS = /(^|\/)(api|apis|services|rpc|graphql)(\/|\.|$)/i;
+/** Words that only server code uses. */
+const SERVER_ONLY_WORDS =
+  /(^|\/)(server|servers|backend|routes?|controllers?|handlers?|middlewares?|resolvers|lambdas?|functions|workers?|jobs|cron)(\/|\.|$)/i;
 /** A backend word as a folder (server/…), not only as a file name (api.ts). */
 const BACKEND_FOLDER = new RegExp(`(^|/)(${BACKEND_WORDS})/`, 'i');
 
@@ -105,6 +115,20 @@ export function classifyFile(path: string | undefined, hints: PlacementHints = {
   const feImport = imports.find((i) => FRONTEND_PACKAGES.test(i));
   // A file named like a backend word inside a UI folder (web/src/api.ts) is a browser client.
   const beOnlyByName = be && fe && !BACKEND_FOLDER.test(p) && !beImport;
+  // In a package that depends on a UI framework, api/ or services/ alone is the browser's
+  // client for a server, not the server (QA AL-03). Real server words and imports still win.
+  const clientOnlyWords =
+    be &&
+    hints.uiPackage &&
+    !beImport &&
+    CLIENT_SIDE_WORDS.test(p) &&
+    !SERVER_ONLY_WORDS.test(p) &&
+    !/(^|\/)route\.(t|j)s$|(^|\/)(server|main)\.(c|m)?(t|j)s$/i.test(p);
+  if (clientOnlyWords)
+    return {
+      region: 'frontend',
+      reason: `API client in a package that depends on ${hints.uiPackage}`,
+    };
   // A server or services folder wins over a database import: that code uses the database.
   if (be && !(fe && feImport) && !beOnlyByName) return { region: 'backend', reason: be.reason };
   if (dbImport) return { region: 'database', reason: `imports ${dbImport}` };

@@ -172,8 +172,14 @@ export function mountDiagramPanel(
     // The SVG is built from escaped text only (see diagrams.ts), so it is safe to insert.
     canvas.innerHTML = current.svg;
     const what = kind === 'class' ? 'classes and interfaces' : 'tables';
+    // An empty table diagram must not read as "this system has no database" (QA AL-04).
+    const unread =
+      kind !== 'class' && current.total === 0 && model.coverage?.unreadSchemas
+        ? [model.coverage.unreadSchemas]
+        : [];
     note.textContent = [
       `${current.shown} of ${current.total} ${what} drawn.`,
+      ...unread,
       ...current.notes,
       'Click a box to find it in the brain.',
     ].join(' ');
