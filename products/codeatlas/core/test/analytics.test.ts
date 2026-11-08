@@ -117,6 +117,6 @@ describe('local analytics (AB-5.11-01)', () => {
     expect(
       (db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string })
         .value,
-    ).toBe('5');
+    ).toBe('6');
   });
 });

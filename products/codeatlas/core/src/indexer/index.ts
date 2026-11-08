@@ -3,6 +3,7 @@ import { basename, extname } from 'node:path';
 import type { Db } from '../store/db';
 import { tx } from '../store/db';
 import { indexMarkdown } from './docs';
+import { addSchema, parsePrismaSchema, parseSqlSchema } from './schema';
 import { discoverFiles, readText, sha1, type DiscoveredFile } from './files';
 import { readGitHistory } from './git';
 import { detectFrameworks, findManifests, type Framework, type Manifest } from './manifests';
@@ -311,6 +312,14 @@ function buildAndPersist(
     if (handled.has(f.lang)) continue;
     const language = unsupportedLanguageOf(f.path);
     if (language) unsupportedLanguages[language] = (unsupportedLanguages[language] ?? 0) + 1;
+  }
+
+  // Database schemas in SQL files (migrations, schema.sql) and Prisma schema files.
+  for (const f of disc.files) {
+    const text = texts.get(f.path);
+    if (!text) continue;
+    if (/\.sql$/i.test(f.path)) addSchema(graph, f.path, parseSqlSchema(text));
+    else if (/\.prisma$/i.test(f.path)) addSchema(graph, f.path, parsePrismaSchema(text));
   }
 
   // Entry points declared in package.json (observed: they are declared).

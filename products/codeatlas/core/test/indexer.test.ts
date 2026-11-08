@@ -187,7 +187,7 @@ describe('indexer: safety and coverage', () => {
   });
 
   it('produces a coverage report with resolution figures', () => {
-    expect(report.files.structurallyAnalysed).toBe(11);
+    expect(report.files.structurallyAnalysed).toBe(12);
     expect(report.files.parseFailures).toEqual([]);
     expect(report.calls.observed).toBeGreaterThan(0);
     expect(report.calls.resolutionRate).toBeGreaterThan(0);

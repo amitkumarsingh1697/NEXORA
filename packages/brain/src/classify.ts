@@ -82,6 +82,7 @@ const RULES: { region: RegionId; test: RegExp; reason: string }[] = [
 export function classifyFile(path: string | undefined, hints: PlacementHints = {}): Placement {
   const p = (path ?? '').replace(/\\/g, '/');
   if (hints.kind === 'database') return { region: 'database', reason: 'database client' };
+  if (hints.kind === 'table') return { region: 'database', reason: 'database table' };
   if (hints.kind === 'route') return { region: 'backend', reason: 'HTTP route' };
   if (hints.kind === 'config')
     return { region: 'devops', reason: 'configuration value read by the code' };

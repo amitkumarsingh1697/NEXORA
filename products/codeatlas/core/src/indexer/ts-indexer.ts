@@ -1,8 +1,10 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { isTestPath } from './test-paths';
 import { dirname, join, relative, sep } from 'node:path';
 import ts from 'typescript';
 import type { DiscoveredFile } from './files';
 import { IntegrationDetector } from './integrations';
+import { SchemaDetector } from './schema';
 import { GraphBuilder, type Confidence, type GraphOp, type NodeRef } from './model';
 import {
   applyDelta,
@@ -80,11 +82,7 @@ const RUNTIME_GLOBALS = new Set([
 
 const HTTP_VERBS = new Set(['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'all']);
 const NEXT_VERBS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD']);
-const TEST_RE = /(^|\/)(__tests__|e2e)\/|[._-](test|spec)\.[cm]?[jt]sx?$/;
-
-export function isTestPath(p: string): boolean {
-  return TEST_RE.test(p);
-}
+export { isTestPath };
 
 function toPosix(p: string): string {
   return p.split(sep).join('/');
@@ -146,6 +144,7 @@ interface Ctx {
   byName: Map<string, Set<string>>;
   byNameRecorder: [string, string][] | null;
   integrations: IntegrationDetector;
+  schema: SchemaDetector;
   pendingInferred: PendingInferred[];
 }
 
@@ -395,6 +394,7 @@ export function indexTypeScript(
     symbols: 0,
     routes: 0,
   };
+  const schema = new SchemaDetector(graph);
   const ctx: Ctx = {
     root: realpathSync(root),
     repoFiles: allPaths,
@@ -403,7 +403,15 @@ export function indexTypeScript(
     moduleOf,
     byName: new Map(),
     byNameRecorder: null,
-    integrations: new IntegrationDetector({ graph, repoFiles: allPaths }),
+    integrations: new IntegrationDetector({
+      graph,
+      repoFiles: allPaths,
+      onDbCall: (node, pkg, sf, path, owner) => {
+        if (pkg === '@prisma/client' && ts.isCallExpression(node))
+          schema.prismaCall(node, sf, path, owner);
+      },
+    }),
+    schema,
     pendingInferred: [],
   };
   const code = files.filter((f) => f.lang === 'typescript' || f.lang === 'javascript');
@@ -1195,6 +1203,7 @@ function collectReferences(
 
   const visit = (node: ts.Node): void => {
     ctx.integrations.visit(node, sf, path, checker, () => ownerOf(node));
+    ctx.schema.visit(node, sf, path, checker, () => ownerOf(node));
     if (
       BRANCH_KINDS.has(node.kind) ||
       (ts.isBinaryExpression(node) &&

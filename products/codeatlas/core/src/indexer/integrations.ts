@@ -174,6 +174,14 @@ function lineOf(sf: ts.SourceFile, pos: number): number {
 export interface IntegrationContext {
   graph: GraphBuilder;
   repoFiles: Set<string>;
+  /** Called for each database client call, so table use can be read from it. */
+  onDbCall?: (
+    node: ts.CallExpression | ts.NewExpression,
+    pkg: string,
+    sf: ts.SourceFile,
+    path: string,
+    owner: NodeRef,
+  ) => void;
 }
 
 /**
@@ -398,6 +406,7 @@ export class IntegrationDetector {
     const client = this.clientOf(root, checker);
     if (!client) return;
     if (client.category === 'db') {
+      this.ctx.onDbCall?.(node, client.pkg, sf, path, ownerOf());
       this.ctx.graph.addEdge({
         kind: 'accesses_db',
         src: ownerOf(),

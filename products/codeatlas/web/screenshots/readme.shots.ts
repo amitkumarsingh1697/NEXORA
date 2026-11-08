@@ -55,6 +55,23 @@ test('CodeAtlas', async ({ page }) => {
     .click();
   await page.waitForTimeout(2500);
   await shot(page, 'codeatlas-brain-method');
+  await brain.getByRole('searchbox', { name: 'Search the brain' }).fill('workspaces');
+  await brain
+    .getByRole('option', { name: /^workspaces\s*Table/ })
+    .first()
+    .click();
+  await page.waitForTimeout(2500);
+  await shot(page, 'codeatlas-brain-table');
+  await brain.getByRole('button', { name: 'Diagrams' }).click();
+  const diagrams = brain.getByRole('dialog', { name: 'Architecture diagrams' });
+  await diagrams.getByLabel('Tables from').selectOption({ index: 1 });
+  await shot(page, 'codeatlas-diagram-er');
+  await diagrams.getByRole('tab', { name: 'Schema diagram' }).click();
+  await shot(page, 'codeatlas-diagram-schema');
+  await diagrams.getByRole('tab', { name: 'Class diagram' }).click();
+  await diagrams.getByLabel('Classes in').selectOption('backend');
+  await shot(page, 'codeatlas-diagram-class');
+  await diagrams.getByRole('button', { name: 'Close diagrams' }).click();
 
   await tab('Structure');
   const tree = page.getByRole('list', { name: 'Repository structure' });

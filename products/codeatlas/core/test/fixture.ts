@@ -78,6 +78,10 @@ export const FIXTURE: Record<string, string> = {
   'app/api/items/[id]/route.ts': "export async function GET() {\n  return new Response('ok');\n}\n",
   'src/math.test.ts':
     "import { add } from '@/lib/math';\nif (add(1, 1) !== 2) throw new Error('bad');\n",
+  'migrations/001_users.sql':
+    'CREATE TABLE users (\n  id integer PRIMARY KEY,\n  name varchar(80) NOT NULL\n);\n',
+  'src/repo.ts':
+    "declare const sql: { prepare(q: string): { all(): unknown[] } };\nexport function allUsers() {\n  return sql.prepare('SELECT id, name FROM users').all();\n}\n",
   'tools/report.py': 'def report():\n    print("quarterly report generator")\n',
   '.env': 'SECRET_TOKEN=supersecretvalue123\n',
   'docs/README.md':

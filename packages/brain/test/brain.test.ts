@@ -6,6 +6,11 @@ import { describe, expect, it } from 'vitest';
 import {
   BrainIndex,
   BRAIN_TEMPLATE_PATH,
+  SYNAPSE_WORDS,
+  classDiagram,
+  columnTypeText,
+  tableDiagram,
+  tableFiles,
   LOBES,
   classifyFile,
   layoutBrain,
@@ -264,5 +269,185 @@ describe('renderBrainHtml', () => {
     expect(readFileSync(new URL('scripts/render-brain.mjs', skill), 'utf8')).toBe(
       readFileSync(new URL('../scripts/render-brain.mjs', import.meta.url), 'utf8'),
     );
+  });
+});
+
+describe('tables and diagrams', () => {
+  const SHOP: BrainModel = {
+    format: 1,
+    title: 'Shop',
+    source: { producer: 'test', repository: 'shop', generatedAt: '2026-11-08T00:00:00Z' },
+    neurons: [
+      {
+        id: 't.users',
+        name: 'users',
+        kind: 'table',
+        file: 'db/schema.sql',
+        columns: [
+          { name: 'id', type: 'serial', nullable: false, primaryKey: true },
+          { name: 'email', type: 'varchar', length: 255, nullable: false, unique: true },
+          {
+            name: 'balance',
+            type: 'numeric',
+            precision: 12,
+            scale: 2,
+            nullable: true,
+            default: '0',
+          },
+        ],
+      },
+      {
+        id: 't.orders',
+        name: 'orders',
+        kind: 'table',
+        file: 'db/schema.sql',
+        columns: [
+          { name: 'id', type: 'serial', nullable: false, primaryKey: true },
+          { name: 'note', type: 'text', nullable: true },
+          {
+            name: 'user_id',
+            type: 'integer',
+            nullable: false,
+            references: { table: 'users', column: 'id' },
+          },
+        ],
+      },
+      { id: 't.logs', name: 'logs', kind: 'table', file: 'other.sql', columns: [] },
+      { id: 'c.base', name: 'Base<T>', kind: 'class', region: 'backend' },
+      { id: 'c.svc', name: 'Svc', kind: 'class', region: 'backend' },
+      {
+        id: 'c.svc.run',
+        name: 'Svc.run',
+        kind: 'method',
+        parent: 'c.svc',
+        params: [{ name: 'id', type: 'number' }],
+        returns: 'Promise<void>',
+      },
+      { id: 'i.empty', name: 'Empty', kind: 'interface', region: 'backend' },
+      { id: 'i.port', name: 'Port', kind: 'interface', region: 'backend' },
+      { id: 'c.ui', name: 'Widget', kind: 'class', region: 'frontend' },
+      { id: 'f.list', name: 'listOrders', kind: 'function', file: 'svc/orders.ts' },
+    ],
+    synapses: [
+      { source: 't.orders', target: 't.users', kind: 'references', confidence: 'observed' },
+      { source: 'c.svc', target: 'c.base', kind: 'extends', confidence: 'observed' },
+      { source: 'c.svc', target: 'i.port', kind: 'implements', confidence: 'observed' },
+      { source: 'f.list', target: 't.orders', kind: 'reads_table', confidence: 'observed' },
+    ],
+  };
+
+  it('validates columns and table links, dropping junk', () => {
+    const r = validateBrain({
+      ...SHOP,
+      neurons: [
+        {
+          id: 't',
+          name: 't',
+          kind: 'table',
+          columns: [
+            { name: 'a', type: 'numeric', precision: 10, scale: 2, nullable: false },
+            { name: 'b', length: -1, precision: 'x', primaryKey: 'yes' },
+            { type: 'int' },
+            'junk',
+          ],
+        },
+      ],
+      synapses: [],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.model.neurons[0]?.columns).toEqual([
+      { name: 'a', type: 'numeric', precision: 10, scale: 2, nullable: false },
+      { name: 'b', type: 'unknown', nullable: true },
+    ]);
+    expect(classifyFile('x.ts', { kind: 'table' }).region).toBe('database');
+  });
+
+  it('writes a column type with its size as written', () => {
+    expect(columnTypeText({ type: 'varchar', length: 255 })).toBe('varchar(255)');
+    expect(columnTypeText({ type: 'numeric', precision: 12, scale: 2 })).toBe('numeric(12, 2)');
+    expect(columnTypeText({ type: 'timestamp', precision: 3 })).toBe('timestamp(3)');
+    expect(columnTypeText({ type: 'text' })).toBe('text');
+  });
+
+  it('lists schema files and filters tables by file', () => {
+    expect(tableFiles(SHOP)).toEqual([
+      { file: 'db/schema.sql', tables: 2 },
+      { file: 'other.sql', tables: 1 },
+    ]);
+    const d = tableDiagram(SHOP, false, { file: 'db/schema.sql' });
+    expect(d).toMatchObject({ kind: 'er', total: 2, shown: 2 });
+    expect(d.boxes.map((b) => b.id).sort()).toEqual(['t.orders', 't.users']);
+  });
+
+  it('draws an ER diagram with key columns and a crow-foot foreign key', () => {
+    const d = tableDiagram(SHOP, false);
+    expect(d.svg).toMatch(/^<svg xmlns="http:\/\/www.w3.org\/2000\/svg"/);
+    expect(d.svg).toContain('PK    id');
+    expect(d.svg).toContain('FK    user_id');
+    expect(d.svg).not.toContain('balance');
+    expect(d.svg).toContain('+ 2 other columns');
+    expect(d.svg).toContain('marker-start="url(#many)" marker-end="url(#one)"');
+    // The referenced table comes first (left), the referencing one after it.
+    const users = d.boxes.find((b) => b.id === 't.users')!;
+    const orders = d.boxes.find((b) => b.id === 't.orders')!;
+    expect(orders.x).toBeGreaterThan(users.x);
+  });
+
+  it('draws a schema diagram with every column, type, size, nullability and default', () => {
+    const d = tableDiagram(SHOP, true);
+    expect(d.svg).toContain('email: varchar(255)  not null unique');
+    expect(d.svg).toContain('balance: numeric(12, 2)  null = 0');
+    expect(d.svg).toContain('user_id: integer  not null → users.id');
+  });
+
+  it('draws a class diagram with methods and inheritance, leaving out empty interfaces', () => {
+    const d = classDiagram(SHOP, { region: 'backend' });
+    expect(d.boxes.map((b) => b.id).sort()).toEqual(['c.base', 'c.svc', 'i.port']);
+    expect(d.svg).toContain('run(id: number): Promise&#60;void&#62;');
+    expect(d.svg).toContain('Base&#60;T&#62;');
+    expect(d.svg).toContain('«interface»');
+    expect(d.svg).toContain('stroke-dasharray="6 4"');
+    expect(d.notes).toEqual([
+      '1 interfaces with no recorded methods and no inheritance are not drawn.',
+    ]);
+    // Subclasses sit below what they extend.
+    const base = d.boxes.find((b) => b.id === 'c.base')!;
+    const svc = d.boxes.find((b) => b.id === 'c.svc')!;
+    expect(svc.y).toBeGreaterThan(base.y);
+  });
+
+  it('escapes names so a hostile model cannot inject markup', () => {
+    const evil = structuredClone(SHOP);
+    evil.neurons[0]!.name = '<script>alert(1)</script>';
+    evil.neurons[0]!.columns![0]!.name = '"><img src=x onerror=alert(1)>';
+    const d = tableDiagram(evil, true);
+    expect(d.svg).not.toMatch(/<script|<img/);
+    expect(d.svg).toContain('&#60;script&#62;');
+  });
+
+  it('says when there is nothing to draw, and caps large diagrams openly', () => {
+    expect(tableDiagram({ ...SHOP, neurons: [] }, false).svg).toContain(
+      'no database tables were found',
+    );
+    const many = {
+      ...SHOP,
+      neurons: Array.from({ length: 30 }, (_, i) => ({
+        id: `t${i}`,
+        name: `t${i}`,
+        kind: 'table' as const,
+        columns: [],
+      })),
+      synapses: [],
+    };
+    const d = tableDiagram(many, false, { max: 10 });
+    expect(d).toMatchObject({ total: 30, shown: 10 });
+    expect(d.notes).toEqual(['20 less-connected tables are not drawn.']);
+  });
+
+  it('shows table links in plain words', () => {
+    const r = new BrainIndex(SHOP).relations('t.orders');
+    expect(r.incoming.get('reads_table')?.[0]?.other.id).toBe('f.list');
+    expect(SYNAPSE_WORDS.reads_table).toEqual({ out: 'Reads table', in: 'Read by' });
   });
 });

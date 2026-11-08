@@ -11,6 +11,8 @@ import {
   type SynapseKind,
 } from './model';
 import { BrainIndex, SYNAPSE_WORDS } from './relations';
+import { columnTypeText } from './columns';
+import { mountDiagramPanel } from './diagram-panel';
 import { VIEWER_CSS } from './viewer-css';
 
 export interface BrainViewerOptions {
@@ -51,10 +53,14 @@ const SYNAPSE_COLORS: Record<SynapseKind, string> = {
   calls_service: '#fca5a5',
   imports: '#94a3b8',
   starts: '#fde68a',
+  reads_table: '#34d399',
+  writes_table: '#fb923c',
+  references: '#a7f3d0',
 };
 
 const KIND_SIZE: Record<NeuronKind, number> = {
   database: 2.1,
+  table: 1.2,
   service: 1.9,
   class: 1.6,
   route: 1.35,
@@ -77,6 +83,7 @@ const KIND_LABEL: Record<NeuronKind, string> = {
   database: 'Database',
   service: 'External service',
   config: 'Configuration',
+  table: 'Table',
 };
 
 const OVERVIEW_CAMERA: Vec3 = [3.9, 1.5, 2.8];
@@ -197,6 +204,42 @@ function cerebellum(): BrainPart {
   return { geometry: g, regionOfVertex: new Array<RegionId>(pos.count).fill('core') };
 }
 
+/** The columns of a table: name, type with size, null, key, default and reference. */
+function columnsTable(n: BrainNeuron): HTMLElement {
+  const sec = el('section', { class: 'nb-cols' });
+  sec.append(el('h4', {}, `Columns (${n.columns?.length ?? 0})`));
+  const wrap = el('div', { class: 'nb-cols-wrap' });
+  const table = el('table');
+  const head = el('tr');
+  for (const h of ['Column', 'Type', 'Null', 'Key', 'Default'])
+    head.append(el('th', { scope: 'col' }, h));
+  table.append(el('thead'), el('tbody'));
+  table.tHead?.append(head);
+  for (const c of n.columns ?? []) {
+    const tr = el('tr');
+    const key = [
+      c.primaryKey ? 'PK' : '',
+      c.references
+        ? `FK → ${c.references.table}${c.references.column ? `.${c.references.column}` : ''}`
+        : '',
+      c.unique && !c.primaryKey ? 'unique' : '',
+    ]
+      .filter(Boolean)
+      .join(', ');
+    tr.append(
+      el('td', {}, c.name),
+      el('td', {}, columnTypeText(c)),
+      el('td', {}, c.nullable ? 'yes' : 'no'),
+      el('td', {}, key),
+      el('td', {}, c.default ?? ''),
+    );
+    table.tBodies[0]?.append(tr);
+  }
+  wrap.append(table);
+  sec.append(wrap);
+  return sec;
+}
+
 /** Mounts an interactive 3D brain for `model` inside `root`. */
 export function mountBrain(
   root: HTMLElement,
@@ -233,7 +276,8 @@ export function mountBrain(
   });
   const results = el('ul', { class: 'nb-results', role: 'listbox', 'aria-label': 'Matches' });
   searchWrap.append(searchInput, results);
-  top.append(titleEl, crumbs, searchWrap);
+  const diagramsButton = el('button', { type: 'button', class: 'nb-dg-open' }, 'Diagrams');
+  top.append(titleEl, crumbs, diagramsButton, searchWrap);
 
   const left = el('aside', { class: 'nb-left', 'aria-label': 'Brain regions' });
   const right = el('aside', { class: 'nb-right', 'aria-label': 'Details', hidden: '' });
@@ -242,6 +286,13 @@ export function mountBrain(
   legend.innerHTML =
     '<span><i class="nb-line nb-observed"></i>observed</span><span><i class="nb-line nb-inferred"></i>inferred</span><span><i class="nb-dot nb-in"></i>input from</span><span><i class="nb-dot nb-out"></i>output to</span>';
   root.append(stage, top, left, right, legend, status);
+  const diagrams = mountDiagramPanel(
+    root,
+    model,
+    (id) => api.select(id),
+    () => diagramsButton.focus(),
+  );
+  diagramsButton.addEventListener('click', () => diagrams.open());
 
   // ---------- 3D ----------
   const has3d = webglAvailable();
@@ -757,6 +808,7 @@ export function mountBrain(
     }
     if (n.doc) right.append(el('p', { class: 'nb-doc' }, n.doc));
     if (n.signature) right.append(el('pre', { class: 'nb-sig' }, n.signature));
+    if (n.columns?.length) right.append(columnsTable(n));
 
     const rel = index.relations(n.id);
     if (n.params || n.returns) {
@@ -866,7 +918,7 @@ export function mountBrain(
   results.hidden = true;
 
   const onKey = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape' || e.target === searchInput) return;
+    if (e.key !== 'Escape' || e.target === searchInput || diagrams.isOpen) return;
     if (selected) api.select(null);
     else if (region) api.enterRegion(null);
   };
@@ -1106,6 +1158,7 @@ export function mountBrain(
       renderAll();
     },
     destroy() {
+      diagrams.destroy();
       cancelAnimationFrame(frame);
       ro?.disconnect();
       root.removeEventListener('keydown', onKey);
