@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { extractDocument } from '../resume/extract';
 import { parseResumeText, type ParseResult } from '../resume/parse';
+import { renderDocx } from '../export/docx';
+import { TEMPLATE_IDS } from '../export/templates';
 
 /**
  * Regression tests for the resume-extraction defects reported on 2026-11-06 with a real
@@ -320,5 +322,32 @@ describe('parser edge cases', () => {
     expect(bullets.length).toBeGreaterThan(1);
     expect(bullets.every((b) => b.text.length <= 1500)).toBe(true);
     expect(bullets.map((b) => b.text).join(' ')).toBe(long);
+  });
+
+  it('reads back a resume exported by CVForge ("Title, Company" over "Dates | City")', async () => {
+    const src = `Priya Sharma
+Senior Software Engineer
+priya.sharma@example.com | Pune, India
+
+EXPERIENCE
+Senior Software Engineer | FinPay Technologies | Pune
+Jan 2019 – Present
+• Designed and built Java microservices
+Software Engineer, DataWorks Ltd, Bengaluru
+Jun 2015 - Dec 2018
+• Implemented Kafka consumers for event ingestion
+`;
+    for (const template of TEMPLATE_IDS) {
+      const docx = await renderDocx(parseResumeText(src).content, template);
+      const ex = await extractDocument(new Uint8Array(docx));
+      const exp = parseResumeText(ex.text).content.experience;
+      expect(
+        exp.map((e) => [e.title, e.company, e.location]),
+        template,
+      ).toEqual([
+        ['Senior Software Engineer', 'FinPay Technologies', 'Pune'],
+        ['Software Engineer', 'DataWorks Ltd', 'Bengaluru'],
+      ]);
+    }
   });
 });

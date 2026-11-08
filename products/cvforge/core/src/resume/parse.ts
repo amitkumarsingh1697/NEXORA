@@ -176,6 +176,13 @@ const LOCATION_RE =
   /^(?:remote|hybrid|on-?site|[A-Z][\p{L}.'-]+(?: [A-Z][\p{L}.'-]+){0,2},\s*[A-Z][\p{L}.'-]+(?: [A-Z][\p{L}.'-]+){0,2})(?:\s*\((?:remote|hybrid|on-?site)\))?$/iu;
 const ORG_WORD_RE =
   /^(technology|technologies|solutions|systems|services|labs|ltd|inc|pvt|limited|llp|llc|bank|group|software|consulting|corp|corporation|company|industries|global|international|infotech|networks|ventures)$/i;
+const PLACE_RE = /^[A-Z][\p{L}.'-]+(?: [A-Z][\p{L}.'-]+){0,2}$/u;
+const hasOrgWord = (s: string) =>
+  s.split(/\s+/).some((w) => ORG_WORD_RE.test(w.replace(/[.,]/g, '')));
+/** "Pune, India" is a place; "Senior Software Engineer, FinPay Technologies" is not. */
+const isLocation = (s: string) => LOCATION_RE.test(s) && !ROLE_WORDS.test(s) && !hasOrgWord(s);
+/** A bare place name such as "Pune": capitalised words with no job or company words. */
+const isBarePlace = (s: string) => PLACE_RE.test(s) && !ROLE_WORDS.test(s) && !hasOrgWord(s);
 const TRAILING_LOCATION_RE =
   /\s((?:[A-Z][\p{L}.'-]+ ){0,2}[A-Z][\p{L}.'-]+,\s*[A-Z][\p{L}.'-]+(?: [A-Z][\p{L}.'-]+)?)$/u;
 
@@ -349,7 +356,7 @@ function headerSegments(line: string, dropDates = true): string[] {
     const c = col.replace(/^[\s|,–—-]+|[\s|,–—(-]+$/g, '').trim();
     if (!c) continue;
     for (const part of splitTopLevel(c, /^(?:\s+[|–—]\s+|\s+-\s+|\s+at\s+|\s+@\s+)/i)) {
-      if (LOCATION_RE.test(part)) {
+      if (isLocation(part)) {
         segs.push(part);
         continue;
       }
@@ -360,8 +367,10 @@ function headerSegments(line: string, dropDates = true): string[] {
         const words = trailing[1].split(' ');
         while (words.length > 1 && ORG_WORD_RE.test(words[0] ?? '')) words.shift();
         const loc = words.join(' ');
-        segs.push(part.slice(0, part.length - loc.length).trim(), loc);
-        continue;
+        if (isLocation(loc)) {
+          segs.push(part.slice(0, part.length - loc.length).trim(), loc);
+          continue;
+        }
       }
       segs.push(...splitTopLevel(part, /^,\s+/));
     }
@@ -746,12 +755,18 @@ function parseExperience(lines: string[], draft: ResumeContent) {
     const ordered = dateLine
       ? [dateLine, ...entry.header.filter((h) => h !== dateLine)]
       : entry.header;
-    const segs = ordered.flatMap((h) => headerSegments(h));
+    let segs = ordered.flatMap((h) => headerSegments(h));
     let title = '';
     const locations: string[] = [];
     const others: string[] = [];
+    // "Title, Company" over "Dates | Pune": what is left of the date line is the location.
+    const dateRest = dateLine ? headerSegments(dateLine) : [];
+    if (entry.header.length > 1 && dateRest.length === 1 && isBarePlace(dateRest[0] as string)) {
+      locations.push(dateRest[0] as string);
+      segs = entry.header.filter((h) => h !== dateLine).flatMap((h) => headerSegments(h));
+    }
     for (const s of segs) {
-      if (LOCATION_RE.test(s)) locations.push(s);
+      if (isLocation(s)) locations.push(s);
       else if (!title && ROLE_WORDS.test(s.replace(/\(.*?\)/g, ''))) title = s;
       else others.push(s);
     }
@@ -759,8 +774,7 @@ function parseExperience(lines: string[], draft: ResumeContent) {
     let company = others.shift() ?? '';
     // "Title | Company | Pune": a trailing place-like segment is the location.
     const last = others[others.length - 1];
-    if (!locations.length && last && /^[A-Z][\p{L}.'-]+(?: [A-Z][\p{L}.'-]+){0,2}$/u.test(last))
-      locations.push(others.pop() as string);
+    if (!locations.length && last && PLACE_RE.test(last)) locations.push(others.pop() as string);
     // Anything else in the header (a team or client name) stays visible with the company.
     if (others.length) company = [company, ...others].filter(Boolean).join(', ');
     if (!title && !company && !entry.body.length) continue;
