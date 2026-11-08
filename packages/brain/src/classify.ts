@@ -98,14 +98,15 @@ export function classifyFile(path: string | undefined, hints: PlacementHints = {
   const dbImport = imports.find((i) => DATABASE_PACKAGES.test(i));
   const db = firstRule('database');
   if (db) return { region: 'database', reason: db.reason };
-  if (dbImport) return { region: 'database', reason: `imports ${dbImport}` };
   const be = firstRule('backend');
   const beImport = imports.find((i) => BACKEND_PACKAGES.test(i));
   const fe = firstRule('frontend');
   const feImport = imports.find((i) => FRONTEND_PACKAGES.test(i));
   // A file named like a backend word inside a UI folder (web/src/api.ts) is a browser client.
   const beOnlyByName = be && fe && !BACKEND_FOLDER.test(p) && !beImport;
+  // A server or services folder wins over a database import: that code uses the database.
   if (be && !(fe && feImport) && !beOnlyByName) return { region: 'backend', reason: be.reason };
+  if (dbImport) return { region: 'database', reason: `imports ${dbImport}` };
   if (beImport) return { region: 'backend', reason: `imports ${beImport}` };
   if (fe) return { region: 'frontend', reason: fe.reason };
   if (feImport) return { region: 'frontend', reason: `imports ${feImport}` };

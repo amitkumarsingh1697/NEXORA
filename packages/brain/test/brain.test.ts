@@ -135,6 +135,10 @@ describe('classifyFile', () => {
       reason: 'imports pg',
     });
     expect(classifyFile('src/lib/x.ts', { imports: ['express'] }).region).toBe('backend');
+    // Services that use the database are still backend code.
+    expect(classifyFile('backend/src/services/auth.ts', { imports: ['drizzle-orm'] }).region).toBe(
+      'backend',
+    );
     expect(classifyFile('src/lib/x.ts', { imports: ['react'] }).region).toBe('frontend');
     expect(classifyFile(undefined, { kind: 'route' }).region).toBe('backend');
     expect(classifyFile(undefined, { kind: 'config' }).region).toBe('devops');
