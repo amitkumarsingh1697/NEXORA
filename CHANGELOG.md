@@ -27,6 +27,8 @@ All notable changes to this repository. Format: [Keep a Changelog](https://keepa
 
 - Architecture brain (ADR 0012): a 3D, clickable brain of a repository in `packages/brain` (three.js). Lobes for Frontend, Backend, Database, DevOps and Core & shared; click a lobe to go inside; click a class or method to see its inputs and output, where its input comes from and where it sends work, each link with its confidence and `file:line`; search to recall any part. CodeAtlas gains a Brain tab, `GET /api/repos/:id/brain` and `codeatlas brain <path> --out file.html`, and now records parameter and return types for functions and methods. ArchLens can produce the brain as one offline HTML file from a repository link (`skills/archlens/scripts/render-brain.mjs`).
 
+- Database tables and diagrams (ADR 0013): CodeAtlas reads tables from SQL, Prisma and Drizzle schemas with every column's type, length, precision, scale, nullability, keys and default (index schema v6), and links each function to the tables it reads and writes and each table to the tables it references. The brain shows tables in the Database lobe with a columns table, and a new Diagrams view draws ER, schema and class diagrams that can be scoped, zoomed, downloaded as SVG and clicked to find a part in the brain. ArchLens can add tables to its brain model by hand.
+
 ### Changed
 
 - CodeAtlas runs left `running` by a crash are marked failed at startup. Sprint 3: parsed source files are shared across tsconfig programs, cutting a cold index of this repository from 22 s to 13 s; a doc comment on overloaded methods is no longer lost. Light-theme colours for "observed" and "inferred" darkened to meet contrast. CVForge inline links are underlined and decided suggestions are no longer dimmed.

@@ -2,6 +2,7 @@ import {
   BRAIN_FORMAT,
   DEFAULT_REGIONS,
   classifyFile,
+  type BrainColumn,
   type BrainModel,
   type BrainNeuron,
   type BrainParam,
@@ -25,6 +26,9 @@ const SYNAPSE_OF: Record<string, SynapseKind> = {
   reads_config: 'reads_config',
   writes_config: 'writes_config',
   calls_service: 'calls_service',
+  reads_table: 'reads_table',
+  writes_table: 'writes_table',
+  references: 'references',
 };
 
 const SYMBOL_KINDS = new Map<string, NeuronKind>([
@@ -66,7 +70,7 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
   const nodes = (
     rows(
       db,
-      `SELECT ${NODE_COLS} FROM nodes WHERE repo_id = ? AND kind IN ('symbol','file','route','service','config')`,
+      `SELECT ${NODE_COLS} FROM nodes WHERE repo_id = ? AND kind IN ('symbol','file','route','service','config','table')`,
       repoId,
     ) as Parameters<typeof toNode>[0][]
   ).map(toNode);
@@ -124,6 +128,7 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     } else if (n.kind === 'route') kind = 'route';
     else if (n.kind === 'service') kind = n.data.category === 'database' ? 'database' : 'service';
     else if (n.kind === 'config') kind = 'config';
+    else if (n.kind === 'table') kind = 'table';
     else if (n.kind === 'file' && DEVOPS_FILE.test(n.key)) kind = 'file';
     if (!kind) continue;
 
@@ -132,6 +137,11 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     else if (kind === 'database') place = { region: 'database', reason: 'database client' };
     else if (kind === 'service') place = { region: 'backend', reason: 'external service call' };
     else if (kind === 'config') place = { region: 'devops', reason: 'configuration value' };
+    else if (kind === 'table')
+      place = {
+        region: 'database',
+        reason: `database table defined in ${n.filePath ?? 'a schema'}`,
+      };
     else place = placeFile(n.filePath);
 
     const params = Array.isArray(n.data.params)
@@ -155,6 +165,10 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
       returnsDeclared:
         typeof n.data.returnsDeclared === 'boolean' ? n.data.returnsDeclared : undefined,
       doc: str(n.data.doc),
+      columns:
+        kind === 'table' && Array.isArray(n.data.columns)
+          ? (n.data.columns as BrainColumn[])
+          : undefined,
       ref: n.id,
     });
   }
@@ -205,7 +219,11 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     }
     const keep = new Set(
       [...neurons]
-        .sort((x, y) => (degree.get(y.id) ?? 0) - (degree.get(x.id) ?? 0))
+        .sort(
+          (x, y) =>
+            Number(y.kind === 'table') - Number(x.kind === 'table') ||
+            (degree.get(y.id) ?? 0) - (degree.get(x.id) ?? 0),
+        )
         .slice(0, BRAIN_MAX_NEURONS)
         .map((n) => n.id),
     );
@@ -220,6 +238,7 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
   notes.push(
     `Built by CodeAtlas from its index${repo.headCommit ? ` at commit ${repo.headCommit.slice(0, 10)}` : ''}. Links are labelled observed (resolved by the TypeScript compiler), inferred (matched by name or convention) or unknown.`,
     'Which lobe a part sits in is inferred from its file path and the packages the file imports.',
+    'Tables and columns are read from SQL files (CREATE TABLE, ALTER TABLE), Prisma schemas, Drizzle table definitions and CREATE TABLE statements inside code, with types, sizes and keys as written. A Drizzle query that names a table is an observed read or write; a Prisma call or a table named in a SQL string is inferred. Views, stored procedures, dynamic SQL and the Drizzle relational query API are not linked.',
     'Inputs and return types come from the TypeScript type checker. Test files, type aliases and plain variables are left out. Only TypeScript and JavaScript have method-level detail.',
   );
   return {

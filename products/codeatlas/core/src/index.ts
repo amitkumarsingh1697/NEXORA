@@ -13,6 +13,15 @@ export {
 } from './indexer/index';
 export { nextRoutePath, isTestPath } from './indexer/ts-indexer';
 export { splitMarkdown } from './indexer/docs';
+export {
+  parseSqlSchema,
+  parsePrismaSchema,
+  sqlTableUses,
+  tableKey,
+  type ColumnDef,
+  type TableDef,
+  type ForeignKey,
+} from './indexer/schema';
 export * from './query/graph';
 export * from './query/search';
 export * from './query/views';

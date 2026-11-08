@@ -16,6 +16,7 @@ Decisions are recorded as ADRs in [adr/](adr/). Add a new numbered file for each
 | [0010](adr/0010-change-request-model-and-local-merge.md) | Change-request naming map; human-triggered fast-forward local merge                              | accepted (S1-1)                             |
 | [0011](adr/0011-structure-and-ui-kit.md)                 | Brand-named product paths; no shadcn/ui                                                          | accepted                                    |
 | [0012](adr/0012-architecture-brain-viewer.md)            | 3D architecture brain: shared three.js viewer and single-file HTML for CodeAtlas and ArchLens    | accepted                                    |
+| [0013](adr/0013-database-tables-and-diagrams.md)         | Database tables, function-to-table links, and in-house SVG ER, schema and class diagrams         | accepted                                    |
 
 ## Smaller decisions (not ADR-worthy)
 

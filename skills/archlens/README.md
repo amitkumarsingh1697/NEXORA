@@ -41,7 +41,7 @@ Ask "make an architecture brain of https://github.com/owner/repo". ArchLens clon
 node skills/archlens/scripts/render-brain.mjs brain-model.json repo-brain.html
 ```
 
-The result is one HTML file that opens offline: a 3D brain with Frontend, Backend, Database, DevOps and Core & shared lobes. Click a lobe to go inside, click a class or method to see its inputs, output, callers and callees with evidence, or search to jump to anything. `assets/brain-template.html` and `scripts/render-brain.mjs` are generated from `packages/brain` (`pnpm --filter @nexora/brain build`); a test keeps them identical.
+The result is one HTML file that opens offline: a 3D brain with Frontend, Backend, Database, DevOps and Core & shared lobes. Click a lobe to go inside, click a class or method to see its inputs, output, callers and callees with evidence, or search to jump to anything. Tables in the Database lobe list their columns with types, sizes and keys, and the Diagrams button draws ER, schema and class diagrams, downloadable as SVG. `assets/brain-template.html` and `scripts/render-brain.mjs` are generated from `packages/brain` (`pnpm --filter @nexora/brain build`); a test keeps them identical.
 
 ## Validate
 

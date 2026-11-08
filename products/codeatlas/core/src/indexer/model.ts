@@ -1,6 +1,15 @@
 export type Confidence = 'observed' | 'inferred' | 'unknown';
 export type NodeKind =
-  'file' | 'symbol' | 'module' | 'external' | 'route' | 'doc' | 'entrypoint' | 'config' | 'service';
+  | 'file'
+  | 'symbol'
+  | 'module'
+  | 'external'
+  | 'route'
+  | 'doc'
+  | 'entrypoint'
+  | 'config'
+  | 'service'
+  | 'table';
 
 export interface NodeRec {
   kind: NodeKind;

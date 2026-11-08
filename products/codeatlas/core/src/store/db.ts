@@ -8,7 +8,7 @@ import { DatabaseSync } from 'node:sqlite';
  */
 export type Db = DatabaseSync;
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS index_runs (
 CREATE TABLE IF NOT EXISTS nodes (
   id INTEGER PRIMARY KEY,
   repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('file','symbol','module','external','route','doc','entrypoint','config','service')),
+  kind TEXT NOT NULL CHECK (kind IN ('file','symbol','module','external','route','doc','entrypoint','config','service','table')),
   key TEXT NOT NULL,
   name TEXT NOT NULL,
   file_path TEXT,
@@ -203,7 +203,7 @@ export function openDb(file: string): Db {
       `Database schema v${before} is newer than this CodeAtlas (v${SCHEMA_VERSION}).`,
     );
   if (before && Number(before) < 3) migrateToV3(db);
-  if (before && Number(before) < 5) migrateToV5(db);
+  if (before && Number(before) < 6) migrateNodeKinds(db);
   try {
     db.exec(SCHEMA);
   } catch (e) {
@@ -267,22 +267,23 @@ ALTER TABLE investigations_v3 RENAME TO investigations;`);
 }
 
 /**
- * v4 -> v5: adds 'config' and 'service' to the nodes kind CHECK (S3-3, S3-7).
- * Same 12-step rebuild as v3; edges reference nodes(id), which are copied unchanged.
+ * v4 -> v5 added 'config' and 'service' to the nodes kind CHECK (S3-3, S3-7); v5 -> v6 adds
+ * 'table' (database tables read from schemas). Same 12-step rebuild as v3, to the current
+ * kind list; edges reference nodes(id), which are copied unchanged.
  */
-function migrateToV5(db: Db): void {
+function migrateNodeKinds(db: Db): void {
   const has = db
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'nodes'")
     .get() as { sql: string } | undefined;
-  if (!has || has.sql.includes("'service'")) return;
+  if (!has || has.sql.includes("'table'")) return;
   db.exec('PRAGMA foreign_keys = OFF');
   try {
     db.exec('BEGIN IMMEDIATE');
     try {
-      db.exec(`CREATE TABLE nodes_v5 (
+      db.exec(`CREATE TABLE nodes_next (
   id INTEGER PRIMARY KEY,
   repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('file','symbol','module','external','route','doc','entrypoint','config','service')),
+  kind TEXT NOT NULL CHECK (kind IN ('file','symbol','module','external','route','doc','entrypoint','config','service','table')),
   key TEXT NOT NULL,
   name TEXT NOT NULL,
   file_path TEXT,
@@ -294,15 +295,15 @@ function migrateToV5(db: Db): void {
   data TEXT NOT NULL DEFAULT '{}',
   UNIQUE (repo_id, kind, key)
 );
-INSERT INTO nodes_v5 SELECT id, repo_id, kind, key, name, file_path, module, symbol_kind, exported, start_line, end_line, data FROM nodes;
+INSERT INTO nodes_next SELECT id, repo_id, kind, key, name, file_path, module, symbol_kind, exported, start_line, end_line, data FROM nodes;
 DROP TABLE nodes;
-ALTER TABLE nodes_v5 RENAME TO nodes;
+ALTER TABLE nodes_next RENAME TO nodes;
 CREATE INDEX IF NOT EXISTS nodes_repo_kind ON nodes(repo_id, kind);
 CREATE INDEX IF NOT EXISTS nodes_repo_file ON nodes(repo_id, file_path);
 CREATE INDEX IF NOT EXISTS nodes_repo_name ON nodes(repo_id, name);`);
       const broken = db.prepare('PRAGMA foreign_key_check').all();
       if (broken.length)
-        throw new Error(`Migration to v5 left ${broken.length} broken references.`);
+        throw new Error(`Node kind migration left ${broken.length} broken references.`);
       db.exec('COMMIT');
     } catch (e) {
       db.exec('ROLLBACK');

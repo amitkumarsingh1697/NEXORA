@@ -56,6 +56,7 @@ export const NEURON_KINDS = [
   'database',
   'service',
   'config',
+  'table',
 ] as const;
 export type NeuronKind = (typeof NEURON_KINDS)[number];
 
@@ -72,6 +73,9 @@ export const SYNAPSE_KINDS = [
   'calls_service',
   'imports',
   'starts',
+  'reads_table',
+  'writes_table',
+  'references',
 ] as const;
 export type SynapseKind = (typeof SYNAPSE_KINDS)[number];
 
@@ -82,6 +86,21 @@ export interface BrainParam {
   name: string;
   type: string;
   optional?: boolean;
+}
+
+/** A database column, as written in the schema. */
+export interface BrainColumn {
+  name: string;
+  type: string;
+  length?: number;
+  precision?: number;
+  scale?: number;
+  nullable: boolean;
+  primaryKey?: boolean;
+  unique?: boolean;
+  default?: string;
+  references?: { table: string; column?: string };
+  line?: number;
 }
 
 export interface BrainNeuron {
@@ -102,6 +121,8 @@ export interface BrainNeuron {
   /** True when the source wrote the return type; false when TypeScript worked it out. */
   returnsDeclared?: boolean;
   doc?: string;
+  /** Columns of a `table` neuron. */
+  columns?: BrainColumn[];
   /** Opaque reference back to the producer (for example a CodeAtlas node id). */
   ref?: number | string;
 }
@@ -142,6 +163,39 @@ const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 const str = (v: unknown, max = 2000): string | undefined =>
   typeof v === 'string' ? v.slice(0, max) : undefined;
+
+const posInt = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6 ? v : undefined;
+
+function columnsOf(raw: unknown[]): BrainColumn[] {
+  return raw
+    .filter(isObj)
+    .filter((c) => typeof c.name === 'string' && c.name)
+    .slice(0, 500)
+    .map((c) => {
+      const ref = isObj(c.references) ? c.references : undefined;
+      const col: BrainColumn = {
+        name: (c.name as string).slice(0, 120),
+        type: str(c.type, 120) ?? 'unknown',
+        nullable: c.nullable !== false,
+      };
+      const length = posInt(c.length);
+      const precision = posInt(c.precision);
+      const scale = posInt(c.scale);
+      if (length !== undefined) col.length = length;
+      if (precision !== undefined) col.precision = precision;
+      if (scale !== undefined) col.scale = scale;
+      if (c.primaryKey === true) col.primaryKey = true;
+      if (c.unique === true) col.unique = true;
+      const def = str(c.default, 120);
+      if (def !== undefined) col.default = def;
+      if (ref && typeof ref.table === 'string')
+        col.references = { table: ref.table.slice(0, 200), column: str(ref.column, 120) };
+      const line = posInt(c.line);
+      if (line) col.line = line;
+      return col;
+    });
+}
 
 /**
  * Checks a model from an untrusted producer (a hand-written JSON file, an API response).
@@ -207,6 +261,7 @@ export function validateBrain(input: unknown): ValidationResult {
       returns: str(n.returns, 300),
       returnsDeclared: typeof n.returnsDeclared === 'boolean' ? n.returnsDeclared : undefined,
       doc: str(n.doc, 1000),
+      columns: Array.isArray(n.columns) ? columnsOf(n.columns) : undefined,
       ref: typeof n.ref === 'number' || typeof n.ref === 'string' ? n.ref : undefined,
     });
   });

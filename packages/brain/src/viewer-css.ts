@@ -21,7 +21,25 @@ export const VIEWER_CSS = `
 .nb-crumbs{display:flex;align-items:center;gap:6px;color:var(--nb-muted);font-size:13px}
 .nb-crumbs button{background:none;border:0;padding:0;color:var(--nb-accent);text-decoration:underline}
 .nb-crumbs [aria-current]{color:var(--nb-text)}
-.nb-search{position:relative;margin-left:auto;width:min(340px,100%)}
+.nb-search{position:relative;width:min(340px,100%)}
+.nb-dg-open{margin-left:auto;background:rgba(125,211,252,.12);border:1px solid rgba(125,211,252,.45);border-radius:8px;padding:7px 12px;font-weight:600}
+.nb-dg-open:hover{background:rgba(125,211,252,.22)}
+.nb-diagrams{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;background:#f8fafc;color:#0f172a}
+.nb-diagrams[hidden]{display:none}
+.nb-dg-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #cbd5e1;background:#ffffff}
+.nb-dg-bar button,.nb-dg-bar select{color:#0f172a;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:5px 10px;font:inherit}
+.nb-dg-bar button:hover{background:#f1f5f9}
+.nb-dg-bar [role=tablist]{display:flex;gap:4px}
+.nb-dg-bar [role=tab][aria-selected=true]{background:#0f172a;color:#ffffff;border-color:#0f172a}
+.nb-dg-scope{display:flex;align-items:center;gap:6px;font-size:13px;color:#334155}
+.nb-dg-scope select{max-width:340px}
+.nb-dg-download{margin-left:auto;font-weight:600}
+.nb-diagrams .nb-close{position:static;font-size:18px;line-height:1;padding:4px 10px}
+.nb-dg-note{margin:0;padding:6px 12px;font-size:12px;color:#475569;border-bottom:1px solid #e2e8f0}
+.nb-dg-canvas{flex:1;overflow:auto;padding:4px}
+.nb-dg-canvas svg{display:block}
+.nb-dg-canvas g[data-id]{cursor:pointer}
+.nb-dg-canvas g[data-id]:hover rect:first-of-type{stroke:#0284c7;stroke-width:2}
 .nb-search input{width:100%;background:var(--nb-panel);border:1px solid var(--nb-line);border-radius:8px;color:var(--nb-text);padding:7px 10px}
 .nb-results{position:absolute;left:0;right:0;top:100%;margin:4px 0 0;padding:4px;list-style:none;background:#0c1020;border:1px solid var(--nb-line);border-radius:8px;max-height:320px;overflow:auto;z-index:5}
 .nb-results li{padding:6px 8px;border-radius:6px;cursor:pointer}
@@ -54,6 +72,11 @@ export const VIEWER_CSS = `
 .nb-sig{white-space:pre-wrap;word-break:break-word;background:rgba(0,0,0,.35);border:1px solid var(--nb-line);border-radius:6px;padding:8px;font-size:12px;margin:8px 0}
 .nb-root h4{margin:12px 0 4px;font-size:13px}
 .nb-root h5{margin:8px 0 2px;font-size:12px;color:var(--nb-muted);font-weight:600}
+.nb-cols-wrap{overflow-x:auto;margin:4px 0 8px}
+.nb-cols table{border-collapse:collapse;font-size:12px;width:100%}
+.nb-cols th,.nb-cols td{border-bottom:1px solid var(--nb-line);padding:3px 6px;text-align:left;white-space:nowrap}
+.nb-cols th{color:var(--nb-muted);font-weight:600}
+.nb-cols td:first-child{font-family:ui-monospace,monospace}
 .nb-io li{font-family:ui-monospace,monospace;font-size:12px;white-space:pre-wrap;word-break:break-word;padding:2px 0}
 .nb-rel-in h4{color:#7dd3fc}.nb-rel-out h4{color:#fdba74}
 .nb-rel li{display:flex;flex-direction:column;padding:2px 0}

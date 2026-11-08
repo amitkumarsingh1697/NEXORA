@@ -111,6 +111,40 @@ test('index a repository, explore it, ask a question, and take a bug through rev
     await expect(details).toContainText('in  a: number');
     await expect(details).toContainText('out number');
 
+    // Tables: columns with types and sizes, and the functions that read them.
+    await details.getByRole('button', { name: 'Close details' }).click();
+    await brain.getByRole('searchbox', { name: 'Search the brain' }).fill('users');
+    await brain.getByRole('option', { name: /^users\s*Table/ }).click();
+    await expect(details.getByRole('heading', { name: 'users', exact: true })).toBeVisible();
+    await expect(details).toContainText('Columns (2)');
+    await expect(details.getByRole('row', { name: /name varchar\(80\) no/ })).toBeVisible();
+    await expect(details.getByRole('row', { name: /id integer no PK/ })).toBeVisible();
+    await expect(details).toContainText('Read by');
+    await expect(details).toContainText('allUsers');
+    await expect(details).toContainText('migrations/001_users.sql:1');
+
+    // Diagrams: ER, schema and class diagrams, with a download.
+    await brain.getByRole('button', { name: 'Diagrams' }).click();
+    const diagrams = brain.getByRole('dialog', { name: 'Architecture diagrams' });
+    await expect(diagrams.getByRole('tab', { name: 'ER diagram' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(diagrams.locator('svg')).toContainText('PK    id');
+    await expectAccessible(page, 'diagrams');
+    await diagrams.getByRole('tab', { name: 'Schema diagram' }).click();
+    await expect(diagrams.locator('svg')).toContainText('name: varchar(80)  not null');
+    await diagrams.getByRole('tab', { name: 'Class diagram' }).click();
+    await expect(diagrams.locator('svg')).toContainText('Calculator');
+    await expect(diagrams.locator('svg')).toContainText('run(): number');
+    const download = page.waitForEvent('download');
+    await diagrams.getByRole('button', { name: 'Download SVG' }).click();
+    expect((await download).suggestedFilename()).toMatch(/-class\.svg$/);
+    // Clicking a box finds it in the brain.
+    await diagrams.locator('g[data-id]').filter({ hasText: 'Calculator' }).click();
+    await expect(diagrams).toBeHidden();
+    await expect(details.getByRole('heading', { name: 'Calculator' })).toBeVisible();
+
     // Integrations tab renders its four groups (S3-3, S3-7).
     await page.getByRole('button', { name: 'Integrations', exact: true }).click();
     await expect(page.getByText(/^Environment variables \(\d+\)$/)).toBeVisible();
