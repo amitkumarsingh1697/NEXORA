@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Ask } from './pages/Ask';
+import { Spinner } from './components/ui';
 import { IntegrationsPage } from './pages/Integrations';
 import { Investigate } from './pages/Investigate';
 import { Overview } from './pages/Overview';
@@ -13,6 +14,9 @@ import {
   Risk,
   SearchPage,
 } from './pages/Views';
+
+// three.js is large; load the brain only when its tab opens.
+const BrainPage = lazy(() => import('./pages/Brain').then((m) => ({ default: m.BrainPage })));
 
 export interface TabProps {
   repoId: number;
@@ -28,6 +32,15 @@ export interface TabDef {
 /** Repository tabs. Feature modules (Ask, Investigate) append to this list. */
 export const TABS: TabDef[] = [
   { id: 'overview', label: 'Overview', render: (p) => <Overview repoId={p.repoId} /> },
+  {
+    id: 'brain',
+    label: 'Brain',
+    render: (p) => (
+      <Suspense fallback={<Spinner label="Loading the brain viewer…" />}>
+        <BrainPage {...p} />
+      </Suspense>
+    ),
+  },
   { id: 'structure', label: 'Structure', render: (p) => <StructurePage {...p} /> },
   { id: 'modules', label: 'Modules', render: (p) => <Modules {...p} /> },
   { id: 'dependencies', label: 'Dependencies', render: (p) => <Dependencies {...p} /> },

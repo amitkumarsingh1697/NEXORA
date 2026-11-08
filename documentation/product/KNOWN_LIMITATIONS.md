@@ -7,6 +7,7 @@ Honest list of what does not work, or was not verified, in the current build.
 - **No real model was exercised.** Ollama was not installed in the build environment. AI paths (CVForge phrasing, CodeAtlas chat, model patches) are tested with fake providers only; quality with real models is unmeasured.
 - **Accessibility is checked automatically only.** axe scans cover the screens the E2E journeys reach; there has been no manual keyboard or screen-reader audit, and the extension popup is not scanned.
 - **Extension toolbar click is simulated in E2E.** Playwright opens the popup page directly and stubs the active tab; manual testing in Chrome/Edge is still needed, especially on live LinkedIn/Naukri pages (extraction selectors were written against public page structures and a fixture, not verified on live logged-in pages).
+- **The ArchLens architecture brain has not been produced in a live Claude Code session.** The renderer, template and model format are tested; the skill's instructions for building a model from a repository link are not.
 - **Docker compose file validated (`docker compose config`) but not started**: no Docker daemon in the build environment. Postgres was run natively.
 
 ## CVForge
@@ -44,6 +45,7 @@ Honest list of what does not work, or was not verified, in the current build.
 - Public clone: https only, no private repositories, no size cap (10-minute timeout), and the clone request waits for the download before indexing starts. Host checks happen before git resolves the name again, so DNS rebinding is a residual risk (threat A16).
 - Frameworks are detected from package.json declarations only; declaration does not prove use. Manifests from non-JavaScript ecosystems are not classified.
 - Cycle detection covers resolved file imports; imports CodeAtlas could not resolve cannot form part of a reported cycle.
+- Architecture brain: lobe placement (frontend, backend, database, DevOps, core) is inferred from file paths, imports and node kinds, and can be wrong for unconventional layouts. Parameter and return types come from TypeScript and JavaScript only. The brain keeps the 6,000 most connected parts of a large repository. The 3D view needs WebGL and has been checked only with software rendering in headless Chromium.
 
 ## Repository
 

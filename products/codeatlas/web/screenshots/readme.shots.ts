@@ -39,6 +39,23 @@ test('CodeAtlas', async ({ page }) => {
   const tab = async (name: string) =>
     page.getByRole('button', { name, exact: true }).first().click();
 
+  // The 3D architecture brain: whole brain, inside one lobe, then one function's links.
+  await tab('Brain');
+  const brain = page.getByTestId('brain');
+  await expect(brain.locator('canvas')).toBeVisible({ timeout: 60_000 });
+  await page.waitForTimeout(2500); // let the camera settle
+  await shot(page, 'codeatlas-brain');
+  await brain.getByRole('button', { name: /^Backend/ }).click();
+  await page.waitForTimeout(2500);
+  await shot(page, 'codeatlas-brain-backend');
+  await brain.getByRole('searchbox', { name: 'Search the brain' }).fill('validateBrain');
+  await brain
+    .getByRole('option', { name: /^validateBrain/ })
+    .first()
+    .click();
+  await page.waitForTimeout(2500);
+  await shot(page, 'codeatlas-brain-method');
+
   await tab('Structure');
   const tree = page.getByRole('list', { name: 'Repository structure' });
   await tree

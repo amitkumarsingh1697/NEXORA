@@ -10,5 +10,13 @@ export default defineConfig({
   ...base,
   testDir: './screenshots',
   testMatch: '*.shots.ts',
-  use: { ...base.use, viewport: { width: 1280, height: 800 }, trace: 'off' },
+  use: {
+    ...base.use,
+    viewport: { width: 1280, height: 800 },
+    trace: 'off',
+    // Software WebGL so the 3D brain renders in headless Chromium.
+    launchOptions: {
+      args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+    },
+  },
 });

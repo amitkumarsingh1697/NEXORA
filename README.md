@@ -148,6 +148,7 @@ The extension source is in [`products/cvforge/extension/`](products/cvforge/exte
 
 CodeAtlas runs entirely on your machine (`127.0.0.1`, protected by a token). It indexes a TypeScript or JavaScript repository with the TypeScript Compiler API into SQLite and labels every relationship **observed**, **inferred** or **unknown**, so you always know how a fact was found.
 
+- **Architecture brain:** the whole repository as a 3D brain. Lobes for Frontend, Backend, Database, DevOps and Core & shared; click a lobe to fly inside it, click a class or method to see its inputs and output, where its input comes from and where it sends work, each link labelled with its evidence. Search recalls any part. `pnpm --filter @nexora/codeatlas-service cli brain <path> --out brain.html` writes the same brain as one offline HTML file.
 - **Coverage report:** what was read, what was skipped and why, manifests and declared frameworks.
 - **Structure, modules and dependencies:** a module → file → symbol tree and dependency graphs, with cycle detection.
 - **Flows:** pick a route or entry point and trace what it calls.
@@ -157,6 +158,12 @@ CodeAtlas runs entirely on your machine (`127.0.0.1`, protected by a token). It 
 - **Investigate:** take a bug report through a patch in an isolated git worktree, allowlisted test commands, and a human approval bound to the exact patch hash before a fast-forward merge.
 
 The screenshots show CodeAtlas exploring this repository.
+
+![Architecture brain](documentation/assets/screenshots/codeatlas-brain.png)
+
+| Inside the Backend lobe                                                       | A function: inputs, output and links                                             |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| ![Backend lobe](documentation/assets/screenshots/codeatlas-brain-backend.png) | ![Function details](documentation/assets/screenshots/codeatlas-brain-method.png) |
 
 | Welcome                                                            | Overview and coverage                                                |
 | ------------------------------------------------------------------ | -------------------------------------------------------------------- |
@@ -187,6 +194,8 @@ The screenshots show CodeAtlas exploring this repository.
 ## ArchLens
 
 ArchLens is a Claude Code skill in [`skills/archlens/`](skills/archlens/SKILL.md). It does the same evidence work as CodeAtlas, in conversation: every architectural claim is tagged `[observed]`, `[inferred]` or `[unknown]` and cited to `path:line`. Copy the folder into `.claude/skills/` of a project (or `~/.claude/skills/`) and run `/archlens`.
+
+Ask it for an **architecture brain** with a repository link and it returns one HTML file you open in a browser: the same 3D brain as CodeAtlas. It builds the brain through CodeAtlas when a Nexora checkout is available, and otherwise from the code it reads, labelling what it inferred and listing what it did not read. The format is in [`references/brain-model.md`](skills/archlens/references/brain-model.md).
 
 ---
 
@@ -259,7 +268,8 @@ CodeAtlas uses `CODEATLAS_HOME` (data folder), `CODEATLAS_PORT` (default 4317) a
 ## Architecture
 
 ```
-packages/                shared libraries: ai (model providers), logging, validation
+packages/                shared libraries: ai (model providers), logging, validation,
+                         brain (3D architecture brain viewer used by CodeAtlas and ArchLens)
 products/cvforge/
   core/                  pure domain engine: extraction, parsing, evidence, scoring, suggestions, export
   backend/               PostgreSQL schema, migrations and services (auth, resumes, workspaces, exports…)

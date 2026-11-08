@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-import { indexRepository, openDb, search } from '@nexora/codeatlas-core';
-import { join } from 'node:path';
+import { buildBrain, indexRepository, openDb, search } from '@nexora/codeatlas-core';
+import { renderBrainHtml } from '@nexora/brain';
+import { writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadServiceConfig } from './config';
 import { createService, listen } from './server';
@@ -36,6 +38,25 @@ async function main(): Promise<void> {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       return;
     }
+    case 'brain': {
+      // codeatlas brain <path> [--out file.html]: index, then write the 3D brain as one HTML file.
+      const outFlag = args.indexOf('--out');
+      const out = outFlag >= 0 ? args.splice(outFlag, 2)[1] : undefined;
+      const root = args[0];
+      if (!root) throw new Error('usage: codeatlas brain <path> [--out brain.html]');
+      const db = openDb(join(cfg.home, 'codeatlas.db'));
+      const report = indexRepository(db, root, {
+        onProgress: (m) => process.stderr.write(`… ${m}\n`),
+      });
+      const brain = buildBrain(db, report.repoId);
+      if (!brain) throw new Error('The repository was indexed but could not be read back.');
+      const file = resolve(out ?? `${brain.source.repository || 'repository'}-brain.html`);
+      writeFileSync(file, renderBrainHtml(brain));
+      process.stdout.write(
+        `Architecture brain: ${brain.neurons.length} parts, ${brain.synapses.length} connections.\nOpen ${file} in a browser.\n`,
+      );
+      return;
+    }
     case 'search': {
       const [repoId, ...q] = args;
       const db = openDb(join(cfg.home, 'codeatlas.db'));
@@ -44,7 +65,9 @@ async function main(): Promise<void> {
       return;
     }
     default:
-      process.stdout.write('usage: codeatlas <serve|index <path>|search <repoId> <query>>\n');
+      process.stdout.write(
+        'usage: codeatlas <serve|index <path>|brain <path> [--out file.html]|search <repoId> <query>>\n',
+      );
       process.exitCode = cmd ? 1 : 0;
   }
 }

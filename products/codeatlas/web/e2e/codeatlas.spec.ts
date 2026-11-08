@@ -80,6 +80,37 @@ test('index a repository, explore it, ask a question, and take a bug through rev
       0,
     );
 
+    // Architecture brain: lobes, go inside one, pick a function, see its inputs, output and links.
+    await page.getByRole('button', { name: 'Brain', exact: true }).click();
+    const brain = page.getByTestId('brain');
+    const regions = brain.getByRole('complementary', { name: 'Brain regions' });
+    for (const lobe of ['Frontend', 'Backend', 'Database', 'DevOps', 'Core & shared'])
+      await expect(regions.getByRole('button', { name: new RegExp(`^${lobe}`) })).toBeVisible();
+    await expectAccessible(page, 'brain overview');
+    await regions.getByRole('button', { name: /^Backend/ }).click();
+    await expect(
+      brain.getByRole('navigation', { name: 'Where you are in the brain' }),
+    ).toContainText('Backend');
+    await regions
+      .locator('[data-neuron]')
+      .filter({ hasText: /^handleUsers/ })
+      .click();
+    const details = brain.getByRole('complementary', { name: 'Details', exact: true });
+    await expect(details.getByRole('heading', { name: 'handleUsers' })).toBeVisible();
+    await expect(details).toContainText('Inputs and output');
+    await expect(details).toContainText('src/handlers.ts:1');
+    await expect(details).toContainText('Where its input comes from');
+    await expect(details).toContainText('GET /users');
+    await expect(details).toContainText('Where it sends work and data');
+    await expect(details).toContainText('listUsers');
+    await expectAccessible(page, 'brain details');
+    // Recall: search jumps straight to a part anywhere in the brain.
+    await brain.getByRole('searchbox', { name: 'Search the brain' }).fill('add');
+    await brain.getByRole('option', { name: /^add/ }).first().click();
+    await expect(details.getByRole('heading', { name: 'add', exact: true })).toBeVisible();
+    await expect(details).toContainText('in  a: number');
+    await expect(details).toContainText('out number');
+
     // Integrations tab renders its four groups (S3-3, S3-7).
     await page.getByRole('button', { name: 'Integrations', exact: true }).click();
     await expect(page.getByText(/^Environment variables \(\d+\)$/)).toBeVisible();

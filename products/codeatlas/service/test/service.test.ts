@@ -114,6 +114,17 @@ describe('indexing and views over HTTP', () => {
     expect(flow.body.nodes.map((n) => n.label)).toContain('listUsers');
   });
 
+  it('serves the architecture brain, and 404 for an unknown repository', async () => {
+    const r = await svc.api<{ brain: { format: number; neurons: { name: string }[] } }>(
+      `/api/repos/${repoId}/brain`,
+    );
+    expect(r.status).toBe(200);
+    expect(r.body.brain.format).toBe(1);
+    expect(r.body.brain.neurons.map((n) => n.name)).toContain('handleUsers');
+    expect((await svc.api('/api/repos/99999/brain')).status).toBe(404);
+    expect((await svc.api(`/api/repos/${repoId}/brain`, { token: null })).status).toBe(401);
+  });
+
   it('searches, finds nodes, shows details and impact', async () => {
     const s = await svc.api<{ hits: { filePath: string }[] }>(
       `/api/repos/${repoId}/search?q=${encodeURIComponent('list users')}`,

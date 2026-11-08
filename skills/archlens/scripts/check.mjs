@@ -45,6 +45,7 @@ const files = [
     'report-templates',
     'safe-change-protocol',
     'codeatlas-integration',
+    'brain-model',
   ].map((f) => `references/${f}.md`),
 ];
 for (const f of files) {
@@ -54,6 +55,12 @@ for (const f of files) {
     if (!existsSync(p)) errors.push(`${f}: broken link ${target}`);
   }
 }
+
+for (const f of ['assets/brain-template.html', 'scripts/render-brain.mjs'])
+  if (!existsSync(join(root, f))) errors.push(`missing ${f}`);
+const template = join(root, 'assets/brain-template.html');
+if (existsSync(template) && !readFileSync(template, 'utf8').includes('__BRAIN_DATA__'))
+  errors.push('assets/brain-template.html has no __BRAIN_DATA__ placeholder');
 
 if (errors.length) {
   for (const e of errors) console.error(`✗ ${e}`);
