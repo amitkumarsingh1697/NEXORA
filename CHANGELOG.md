@@ -25,6 +25,8 @@ All notable changes to this repository. Format: [Keep a Changelog](https://keepa
 
 - README rewritten with features, setup, configuration and architecture, and screenshots of CVForge, the browser extension and CodeAtlas taken from the running apps with made-up data (`pnpm --filter @nexora/cvforge-web screenshots`, `pnpm --filter @nexora/codeatlas-web screenshots`). Built CVForge extension packages for Chrome and Edge in `products/cvforge/extension/releases/`.
 
+- Architecture brain (ADR 0012): a 3D, clickable brain of a repository in `packages/brain` (three.js). Lobes for Frontend, Backend, Database, DevOps and Core & shared; click a lobe to go inside; click a class or method to see its inputs and output, where its input comes from and where it sends work, each link with its confidence and `file:line`; search to recall any part. CodeAtlas gains a Brain tab, `GET /api/repos/:id/brain` and `codeatlas brain <path> --out file.html`, and now records parameter and return types for functions and methods. ArchLens can produce the brain as one offline HTML file from a repository link (`skills/archlens/scripts/render-brain.mjs`).
+
 ### Changed
 
 - CodeAtlas runs left `running` by a crash are marked failed at startup. Sprint 3: parsed source files are shared across tsconfig programs, cutting a cold index of this repository from 22 s to 13 s; a doc comment on overloaded methods is no longer lost. Light-theme colours for "observed" and "inferred" darkened to meet contrast. CVForge inline links are underlined and decided suggestions are no longer dimmed.

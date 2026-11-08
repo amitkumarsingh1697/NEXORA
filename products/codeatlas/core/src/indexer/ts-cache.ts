@@ -22,7 +22,7 @@ import ts from 'typescript';
 import type { GraphOp, NodeRef } from './model';
 
 /** Bump when the recorded format or the analysis changes, so old caches are discarded. */
-export const TS_CACHE_FORMAT = 1;
+export const TS_CACHE_FORMAT = 2;
 
 export interface PendingInferred {
   owner: NodeRef;

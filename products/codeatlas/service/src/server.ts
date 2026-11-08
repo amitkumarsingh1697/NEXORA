@@ -17,6 +17,7 @@ import {
   flowStarts,
   flowView,
   getRepo,
+  buildBrain,
   impactOf,
   indexRuns,
   integrationsView,
@@ -285,6 +286,12 @@ function registerCoreRoutes(ctx: ServiceContext): void {
     };
   });
 
+  r.add('GET', '/api/repos/:id/brain', (req) => {
+    const repo = repoOr404(ctx, req.params.id);
+    const brain = buildBrain(ctx.db, repo.id);
+    if (!brain) throw new HttpError(404, 'NOT_FOUND', 'Repository not found.');
+    return { brain };
+  });
   r.add('GET', '/api/repos/:id/unresolved', (req) => ({
     items: unresolvedList(ctx.db, repoOr404(ctx, req.params.id).id),
   }));

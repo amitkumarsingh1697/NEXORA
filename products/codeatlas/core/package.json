@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@nexora/brain": "workspace:*",
     "@nexora/ai": "workspace:*",
     "@nexora/logging": "workspace:*",
     "@nexora/validation": "workspace:*",

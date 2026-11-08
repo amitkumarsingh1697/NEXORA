@@ -1,6 +1,6 @@
 ---
 name: archlens
-description: Architecture Intelligence & Repository Engineering. Use to understand, inspect, map, explain, troubleshoot or safely modify a software repository, with every claim tagged observed, inferred or unknown and cited to file and line. Triggers include explaining how a codebase fits together, tracing a request flow, assessing change impact or risk, investigating a bug, onboarding to a repo, or /archlens.
+description: Architecture Intelligence & Repository Engineering. Use to understand, inspect, map, explain, troubleshoot or safely modify a software repository, with every claim tagged observed, inferred or unknown and cited to file and line. Also draws an interactive 3D architecture brain of a repository (frontend, backend, database, DevOps and core lobes, with classes, methods, their inputs and outputs and the calls between them). Triggers include explaining how a codebase fits together, tracing a request flow, assessing change impact or risk, investigating a bug, onboarding to a repo, "architecture brain", or /archlens.
 allowed-tools: Read Grep Glob
 ---
 
@@ -29,6 +29,7 @@ Rules and edge cases (dynamic dispatch, DI, reflection, generated code, configur
 | "Why does X happen / find this bug"              | Investigate                                                                              |
 | "Change X"                                       | Change (follow [references/safe-change-protocol.md](references/safe-change-protocol.md)) |
 | "Help me get started here"                       | Onboard                                                                                  |
+| "Architecture brain" / "show me the brain"       | Brain (section 6 below)                                                                  |
 
 Run one playbook at a time. If the request is broad, start with Map, then ask which area matters most. A concrete question can be answered directly.
 
@@ -51,3 +52,17 @@ Run one playbook at a time. If the request is broad, start with Map, then ask wh
 ## 5. With CodeAtlas
 
 If a CodeAtlas service or export is available, use its observed / inferred / unknown edges and coverage report as evidence, with the index revision. Re-read the source for any claim that drives a recommendation. See [references/codeatlas-integration.md](references/codeatlas-integration.md).
+
+## 6. Architecture brain
+
+When the user asks for an **architecture brain** (usually with a repository link), the deliverable is one HTML file: an interactive 3D brain with Frontend, Backend, Database, DevOps and Core & shared lobes. Clicking a lobe goes inside it; clicking a class or method shows its inputs and output, where its input comes from and where its work goes, each link labelled and cited. It is not a report, a PDF or a document.
+
+The user asking for a brain is their request to clone the repository into a temporary folder, write the model and page into an output folder, and run `node`. These steps prompt for permission; they never touch the user's own files.
+
+1. **Get the code.** For a link, `git clone --depth 1 <url>` into a new temporary folder. Only `https://` links. For a local path, use it read-only.
+2. **Build the model.**
+   - **With CodeAtlas** (a Nexora checkout is available): `pnpm --filter @nexora/codeatlas-service cli brain <repo path> --out <repo>-brain.html` indexes the repository and writes the finished page. Skip steps 3 and 4. Or, from a running CodeAtlas service, save `GET /api/repos/:id/brain` to a file and render it in step 4.
+   - **Without CodeAtlas:** run the Map playbook, then write `brain-model.json` by hand in the format in [references/brain-model.md](references/brain-model.md). Read entry points, routes, services, data access, main UI components and CI first. For each function or method you read, record its parameters and return type as written, and add a synapse for every call you see with its `file:line`. Keep it to what you read; for a large repository, cover the main flows (a few hundred neurons is fine) and say what you skipped in `notes`.
+3. **Check it.** Every `observed` synapse has a `file` and `line`. Nothing comes from a file you did not open. No secrets.
+4. **Render.** `node scripts/render-brain.mjs brain-model.json <repo>-brain.html` (the script lives in this skill's folder; it also accepts CodeAtlas's `{ "brain": … }` response).
+5. **Hand it over.** Give the path of the HTML file and say: how many neurons and synapses; which parts were read and which were not; that lobe placement is inferred from paths and imports; and that method-level detail is limited to the code that was read (CodeAtlas extracts it for TypeScript and JavaScript only).

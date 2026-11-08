@@ -566,7 +566,7 @@ export function indexTypeScript(
         return;
       }
       try {
-        collectDeclarations(ctx, sf, f.path);
+        collectDeclarations(ctx, sf, f.path, p.checker);
         collectImports(ctx, sf, f.path, p.options, p.host);
         collectNextRoutes(ctx, sf, f.path);
         stats.filesParsed++;
@@ -683,7 +683,12 @@ function symbolKey(path: string, qname: string): string {
   return `${path}#${qname}`;
 }
 
-function collectDeclarations(ctx: Ctx, sf: ts.SourceFile, path: string): void {
+function collectDeclarations(
+  ctx: Ctx,
+  sf: ts.SourceFile,
+  path: string,
+  checker: ts.TypeChecker,
+): void {
   const fileRef: NodeRef = { kind: 'file', key: path };
   const visit = (node: ts.Node): void => {
     const d = describeDecl(node);
@@ -710,6 +715,7 @@ function collectDeclarations(ctx: Ctx, sf: ts.SourceFile, path: string): void {
         endLine,
         data: {
           signature: signatureOf(node, sf),
+          ...functionShape(node, checker),
           doc: jsDoc || undefined,
           loc: endLine - startLine + 1,
         },
@@ -735,6 +741,63 @@ function collectDeclarations(ctx: Ctx, sf: ts.SourceFile, path: string): void {
     ts.forEachChild(node, visit);
   };
   visit(sf);
+}
+
+const TYPE_TEXT_MAX = 160;
+const typeText = (checker: ts.TypeChecker, t: ts.Type, at: ts.Node): string => {
+  const s = checker.typeToString(t, at, ts.TypeFormatFlags.NoTruncation);
+  return s.length > TYPE_TEXT_MAX ? `${s.slice(0, TYPE_TEXT_MAX - 1)}…` : s;
+};
+
+/** The function a declaration stands for, if it is one (including `const f = () => …`). */
+function functionLike(node: ts.Node): ts.SignatureDeclaration | null {
+  if (
+    ts.isFunctionDeclaration(node) ||
+    ts.isMethodDeclaration(node) ||
+    ts.isConstructorDeclaration(node) ||
+    ts.isGetAccessorDeclaration(node) ||
+    ts.isSetAccessorDeclaration(node)
+  )
+    return node;
+  const init =
+    ts.isVariableDeclaration(node) || ts.isPropertyDeclaration(node)
+      ? node.initializer
+      : ts.isExportAssignment(node)
+        ? node.expression
+        : undefined;
+  let e = init;
+  while (
+    e &&
+    (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isSatisfiesExpression(e))
+  )
+    e = e.expression;
+  if (e && (ts.isArrowFunction(e) || ts.isFunctionExpression(e))) return e;
+  return null;
+}
+
+/**
+ * Inputs and output of a function, as the type checker sees them. `declared` says whether
+ * the source wrote the type or TypeScript worked it out; both come from the compiler.
+ */
+function functionShape(
+  node: ts.Node,
+  checker: ts.TypeChecker,
+): {
+  params?: { name: string; type: string; optional: boolean }[];
+  returns?: string;
+  returnsDeclared?: boolean;
+} {
+  const fn = functionLike(node);
+  if (!fn) return {};
+  const params = fn.parameters.map((p) => ({
+    name: p.name.getText().slice(0, 80),
+    type: typeText(checker, checker.getTypeAtLocation(p), p),
+    optional: !!p.questionToken || !!p.initializer || !!p.dotDotDotToken,
+  }));
+  if (ts.isConstructorDeclaration(fn) || ts.isSetAccessorDeclaration(fn)) return { params };
+  const sig = checker.getSignatureFromDeclaration(fn);
+  const returns = sig ? typeText(checker, checker.getReturnTypeOfSignature(sig), fn) : undefined;
+  return { params, returns, returnsDeclared: !!fn.type };
 }
 
 function signatureOf(node: ts.Node, sf: ts.SourceFile): string {
