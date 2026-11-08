@@ -258,6 +258,7 @@ export function mountBrain(
   let lines: THREE.LineSegments | null = null;
   let pulses: THREE.Points | null = null;
   const curve = new Float32Array(synapses.length * (CURVE_SEGMENTS + 1) * 3);
+  const baseScale = new Float32Array(neurons.length).fill(1);
   const baseColors: THREE.Color[] = neurons.map((n) =>
     new THREE.Color(REGION_COLORS[n.region]).lerp(new THREE.Color('#ffffff'), 0.25),
   );
@@ -351,6 +352,7 @@ export function mountBrain(
     const glowPos = new Float32Array(neurons.length * 3);
     neurons.forEach((n, i) => {
       const s = KIND_SIZE[n.kind] * (1 + Math.min(1, n.degree / 30) * 0.6);
+      baseScale[i] = s;
       m.makeScale(s, s, s).setPosition(...n.position);
       instanced?.setMatrixAt(i, m);
       instanced?.setColorAt(i, baseColors[i] as THREE.Color);
@@ -477,7 +479,7 @@ export function mountBrain(
       } else if (region) {
         const inside = src.region === region && dst.region === region;
         const touches = src.region === region || dst.region === region;
-        k = inside ? 0.22 : touches ? 0.1 : 0.008;
+        k = inside ? 0.22 : touches ? 0.045 : 0.004;
       }
       if (s.confidence !== 'observed') k *= 0.6;
       if (selected && s.target === selected) tmp.set('#38bdf8');
@@ -500,15 +502,28 @@ export function mountBrain(
     }
     const gcol = glow.geometry.getAttribute('color') as THREE.BufferAttribute;
     const tmp = new THREE.Color();
+    const m = new THREE.Matrix4();
     neurons.forEach((n, i) => {
       tmp.copy(baseColors[i] as THREE.Color);
+      // Parts outside the focus shrink and fade so they do not block the view up close.
+      let scale = 1;
       if (selected) {
         if (n.id === selected) tmp.set('#ffffff');
-        else if (!near.has(n.id)) tmp.multiplyScalar(0.18);
-      } else if (region && n.region !== region) tmp.multiplyScalar(0.12);
+        else if (!near.has(n.id)) {
+          tmp.multiplyScalar(n.region === region ? 0.18 : 0.05);
+          scale = n.region === region ? 0.7 : 0.3;
+        }
+      } else if (region && n.region !== region) {
+        tmp.multiplyScalar(0.06);
+        scale = 0.3;
+      }
+      const s = (baseScale[i] ?? 1) * scale;
+      m.makeScale(s, s, s).setPosition(...n.position);
+      instanced?.setMatrixAt(i, m);
       instanced?.setColorAt(i, tmp);
       gcol.setXYZ(i, tmp.r, tmp.g, tmp.b);
     });
+    instanced.instanceMatrix.needsUpdate = true;
     if (instanced.instanceColor) instanced.instanceColor.needsUpdate = true;
     gcol.needsUpdate = true;
   }
@@ -1000,11 +1015,21 @@ export function mountBrain(
     frame = requestAnimationFrame(tick);
     if (!renderer || !controls) return;
     timer.update();
-    const dt = Math.min(0.05, timer.getDelta());
+    const elapsed = Math.min(0.5, timer.getDelta());
+    const dt = Math.min(0.05, elapsed);
     if (flying) {
-      controls.target.lerp(camTarget, 0.08);
-      camera.position.lerp(camGoal, 0.08);
-      if (camera.position.distanceTo(camGoal) < 0.01) flying = false;
+      // Ease by elapsed time, not per frame, so slow devices still arrive.
+      const f = reducedMotion ? 1 : 1 - Math.exp(-elapsed * 4.5);
+      controls.target.lerp(camTarget, f);
+      camera.position.lerp(camGoal, f);
+      if (
+        camera.position.distanceTo(camGoal) < 0.005 &&
+        controls.target.distanceTo(camTarget) < 0.005
+      ) {
+        camera.position.copy(camGoal);
+        controls.target.copy(camTarget);
+        flying = false;
+      }
     }
     controls.update();
     if (pulses && !reducedMotion) {
@@ -1073,8 +1098,10 @@ export function mountBrain(
       }
       selected = n.id;
       region = n.region;
-      const off = new THREE.Vector3(0.75, 0.4, 1.0);
-      flyTo(n.position, [n.position[0] + off.x, n.position[1] + off.y, n.position[2] + off.z]);
+      // Look from outside the brain towards the part, so little sits between it and the camera.
+      const out = new THREE.Vector3(...n.position).add(new THREE.Vector3(0.6, 0.25, 0.3));
+      out.normalize().multiplyScalar(1.1);
+      flyTo(n.position, [n.position[0] + out.x, n.position[1] + out.y, n.position[2] + out.z]);
       status.textContent = `Selected ${n.name}.`;
       renderAll();
     },

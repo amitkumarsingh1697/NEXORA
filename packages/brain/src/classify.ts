@@ -19,6 +19,11 @@ const BACKEND_PACKAGES =
 const DATABASE_PACKAGES =
   /^(pg|postgres|mysql2?|mongodb|mongoose|redis|ioredis|sqlite3|better-sqlite3|node:sqlite|drizzle-orm|drizzle-kit|prisma|@prisma\/client|typeorm|sequelize|knex|kysely|@supabase\/supabase-js|firebase-admin|dynamodb|@aws-sdk\/client-dynamodb)(\/|$)/;
 
+const BACKEND_WORDS =
+  'api|apis|server|servers|backend|routes?|controllers?|handlers?|middlewares?|services|resolvers|graphql|rpc|lambdas?|functions|workers?|jobs|cron';
+/** A backend word as a folder (server/…), not only as a file name (api.ts). */
+const BACKEND_FOLDER = new RegExp(`(^|/)(${BACKEND_WORDS})/`, 'i');
+
 const RULES: { region: RegionId; test: RegExp; reason: string }[] = [
   // DevOps first: CI, containers and tool configuration are never application code.
   {
@@ -49,7 +54,7 @@ const RULES: { region: RegionId; test: RegExp; reason: string }[] = [
   { region: 'database', test: /\.(sql|prisma)$/i, reason: 'SQL or schema file' },
   {
     region: 'backend',
-    test: /(^|\/)(api|apis|server|servers|backend|routes?|controllers?|handlers?|middlewares?|services|resolvers|graphql|rpc|lambdas?|functions|workers?|jobs|cron)(\/|\.|$)/i,
+    test: new RegExp(`(^|/)(${BACKEND_WORDS})(/|\\.|$)`, 'i'),
     reason: 'server, API or service path',
   },
   {
@@ -98,7 +103,9 @@ export function classifyFile(path: string | undefined, hints: PlacementHints = {
   const beImport = imports.find((i) => BACKEND_PACKAGES.test(i));
   const fe = firstRule('frontend');
   const feImport = imports.find((i) => FRONTEND_PACKAGES.test(i));
-  if (be && !(fe && feImport)) return { region: 'backend', reason: be.reason };
+  // A file named like a backend word inside a UI folder (web/src/api.ts) is a browser client.
+  const beOnlyByName = be && fe && !BACKEND_FOLDER.test(p) && !beImport;
+  if (be && !(fe && feImport) && !beOnlyByName) return { region: 'backend', reason: be.reason };
   if (beImport) return { region: 'backend', reason: `imports ${beImport}` };
   if (fe) return { region: 'frontend', reason: fe.reason };
   if (feImport) return { region: 'frontend', reason: `imports ${feImport}` };

@@ -123,6 +123,8 @@ describe('classifyFile', () => {
     ['scripts/release.mjs', 'devops'],
     ['packages/logging/src/index.ts', 'core'],
     ['src/lib/math.ts', 'core'],
+    ['products/app/web/src/api.ts', 'frontend'],
+    ['products/app/server/src/api.ts', 'backend'],
   ])('%s → %s', (path, region) => {
     expect(classifyFile(path).region).toBe(region);
   });
