@@ -18,6 +18,7 @@
  */
 import ts from 'typescript';
 import type { GraphBuilder, NodeRef } from './model';
+import { isTestSupportPath } from './test-paths';
 
 export interface ColumnDef {
   name: string;
@@ -219,7 +220,12 @@ export function parseSqlSchema(
           const col = table.columns.find((x) => x.name === cols[0]);
           if (col) col.unique = true;
         }
-      } else if (/^(CHECK|INDEX|KEY|EXCLUDE|FULLTEXT|SPATIAL)\b/i.test(body)) {
+      } else if (
+        /^(CHECK|EXCLUDE|FULLTEXT|SPATIAL)\b/i.test(body) ||
+        // MySQL `KEY name (cols)` and `INDEX (cols)`; a column called `key` or `index` has a
+        // type after its name instead.
+        /^(INDEX|KEY)\s*(?:[\w"`]+\s+)?\(/i.test(body)
+      ) {
         continue;
       } else {
         const col = parseSqlColumn(item);
@@ -431,6 +437,9 @@ export function addSchema(
   path: string,
   parsed: { tables: TableDef[]; foreignKeys: ForeignKey[] },
 ): void {
+  // A table a test builds for itself is not the application's schema, and must not replace
+  // or add columns to the real table of the same name.
+  if (isTestSupportPath(path)) return;
   for (const t of parsed.tables) {
     const ref = tableRef(t);
     const prev = graph.get(ref);

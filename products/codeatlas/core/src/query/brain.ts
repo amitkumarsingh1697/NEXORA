@@ -11,7 +11,7 @@ import {
   type SynapseKind,
 } from '@nexora/brain';
 import type { Db } from '../store/db';
-import { isTestPath } from '../indexer/ts-indexer';
+import { isTestSupportPath } from '../indexer/test-paths';
 import { EDGE_COLS, NODE_COLS, getRepo, toEdge, toNode, type EdgeRow } from './graph';
 
 /** CodeAtlas edge kinds drawn as synapses, and what they become. */
@@ -61,9 +61,6 @@ function str(v: unknown): string | undefined {
  * renders, inheritance, route handling and data access as synapses, each with the
  * confidence and evidence CodeAtlas recorded. Test files are left out.
  */
-/** Test helpers and fixtures are not part of the architecture. */
-const TEST_SUPPORT = /(^|\/)(test|tests|__mocks__|fixtures?)\//;
-
 export function buildBrain(db: Db, repoId: number): BrainModel | null {
   const repo = getRepo(db, repoId);
   if (!repo) return null;
@@ -115,7 +112,7 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     classifyFile(path ?? undefined, { imports: path ? importsOf.get(path) : undefined });
 
   for (const n of nodes) {
-    if (n.filePath && (isTestPath(n.filePath) || TEST_SUPPORT.test(n.filePath))) continue;
+    if (n.filePath && isTestSupportPath(n.filePath)) continue;
     let kind: NeuronKind | undefined;
     if (n.kind === 'symbol') {
       kind = SYMBOL_KINDS.get(n.symbolKind ?? '');

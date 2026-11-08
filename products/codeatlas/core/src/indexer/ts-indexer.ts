@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { isTestPath } from './test-paths';
 import { dirname, join, relative, sep } from 'node:path';
 import ts from 'typescript';
 import type { DiscoveredFile } from './files';
@@ -81,11 +82,7 @@ const RUNTIME_GLOBALS = new Set([
 
 const HTTP_VERBS = new Set(['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'all']);
 const NEXT_VERBS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD']);
-const TEST_RE = /(^|\/)(__tests__|e2e)\/|[._-](test|spec)\.[cm]?[jt]sx?$/;
-
-export function isTestPath(p: string): boolean {
-  return TEST_RE.test(p);
-}
+export { isTestPath };
 
 function toPosix(p: string): string {
   return p.split(sep).join('/');

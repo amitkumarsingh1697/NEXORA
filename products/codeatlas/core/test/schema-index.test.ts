@@ -72,6 +72,9 @@ const FILES: Record<string, string> = {
     '}',
     '',
   ].join('\n'),
+  // A test that builds its own tiny users table must not replace the real one.
+  'test/fixtures.ts': "export const SQL = 'CREATE TABLE users (legacy_id int)';\n",
+  'test/fixtures/old.sql': 'CREATE TABLE orders (legacy text);\n',
   'migrations/0001_audit.sql': [
     'CREATE TABLE audit_log (',
     '  id bigserial PRIMARY KEY,',

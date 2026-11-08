@@ -74,7 +74,8 @@ export const VIEWER_CSS = `
 .nb-root h5{margin:8px 0 2px;font-size:12px;color:var(--nb-muted);font-weight:600}
 .nb-cols-wrap{overflow-x:auto;margin:4px 0 8px}
 .nb-cols table{border-collapse:collapse;font-size:12px;width:100%}
-.nb-cols th,.nb-cols td{border-bottom:1px solid var(--nb-line);padding:3px 6px;text-align:left;white-space:nowrap}
+.nb-cols th,.nb-cols td{border-bottom:1px solid var(--nb-line);padding:3px 4px;text-align:left;white-space:nowrap;vertical-align:top}
+.nb-cols td:first-child,.nb-cols td:last-child{white-space:normal;overflow-wrap:anywhere}
 .nb-cols th{color:var(--nb-muted);font-weight:600}
 .nb-cols td:first-child{font-family:ui-monospace,monospace}
 .nb-io li{font-family:ui-monospace,monospace;font-size:12px;white-space:pre-wrap;word-break:break-word;padding:2px 0}

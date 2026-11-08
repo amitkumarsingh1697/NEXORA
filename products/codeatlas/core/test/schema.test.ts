@@ -84,6 +84,17 @@ describe('parseSqlSchema', () => {
     expect(r.tables[0]).toMatchObject({ name: 't', line: 41 });
   });
 
+  it('reads a column named key or index, and still skips index definitions', () => {
+    const r = parseSqlSchema(
+      'CREATE TABLE meta (key TEXT PRIMARY KEY, index integer, value TEXT NOT NULL, KEY by_value (value), INDEX (index));',
+    );
+    expect(r.tables[0]!.columns.map((c) => [c.name, c.type, !!c.primaryKey])).toEqual([
+      ['key', 'TEXT', true],
+      ['index', 'integer', false],
+      ['value', 'TEXT', false],
+    ]);
+  });
+
   it('ignores text that is not a table definition', () => {
     expect(parseSqlSchema('SELECT * FROM users; CREATE INDEX i ON users(email);').tables).toEqual(
       [],
