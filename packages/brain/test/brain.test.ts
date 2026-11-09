@@ -535,3 +535,115 @@ describe('tables and diagrams', () => {
     expect(SYNAPSE_WORDS.reads_table).toEqual({ out: 'Reads table', in: 'Read by' });
   });
 });
+
+describe('coverage inventory', () => {
+  const counts = {
+    full: 2,
+    partial: 3,
+    text: 1,
+    unsupported: 0,
+    failed: 1,
+    excluded: 2,
+    binary: 1,
+  };
+  const inventory = {
+    producer: 'test',
+    total: 10,
+    counts,
+    analysed: 5,
+    readable: 7,
+    coverage: 0.714,
+    fullCoverage: 0.286,
+    languages: [
+      {
+        language: 'Java',
+        category: 'programming',
+        files: 4,
+        counts: { ...counts, full: 0, text: 0, failed: 0, excluded: 0, binary: 0, partial: 4 },
+        analysed: 4,
+        coverage: 1,
+        status: 'partial',
+        method: 'declarations',
+      },
+    ],
+    categories: [{ category: 'programming', label: 'Programming', files: 4, analysed: 4 }],
+    fileTypes: [
+      {
+        role: 'maven',
+        label: 'Maven POM',
+        group: 'build',
+        groupLabel: 'Build',
+        files: 1,
+        counts,
+        analysed: 1,
+        coverage: 1,
+        examples: ['pom.xml'],
+      },
+    ],
+    directories: [{ path: 'src', files: 10, counts, analysed: 5, coverage: 0.714 }],
+    reasons: [
+      { status: 'failed', reason: 'XML is not well formed', files: 1, examples: ['bad.xml'] },
+      { status: 'bogus', reason: 'x', files: 1, examples: [] },
+    ],
+    notAnalysed: [
+      {
+        path: 'bad.xml',
+        language: 'XML',
+        status: 'failed',
+        method: 'xml',
+        reason: 'XML is not well formed',
+      },
+    ],
+    notAnalysedTotal: 1,
+    ambiguous: [{ language: 'Perl', alternatives: ['Prolog'], files: 1 }],
+    unlisted: [{ path: 'vendor/lib', reason: 'git submodule' }],
+  };
+  const withInv = (inv: unknown) =>
+    validateBrain({
+      ...MODEL,
+      coverage: { partial: true, summary: 'Some files', gaps: [], inventory: inv },
+    });
+
+  it('keeps an inventory whose counts add up, and new link synapse kinds', () => {
+    const r = validateBrain({
+      ...MODEL,
+      synapses: [
+        ...MODEL.synapses,
+        { source: 'page', target: 'svc', kind: 'builds', confidence: 'observed' },
+      ],
+      coverage: { partial: true, summary: 'Some files', gaps: [], inventory },
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const inv = r.model.coverage?.inventory;
+    expect(inv?.total).toBe(10);
+    expect(inv?.analysed).toBe(5);
+    expect(inv?.readable).toBe(7);
+    expect(inv?.languages[0]?.language).toBe('Java');
+    expect(inv?.reasons.map((x) => x.status)).toEqual(['failed']);
+    expect(inv?.unlisted?.[0]?.reason).toBe('git submodule');
+    expect(r.model.synapses.some((s) => s.kind === 'builds')).toBe(true);
+    expect(SYNAPSE_WORDS.builds.out).toBe('Builds');
+  });
+
+  it('drops an inventory whose status counts do not add up to the total', () => {
+    const r = withInv({ ...inventory, total: 11 });
+    expect(r.ok && r.model.coverage?.inventory).toBeFalsy();
+    expect(r.ok && r.model.coverage?.summary).toBe('Some files');
+  });
+
+  it('bounds untrusted inventory lists and rejects impossible ratios', () => {
+    const many = Array.from({ length: 2000 }, (_, i) => ({
+      path: `f${i}`,
+      language: 'X',
+      status: 'text',
+      method: 'text',
+    }));
+    const r = withInv({ ...inventory, coverage: 7, notAnalysed: many, notAnalysedTotal: 2000 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.model.coverage?.inventory?.notAnalysed.length).toBe(500);
+    expect(r.model.coverage?.inventory?.notAnalysedTotal).toBe(2000);
+    expect(r.model.coverage?.inventory?.coverage).toBeNull();
+  });
+});

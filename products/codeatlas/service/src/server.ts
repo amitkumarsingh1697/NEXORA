@@ -13,6 +13,8 @@ import { extname, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import {
   dependencyView,
+  FILE_STATUSES,
+  inventoryFiles,
   findNodes,
   flowStarts,
   flowView,
@@ -291,6 +293,22 @@ function registerCoreRoutes(ctx: ServiceContext): void {
     const brain = buildBrain(ctx.db, repo.id);
     if (!brain) throw new HttpError(404, 'NOT_FOUND', 'Repository not found.');
     return { brain };
+  });
+  // Every listed file and what was done to it (status, method, reason), filtered and paged.
+  r.add('GET', '/api/repos/:id/inventory', (req) => {
+    const repo = repoOr404(ctx, req.params.id);
+    const q = z
+      .object({
+        status: z.enum(FILE_STATUSES).optional(),
+        language: z.string().max(200).optional(),
+        role: z.string().max(100).optional(),
+        dir: z.string().max(1024).optional(),
+        q: z.string().max(200).optional(),
+        offset: z.coerce.number().int().min(0).max(10_000_000).optional(),
+        limit: z.coerce.number().int().min(1).max(500).optional(),
+      })
+      .parse(Object.fromEntries([...req.query.entries()].filter(([, v]) => v !== '')));
+    return inventoryFiles(ctx.db, repo.id, q);
   });
   r.add('GET', '/api/repos/:id/unresolved', (req) => ({
     items: unresolvedList(ctx.db, repoOr404(ctx, req.params.id).id),

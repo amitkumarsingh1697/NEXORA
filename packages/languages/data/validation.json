@@ -1,0 +1,2049 @@
+{
+ "date": "2026-11-09",
+ "repositories": [
+  {
+   "name": "hello-world",
+   "url": "https://github.com/leachim6/hello-world",
+   "commit": "a152253b102999bf31988fef077101022e2ad1a5",
+   "files": 1020
+  },
+  {
+   "name": "microservices-demo",
+   "url": "https://github.com/GoogleCloudPlatform/microservices-demo",
+   "commit": "c7cb6d5bfd6ea3aed768634ebbcb98cb7a523712",
+   "files": 364
+  },
+  {
+   "name": "neovim",
+   "url": "https://github.com/neovim/neovim",
+   "commit": "5e149d5200134db18e9e0a997d05c509aabdd8e4",
+   "files": 3950
+  },
+  {
+   "name": "dotfiles",
+   "url": "https://github.com/thoughtbot/dotfiles",
+   "commit": "939a27005b2dd4ac1556e104fc91122f3aea0a6c",
+   "files": 83
+  },
+  {
+   "name": "terraform-aws-eks",
+   "url": "https://github.com/terraform-aws-modules/terraform-aws-eks",
+   "commit": "91b8a8d944e3cf169483108acd12d5b1e47856f7",
+   "files": 185
+  },
+  {
+   "name": "nowinandroid",
+   "url": "https://github.com/android/nowinandroid",
+   "commit": "2982e63cb691ad49cd009aab43dc206fee6699c2",
+   "files": 715
+  },
+  {
+   "name": "jaffle-shop",
+   "url": "https://github.com/dbt-labs/jaffle-shop",
+   "commit": "5beb145b00f5465ec759cfcdd9745e858818cf95",
+   "files": 57
+  },
+  {
+   "name": "llama2.c",
+   "url": "https://github.com/karpathy/llama2.c",
+   "commit": "350e04fe35433e6d2941dce5a1f53308f87058eb",
+   "files": 25
+  },
+  {
+   "name": "cobol-course",
+   "url": "https://github.com/openmainframeproject/cobol-programming-course",
+   "commit": "780b1c9624e066b9d784a738896e493282c5fbf4",
+   "files": 367
+  },
+  {
+   "name": "fortran-stdlib",
+   "url": "https://github.com/fortran-lang/stdlib",
+   "commit": "fe9e216b27e66e397f65c0e4182398654b147273",
+   "files": 897
+  },
+  {
+   "name": "db-sample-schemas",
+   "url": "https://github.com/oracle-samples/db-sample-schemas",
+   "commit": "6660bad68c07bd143430ace58565b3f727e17263",
+   "files": 310
+  },
+  {
+   "name": "phoenix",
+   "url": "https://github.com/phoenixframework/phoenix",
+   "commit": "79fdbb5ed552854d24364fd32a3f84dd715f4c72",
+   "files": 510
+  },
+  {
+   "name": "shellcheck",
+   "url": "https://github.com/koalaman/shellcheck",
+   "commit": "1046c00b61516a64f85a45e5fbdc69c6c1654eb5",
+   "files": 92
+  },
+  {
+   "name": "eShop",
+   "url": "https://github.com/dotnet/eShop",
+   "commit": "913acea66708a59595351174cee9b29f37179d29",
+   "files": 1145
+  },
+  {
+   "name": "ansible-examples",
+   "url": "https://github.com/ansible/ansible-examples",
+   "commit": "b50586543c6c4be907fdc88f9f78a2b35d2a895f",
+   "files": 314
+  },
+  {
+   "name": "home-manager",
+   "url": "https://github.com/nix-community/home-manager",
+   "commit": "2c0c1f01521469cf0271180c453c79782d53c2f6",
+   "files": 5242
+  },
+  {
+   "name": "posh-git",
+   "url": "https://github.com/dahlbyk/posh-git",
+   "commit": "bbc5ac380018239e0ac70411a59f4e367ca87f2d",
+   "files": 53
+  },
+  {
+   "name": "rubygems.org",
+   "url": "https://github.com/rubygems/rubygems.org",
+   "commit": "f88d5e75e59bc57c0800161ebabba734d09c6b09",
+   "files": 1934
+  },
+  {
+   "name": "laravel",
+   "url": "https://github.com/laravel/laravel",
+   "commit": "def7ce14811161f3c689a71ca8abc1369da44bd6",
+   "files": 66
+  },
+  {
+   "name": "IceCubesApp",
+   "url": "https://github.com/Dimillian/IceCubesApp",
+   "commit": "98098b9c4b5928f89f338203193c2bf40ab7f38c",
+   "files": 760
+  },
+  {
+   "name": "play-samples",
+   "url": "https://github.com/playframework/play-samples",
+   "commit": "518bb47a51a0340836db6b211722504eb82bd7a6",
+   "files": 867
+  },
+  {
+   "name": "keycloak",
+   "url": "https://github.com/keycloak/keycloak",
+   "commit": "d4d55541da034a55a785c09922fcd62e51cd5bde",
+   "files": 13578
+  },
+  {
+   "name": "kubernetes",
+   "url": "https://github.com/kubernetes/kubernetes",
+   "commit": "896c5b4ce4c44881eed2930add2dc3b3293323ab",
+   "files": 31746
+  }
+ ],
+ "byMethod": {
+  "XML element scanner": {
+   "hello-world": [
+    0,
+    1
+   ],
+   "nowinandroid": [
+    0,
+    1
+   ],
+   "keycloak": [
+    0,
+    1
+   ]
+  },
+  "Key/value line parser (names only)": {
+   "hello-world": [
+    1,
+    0
+   ],
+   "microservices-demo": [
+    2,
+    0
+   ],
+   "neovim": [
+    2,
+    0
+   ],
+   "dotfiles": [
+    1,
+    0
+   ],
+   "terraform-aws-eks": [
+    1,
+    0
+   ],
+   "nowinandroid": [
+    11,
+    0
+   ],
+   "jaffle-shop": [
+    1,
+    0
+   ],
+   "fortran-stdlib": [
+    1,
+    0
+   ],
+   "eShop": [
+    1,
+    0
+   ],
+   "ansible-examples": [
+    17,
+    0
+   ],
+   "home-manager": [
+    339,
+    0
+   ],
+   "posh-git": [
+    1,
+    0
+   ],
+   "laravel": [
+    2,
+    0
+   ],
+   "play-samples": [
+    89,
+    0
+   ],
+   "keycloak": [
+    371,
+    0
+   ],
+   "kubernetes": [
+    3,
+    0
+   ]
+  },
+  "TypeScript and JavaScript (TypeScript Compiler API)": {
+   "hello-world": [
+    16,
+    0
+   ],
+   "microservices-demo": [
+    6,
+    0
+   ],
+   "neovim": [
+    7,
+    0
+   ],
+   "phoenix": [
+    26,
+    0
+   ],
+   "eShop": [
+    19,
+    0
+   ],
+   "home-manager": [
+    16,
+    0
+   ],
+   "rubygems.org": [
+    29,
+    0
+   ],
+   "laravel": [
+    2,
+    0
+   ],
+   "IceCubesApp": [
+    1,
+    0
+   ],
+   "play-samples": [
+    25,
+    0
+   ],
+   "keycloak": [
+    1100,
+    0
+   ]
+  },
+  "XML element scanner (plist)": {
+   "hello-world": [
+    1,
+    0
+   ],
+   "eShop": [
+    9,
+    0
+   ],
+   "home-manager": [
+    41,
+    0
+   ],
+   "IceCubesApp": [
+    12,
+    0
+   ]
+  },
+  "XML element scanner (svg)": {
+   "hello-world": [
+    1,
+    0
+   ],
+   "microservices-demo": [
+    21,
+    0
+   ],
+   "neovim": [
+    1,
+    0
+   ],
+   "terraform-aws-eks": [
+    2,
+    0
+   ],
+   "shellcheck": [
+    1,
+    0
+   ],
+   "eShop": [
+    53,
+    0
+   ],
+   "rubygems.org": [
+    16,
+    0
+   ],
+   "IceCubesApp": [
+    15,
+    0
+   ],
+   "play-samples": [
+    2,
+    0
+   ],
+   "keycloak": [
+    143,
+    0
+   ],
+   "kubernetes": [
+    4,
+    0
+   ]
+  },
+  "Markdown section and link reader": {
+   "hello-world": [
+    6,
+    0
+   ],
+   "microservices-demo": [
+    43,
+    0
+   ],
+   "neovim": [
+    12,
+    0
+   ],
+   "dotfiles": [
+    4,
+    0
+   ],
+   "terraform-aws-eks": [
+    34,
+    0
+   ],
+   "nowinandroid": [
+    43,
+    0
+   ],
+   "jaffle-shop": [
+    1,
+    0
+   ],
+   "llama2.c": [
+    3,
+    0
+   ],
+   "cobol-course": [
+    44,
+    0
+   ],
+   "fortran-stdlib": [
+    61,
+    0
+   ],
+   "db-sample-schemas": [
+    7,
+    0
+   ],
+   "phoenix": [
+    60,
+    0
+   ],
+   "shellcheck": [
+    7,
+    0
+   ],
+   "eShop": [
+    50,
+    0
+   ],
+   "ansible-examples": [
+    22,
+    0
+   ],
+   "home-manager": [
+    132,
+    0
+   ],
+   "posh-git": [
+    3,
+    0
+   ],
+   "rubygems.org": [
+    13,
+    0
+   ],
+   "laravel": [
+    4,
+    0
+   ],
+   "IceCubesApp": [
+    18,
+    0
+   ],
+   "play-samples": [
+    49,
+    0
+   ],
+   "keycloak": [
+    84,
+    0
+   ],
+   "kubernetes": [
+    258,
+    0
+   ]
+  },
+  "Declaration and import extractor (patterns)": {
+   "hello-world": [
+    195,
+    0
+   ],
+   "microservices-demo": [
+    74,
+    0
+   ],
+   "neovim": [
+    3493,
+    0
+   ],
+   "dotfiles": [
+    47,
+    0
+   ],
+   "terraform-aws-eks": [
+    11,
+    0
+   ],
+   "nowinandroid": [
+    357,
+    0
+   ],
+   "jaffle-shop": [
+    1,
+    0
+   ],
+   "llama2.c": [
+    14,
+    0
+   ],
+   "cobol-course": [
+    76,
+    0
+   ],
+   "fortran-stdlib": [
+    644,
+    0
+   ],
+   "db-sample-schemas": [
+    5,
+    0
+   ],
+   "phoenix": [
+    213,
+    0
+   ],
+   "shellcheck": [
+    54,
+    0
+   ],
+   "eShop": [
+    547,
+    0
+   ],
+   "ansible-examples": [
+    8,
+    0
+   ],
+   "home-manager": [
+    4001,
+    0
+   ],
+   "posh-git": [
+    34,
+    0
+   ],
+   "rubygems.org": [
+    1495,
+    0
+   ],
+   "laravel": [
+    27,
+    0
+   ],
+   "IceCubesApp": [
+    434,
+    0
+   ],
+   "play-samples": [
+    330,
+    0
+   ],
+   "keycloak": [
+    8685,
+    0
+   ],
+   "kubernetes": [
+    12150,
+    0
+   ]
+  },
+  "YAML parser (syntax and top-level keys only)": {
+   "hello-world": [
+    3,
+    0
+   ],
+   "microservices-demo": [
+    3,
+    0
+   ],
+   "neovim": [
+    1,
+    0
+   ],
+   "terraform-aws-eks": [
+    2,
+    0
+   ],
+   "nowinandroid": [
+    1,
+    0
+   ],
+   "jaffle-shop": [
+    14,
+    0
+   ],
+   "shellcheck": [
+    1,
+    0
+   ],
+   "eShop": [
+    6,
+    0
+   ],
+   "ansible-examples": [
+    21,
+    0
+   ],
+   "home-manager": [
+    79,
+    0
+   ],
+   "rubygems.org": [
+    25,
+    0
+   ],
+   "laravel": [
+    1,
+    0
+   ],
+   "keycloak": [
+    26,
+    0
+   ],
+   "kubernetes": [
+    160,
+    0
+   ]
+  },
+  "CMake command extractor": {
+   "hello-world": [
+    1,
+    0
+   ],
+   "neovim": [
+    43,
+    0
+   ],
+   "fortran-stdlib": [
+    94,
+    0
+   ]
+  },
+  "SQL schema parser and object extractor": {
+   "hello-world": [
+    8,
+    0
+   ],
+   "jaffle-shop": [
+    15,
+    0
+   ],
+   "db-sample-schemas": [
+    88,
+    0
+   ],
+   "play-samples": [
+    9,
+    0
+   ],
+   "keycloak": [
+    8,
+    0
+   ]
+  },
+  "JSON parser (syntax and top-level keys only)": {
+   "hello-world": [
+    2,
+    0
+   ],
+   "microservices-demo": [
+    2,
+    0
+   ],
+   "neovim": [
+    4,
+    0
+   ],
+   "terraform-aws-eks": [
+    1,
+    0
+   ],
+   "nowinandroid": [
+    17,
+    0
+   ],
+   "cobol-course": [
+    1,
+    0
+   ],
+   "db-sample-schemas": [
+    1,
+    0
+   ],
+   "phoenix": [
+    5,
+    0
+   ],
+   "shellcheck": [
+    1,
+    0
+   ],
+   "eShop": [
+    25,
+    0
+   ],
+   "home-manager": [
+    202,
+    0
+   ],
+   "posh-git": [
+    4,
+    0
+   ],
+   "rubygems.org": [
+    4,
+    0
+   ],
+   "IceCubesApp": [
+    95,
+    0
+   ],
+   "keycloak": [
+    154,
+    0
+   ],
+   "kubernetes": [
+    190,
+    0
+   ]
+  },
+  "Interface definition extractor (GraphQL)": {
+   "hello-world": [
+    1,
+    0
+   ]
+  },
+  "Documentation heading extractor": {
+   "hello-world": [
+    5,
+    0
+   ],
+   "cobol-course": [
+    4,
+    0
+   ],
+   "fortran-stdlib": [
+    36,
+    0
+   ],
+   "home-manager": [
+    1,
+    0
+   ],
+   "keycloak": [
+    680,
+    0
+   ]
+  },
+  "XML element scanner (structure only)": {
+   "hello-world": [
+    6,
+    0
+   ],
+   "microservices-demo": [
+    1,
+    0
+   ],
+   "neovim": [
+    5,
+    0
+   ],
+   "nowinandroid": [
+    22,
+    0
+   ],
+   "db-sample-schemas": [
+    137,
+    0
+   ],
+   "eShop": [
+    32,
+    0
+   ],
+   "ansible-examples": [
+    3,
+    0
+   ],
+   "home-manager": [
+    8,
+    0
+   ],
+   "posh-git": [
+    1,
+    0
+   ],
+   "rubygems.org": [
+    1,
+    0
+   ],
+   "laravel": [
+    1,
+    0
+   ],
+   "IceCubesApp": [
+    23,
+    0
+   ],
+   "play-samples": [
+    1,
+    0
+   ],
+   "keycloak": [
+    261,
+    0
+   ]
+  },
+  "Makefile target extractor": {
+   "hello-world": [
+    1,
+    0
+   ],
+   "neovim": [
+    6,
+    0
+   ],
+   "llama2.c": [
+    1,
+    0
+   ],
+   "fortran-stdlib": [
+    3,
+    0
+   ],
+   "ansible-examples": [
+    1,
+    0
+   ],
+   "home-manager": [
+    1,
+    0
+   ],
+   "keycloak": [
+    1,
+    0
+   ],
+   "kubernetes": [
+    4,
+    0
+   ]
+  },
+  "TOML parser (syntax and tables only)": {
+   "hello-world": [
+    1,
+    0
+   ],
+   "neovim": [
+    3,
+    0
+   ],
+   "terraform-aws-eks": [
+    5,
+    0
+   ],
+   "fortran-stdlib": [
+    1,
+    0
+   ],
+   "home-manager": [
+    136,
+    0
+   ],
+   "rubygems.org": [
+    1,
+    0
+   ],
+   "keycloak": [
+    4,
+    0
+   ]
+  },
+  "HCL block extractor": {
+   "hello-world": [
+    1,
+    0
+   ],
+   "microservices-demo": [
+    9,
+    0
+   ],
+   "terraform-aws-eks": [
+    75,
+    0
+   ]
+  },
+  "YAML parser (repo-meta: key names)": {
+   "microservices-demo": [
+    3,
+    0
+   ],
+   "neovim": [
+    7,
+    0
+   ],
+   "nowinandroid": [
+    3,
+    0
+   ],
+   "cobol-course": [
+    3,
+    0
+   ],
+   "fortran-stdlib": [
+    3,
+    0
+   ],
+   "phoenix": [
+    2,
+    0
+   ],
+   "shellcheck": [
+    1,
+    0
+   ],
+   "eShop": [
+    1,
+    0
+   ],
+   "home-manager": [
+    5,
+    0
+   ],
+   "posh-git": [
+    1,
+    0
+   ],
+   "rubygems.org": [
+    2,
+    0
+   ],
+   "laravel": [
+    1,
+    0
+   ],
+   "IceCubesApp": [
+    2,
+    0
+   ],
+   "play-samples": [
+    2,
+    0
+   ],
+   "keycloak": [
+    9,
+    0
+   ],
+   "kubernetes": [
+    448,
+    0
+   ]
+  },
+  "YAML parser (Kubernetes manifest)": {
+   "microservices-demo": [
+    50,
+    0
+   ],
+   "terraform-aws-eks": [
+    3,
+    0
+   ],
+   "play-samples": [
+    8,
+    0
+   ],
+   "keycloak": [
+    25,
+    0
+   ],
+   "kubernetes": [
+    5213,
+    0
+   ]
+  },
+  "YAML parser (GitHub Actions)": {
+   "microservices-demo": [
+    4,
+    0
+   ],
+   "neovim": [
+    6,
+    0
+   ],
+   "terraform-aws-eks": [
+    1,
+    0
+   ],
+   "eShop": [
+    4,
+    0
+   ],
+   "ansible-examples": [
+    1,
+    0
+   ],
+   "laravel": [
+    3,
+    0
+   ],
+   "IceCubesApp": [
+    1,
+    0
+   ],
+   "keycloak": [
+    1,
+    0
+   ]
+  },
+  "YAML parser (other-ci)": {
+   "microservices-demo": [
+    1,
+    0
+   ],
+   "terraform-aws-eks": [
+    1,
+    0
+   ],
+   "jaffle-shop": [
+    1,
+    0
+   ]
+  },
+  "YAML parser (Helm chart)": {
+   "microservices-demo": [
+    1,
+    0
+   ]
+  },
+  "YAML parser (Kustomize)": {
+   "microservices-demo": [
+    21,
+    0
+   ],
+   "play-samples": [
+    6,
+    0
+   ],
+   "keycloak": [
+    1,
+    0
+   ],
+   "kubernetes": [
+    2,
+    0
+   ]
+  },
+  "YAML parser (skaffold: key names)": {
+   "microservices-demo": [
+    1,
+    0
+   ]
+  },
+  "Dockerfile instruction parser": {
+   "microservices-demo": [
+    13,
+    0
+   ],
+   "phoenix": [
+    2,
+    0
+   ],
+   "shellcheck": [
+    8,
+    0
+   ],
+   "rubygems.org": [
+    2,
+    0
+   ],
+   "keycloak": [
+    4,
+    0
+   ],
+   "kubernetes": [
+    6,
+    0
+   ]
+  },
+  "Visual Studio solution reader": {
+   "microservices-demo": [
+    1,
+    0
+   ],
+   "eShop": [
+    2,
+    0
+   ]
+  },
+  "JSON parser (application settings: key names only)": {
+   "microservices-demo": [
+    1,
+    0
+   ],
+   "eShop": [
+    19,
+    0
+   ],
+   "keycloak": [
+    4,
+    0
+   ]
+  },
+  "XML element scanner (.NET project)": {
+   "microservices-demo": [
+    2,
+    0
+   ],
+   "eShop": [
+    33,
+    0
+   ]
+  },
+  "go.mod directive reader": {
+   "microservices-demo": [
+    4,
+    0
+   ],
+   "kubernetes": [
+    43,
+    0
+   ]
+  },
+  "JSON parser (package.json)": {
+   "microservices-demo": [
+    2,
+    0
+   ],
+   "phoenix": [
+    2,
+    0
+   ],
+   "eShop": [
+    1,
+    0
+   ],
+   "laravel": [
+    1,
+    0
+   ],
+   "keycloak": [
+    8,
+    0
+   ]
+  },
+  "pip requirements reader": {
+   "microservices-demo": [
+    8,
+    0
+   ],
+   "jaffle-shop": [
+    2,
+    0
+   ],
+   "llama2.c": [
+    1,
+    0
+   ],
+   "fortran-stdlib": [
+    2,
+    0
+   ]
+  },
+  "Interface definition extractor (Protocol Buffer)": {
+   "microservices-demo": [
+    8,
+    0
+   ],
+   "nowinandroid": [
+    3,
+    0
+   ],
+   "eShop": [
+    2,
+    0
+   ],
+   "play-samples": [
+    2,
+    0
+   ],
+   "kubernetes": [
+    99,
+    0
+   ]
+  },
+  "Lockfile package counter": {
+   "microservices-demo": [
+    6,
+    0
+   ],
+   "phoenix": [
+    1,
+    0
+   ],
+   "shellcheck": [
+    1,
+    0
+   ],
+   "eShop": [
+    1,
+    0
+   ],
+   "ansible-examples": [
+    1,
+    0
+   ],
+   "rubygems.org": [
+    1,
+    0
+   ],
+   "IceCubesApp": [
+    1,
+    0
+   ],
+   "keycloak": [
+    1,
+    0
+   ],
+   "kubernetes": [
+    38,
+    0
+   ]
+  },
+  "YAML parser (compiler-config: key names)": {
+   "neovim": [
+    3,
+    0
+   ],
+   "rubygems.org": [
+    1,
+    0
+   ]
+  },
+  "Empty file (nothing to analyse)": {
+   "neovim": [
+    3,
+    0
+   ],
+   "terraform-aws-eks": [
+    21,
+    0
+   ],
+   "home-manager": [
+    1,
+    0
+   ],
+   "rubygems.org": [
+    1,
+    0
+   ],
+   "play-samples": [
+    2,
+    0
+   ],
+   "keycloak": [
+    19,
+    0
+   ],
+   "kubernetes": [
+    1,
+    0
+   ]
+  },
+  "JSON parser (tool configuration: key names)": {
+   "nowinandroid": [
+    1,
+    0
+   ],
+   "rubygems.org": [
+    2,
+    0
+   ]
+  },
+  "XML element scanner (Android manifest)": {
+   "nowinandroid": [
+    26,
+    0
+   ],
+   "eShop": [
+    2,
+    0
+   ]
+  },
+  "XML element scanner (resources)": {
+   "nowinandroid": [
+    20,
+    0
+   ],
+   "eShop": [
+    2,
+    0
+   ]
+  },
+  "TOML parser (libs.versions.toml)": {
+   "nowinandroid": [
+    1,
+    0
+   ],
+   "play-samples": [
+    1,
+    0
+   ]
+  },
+  "YAML parser (dbt: key names)": {
+   "jaffle-shop": [
+    1,
+    0
+   ]
+  },
+  "JSON parser (Jupyter notebook)": {
+   "llama2.c": [
+    1,
+    0
+   ]
+  },
+  "JSON parser (JSON Schema)": {
+   "cobol-course": [
+    1,
+    0
+   ],
+   "home-manager": [
+    5,
+    0
+   ]
+  },
+  "YAML parser (Docker Compose)": {
+   "phoenix": [
+    2,
+    0
+   ],
+   "rubygems.org": [
+    2,
+    0
+   ]
+  },
+  "YAML parser (haskell-deps: key names)": {
+   "shellcheck": [
+    1,
+    0
+   ]
+  },
+  "XML element scanner (configuration)": {
+   "eShop": [
+    1,
+    0
+   ],
+   "play-samples": [
+    30,
+    0
+   ],
+   "keycloak": [
+    1,
+    0
+   ]
+  },
+  "JSON parser (OpenAPI)": {
+   "eShop": [
+    2,
+    0
+   ],
+   "keycloak": [
+    3,
+    0
+   ],
+   "kubernetes": [
+    37,
+    0
+   ]
+  },
+  "YAML parser (Ansible)": {
+   "ansible-examples": [
+    63,
+    0
+   ],
+   "keycloak": [
+    6,
+    0
+   ]
+  },
+  "JSON parser (cloudformation)": {
+   "ansible-examples": [
+    1,
+    0
+   ]
+  },
+  "TOML parser (Cargo manifest)": {
+   "ansible-examples": [
+    1,
+    0
+   ]
+  },
+  "TOML parser": {
+   "home-manager": [
+    0,
+    1
+   ]
+  },
+  "JSON parser": {
+   "home-manager": [
+    0,
+    1
+   ],
+   "keycloak": [
+    0,
+    2
+   ],
+   "kubernetes": [
+    0,
+    3
+   ]
+  },
+  "YAML parser (GitLab CI)": {
+   "home-manager": [
+    1,
+    0
+   ]
+  },
+  "YAML parser": {
+   "rubygems.org": [
+    0,
+    1
+   ],
+   "kubernetes": [
+    0,
+    2
+   ]
+  },
+  "YAML parser (app-config: key names)": {
+   "rubygems.org": [
+    6,
+    0
+   ]
+  },
+  "JSON parser (composer.json)": {
+   "laravel": [
+    1,
+    0
+   ]
+  },
+  "XML element scanner (persistence)": {
+   "play-samples": [
+    2,
+    0
+   ],
+   "keycloak": [
+    3,
+    0
+   ]
+  },
+  "XML element scanner (Maven POM)": {
+   "keycloak": [
+    188,
+    0
+   ]
+  },
+  "XML element scanner (module)": {
+   "keycloak": [
+    11,
+    0
+   ]
+  },
+  "XML element scanner (Ant build)": {
+   "keycloak": [
+    2,
+    0
+   ]
+  },
+  "JSON parser (tsconfig)": {
+   "keycloak": [
+    11,
+    0
+   ]
+  },
+  "YAML parser (js-build: key names)": {
+   "keycloak": [
+    1,
+    0
+   ]
+  },
+  "XML element scanner (web-app)": {
+   "keycloak": [
+    11,
+    0
+   ]
+  },
+  "XML element scanner (Liquibase changelog)": {
+   "keycloak": [
+    84,
+    0
+   ]
+  },
+  "JSON parser (kubernetes)": {
+   "kubernetes": [
+    1083,
+    0
+   ]
+  },
+  "JSON Lines parser": {
+   "kubernetes": [
+    2,
+    0
+   ]
+  }
+ },
+ "languages": {
+  "EditorConfig": [
+   "hello-world",
+   "microservices-demo",
+   "neovim",
+   "terraform-aws-eks",
+   "nowinandroid",
+   "fortran-stdlib",
+   "eShop",
+   "home-manager",
+   "posh-git",
+   "laravel",
+   "keycloak"
+  ],
+  "JavaScript": [
+   "hello-world",
+   "microservices-demo",
+   "neovim",
+   "phoenix",
+   "eShop",
+   "home-manager",
+   "rubygems.org",
+   "laravel",
+   "IceCubesApp",
+   "play-samples",
+   "keycloak"
+  ],
+  "TypeScript": [
+   "hello-world",
+   "eShop",
+   "home-manager",
+   "keycloak"
+  ],
+  "XML": [
+   "hello-world",
+   "microservices-demo",
+   "neovim",
+   "nowinandroid",
+   "db-sample-schemas",
+   "eShop",
+   "ansible-examples",
+   "home-manager",
+   "posh-git",
+   "rubygems.org",
+   "laravel",
+   "IceCubesApp",
+   "play-samples",
+   "keycloak"
+  ],
+  "SVG": [
+   "hello-world",
+   "microservices-demo",
+   "neovim",
+   "terraform-aws-eks",
+   "shellcheck",
+   "eShop",
+   "rubygems.org",
+   "IceCubesApp",
+   "play-samples",
+   "keycloak",
+   "kubernetes"
+  ],
+  "Markdown": [
+   "hello-world",
+   "microservices-demo",
+   "neovim",
+   "dotfiles",
+   "terraform-aws-eks",
+   "nowinandroid",
+   "jaffle-shop",
+   "llama2.c",
+   "cobol-course",
+   "fortran-stdlib",
+   "db-sample-schemas",
+   "phoenix",
+   "shellcheck",
+   "eShop",
+   "ansible-examples",
+   "home-manager",
+   "posh-git",
+   "rubygems.org",
+   "laravel",
+   "IceCubesApp",
+   "play-samples",
+   "keycloak",
+   "kubernetes"
+  ],
+  "ABAP": [
+   "hello-world"
+  ],
+  "Awk": [
+   "hello-world"
+  ],
+  "ActionScript": [
+   "hello-world"
+  ],
+  "Ada": [
+   "hello-world"
+  ],
+  "Java": [
+   "hello-world",
+   "microservices-demo",
+   "play-samples",
+   "keycloak"
+  ],
+  "YAML": [
+   "hello-world",
+   "microservices-demo",
+   "neovim",
+   "terraform-aws-eks",
+   "nowinandroid",
+   "jaffle-shop",
+   "cobol-course",
+   "fortran-stdlib",
+   "phoenix",
+   "shellcheck",
+   "eShop",
+   "ansible-examples",
+   "home-manager",
+   "posh-git",
+   "rubygems.org",
+   "laravel",
+   "IceCubesApp",
+   "play-samples",
+   "keycloak",
+   "kubernetes"
+  ],
+  "Apex": [
+   "hello-world"
+  ],
+  "C++": [
+   "hello-world",
+   "fortran-stdlib"
+  ],
+  "Assembly": [
+   "hello-world"
+  ],
+  "Unix Assembly": [
+   "hello-world"
+  ],
+  "Common Lisp": [
+   "hello-world",
+   "home-manager"
+  ],
+  "C": [
+   "hello-world",
+   "neovim",
+   "llama2.c",
+   "fortran-stdlib",
+   "keycloak"
+  ],
+  "Shell": [
+   "hello-world",
+   "microservices-demo",
+   "neovim",
+   "dotfiles",
+   "terraform-aws-eks",
+   "nowinandroid",
+   "fortran-stdlib",
+   "phoenix",
+   "shellcheck",
+   "ansible-examples",
+   "home-manager",
+   "rubygems.org",
+   "IceCubesApp",
+   "play-samples",
+   "keycloak",
+   "kubernetes"
+  ],
+  "Batchfile": [
+   "hello-world",
+   "microservices-demo",
+   "neovim",
+   "nowinandroid",
+   "llama2.c",
+   "play-samples",
+   "keycloak"
+  ],
+  "Bicep": [
+   "hello-world"
+  ],
+  "Python": [
+   "hello-world",
+   "microservices-demo",
+   "neovim",
+   "jaffle-shop",
+   "llama2.c",
+   "fortran-stdlib",
+   "ansible-examples",
+   "home-manager",
+   "keycloak",
+   "kubernetes"
+  ],
+  "OCaml": [
+   "hello-world"
+  ],
+  "CMake": [
+   "hello-world",
+   "neovim",
+   "fortran-stdlib"
+  ],
+  "COBOL": [
+   "hello-world",
+   "cobol-course"
+  ],
+  "C#": [
+   "hello-world",
+   "microservices-demo",
+   "eShop"
+  ],
+  "Clojure": [
+   "hello-world"
+  ],
+  "Crystal": [
+   "hello-world"
+  ],
+  "Cuda": [
+   "hello-world"
+  ],
+  "D": [
+   "hello-world"
+  ],
+  "Dart": [
+   "hello-world"
+  ],
+  "SQL": [
+   "hello-world",
+   "jaffle-shop",
+   "db-sample-schemas",
+   "play-samples",
+   "keycloak"
+  ],
+  "Pascal": [
+   "hello-world"
+  ],
+  "Elixir": [
+   "hello-world",
+   "phoenix"
+  ],
+  "Elm": [
+   "hello-world"
+  ],
+  "Emacs Lisp": [
+   "hello-world"
+  ],
+  "Objective-C": [
+   "hello-world"
+  ],
+  "Erlang": [
+   "hello-world"
+  ],
+  "F#": [
+   "hello-world"
+  ],
+  "Fortran Free Form": [
+   "hello-world",
+   "fortran-stdlib"
+  ],
+  "Fortran": [
+   "hello-world"
+  ],
+  "fish": [
+   "hello-world",
+   "home-manager"
+  ],
+  "GDScript": [
+   "hello-world"
+  ],
+  "Scala": [
+   "hello-world",
+   "play-samples"
+  ],
+  "JSON": [
+   "hello-world",
+   "microservices-demo",
+   "neovim",
+   "terraform-aws-eks",
+   "nowinandroid",
+   "cobol-course",
+   "db-sample-schemas",
+   "phoenix",
+   "shellcheck",
+   "eShop",
+   "ansible-examples",
+   "home-manager",
+   "posh-git",
+   "rubygems.org",
+   "laravel",
+   "IceCubesApp",
+   "keycloak",
+   "kubernetes"
+  ],
+  "Gleam": [
+   "hello-world"
+  ],
+  "Go": [
+   "hello-world",
+   "microservices-demo",
+   "home-manager",
+   "kubernetes"
+  ],
+  "GraphQL": [
+   "hello-world"
+  ],
+  "Groovy": [
+   "hello-world",
+   "keycloak"
+  ],
+  "Haskell": [
+   "hello-world",
+   "shellcheck"
+  ],
+  "Haxe": [
+   "hello-world"
+  ],
+  "Scheme": [
+   "hello-world",
+   "neovim"
+  ],
+  "Julia": [
+   "hello-world"
+  ],
+  "Kotlin": [
+   "hello-world",
+   "nowinandroid"
+  ],
+  "TeX": [
+   "hello-world",
+   "cobol-course"
+  ],
+  "Lua": [
+   "hello-world",
+   "neovim",
+   "home-manager"
+  ],
+  "Luau": [
+   "hello-world"
+  ],
+  "Makefile": [
+   "hello-world",
+   "neovim",
+   "llama2.c",
+   "fortran-stdlib",
+   "ansible-examples",
+   "home-manager",
+   "keycloak",
+   "kubernetes"
+  ],
+  "Nim": [
+   "hello-world"
+  ],
+  "Smalltalk": [
+   "hello-world"
+  ],
+  "Puppet": [
+   "hello-world"
+  ],
+  "Org": [
+   "hello-world"
+  ],
+  "PHP": [
+   "hello-world",
+   "ansible-examples",
+   "laravel"
+  ],
+  "PLSQL": [
+   "hello-world",
+   "db-sample-schemas"
+  ],
+  "Perl": [
+   "hello-world",
+   "home-manager"
+  ],
+  "Raku": [
+   "hello-world"
+  ],
+  "PowerShell": [
+   "hello-world",
+   "neovim",
+   "terraform-aws-eks",
+   "ansible-examples",
+   "posh-git",
+   "kubernetes"
+  ],
+  "Prolog": [
+   "hello-world"
+  ],
+  "Vim script": [
+   "hello-world",
+   "neovim",
+   "dotfiles"
+  ],
+  "PureScript": [
+   "hello-world"
+  ],
+  "R": [
+   "hello-world"
+  ],
+  "RPGLE": [
+   "hello-world"
+  ],
+  "Racket": [
+   "hello-world"
+  ],
+  "Ruby": [
+   "hello-world",
+   "neovim",
+   "rubygems.org"
+  ],
+  "Rust": [
+   "hello-world",
+   "ansible-examples"
+  ],
+  "reStructuredText": [
+   "hello-world",
+   "fortran-stdlib"
+  ],
+  "Solidity": [
+   "hello-world"
+  ],
+  "Swift": [
+   "hello-world",
+   "IceCubesApp"
+  ],
+  "TOML": [
+   "hello-world",
+   "neovim",
+   "terraform-aws-eks",
+   "nowinandroid",
+   "fortran-stdlib",
+   "ansible-examples",
+   "home-manager",
+   "rubygems.org",
+   "play-samples",
+   "keycloak"
+  ],
+  "Tcl": [
+   "hello-world"
+  ],
+  "HCL": [
+   "hello-world",
+   "microservices-demo",
+   "terraform-aws-eks"
+  ],
+  "Verilog": [
+   "hello-world"
+  ],
+  "Visual Basic .NET": [
+   "hello-world"
+  ],
+  "VHDL": [
+   "hello-world"
+  ],
+  "Vala": [
+   "hello-world"
+  ],
+  "V": [
+   "hello-world"
+  ],
+  "VBScript": [
+   "hello-world"
+  ],
+  "VBA": [
+   "hello-world"
+  ],
+  "XSLT": [
+   "hello-world",
+   "db-sample-schemas",
+   "keycloak"
+  ],
+  "Zig": [
+   "hello-world",
+   "neovim"
+  ],
+  "Dockerfile": [
+   "microservices-demo",
+   "phoenix",
+   "shellcheck",
+   "rubygems.org",
+   "keycloak",
+   "kubernetes"
+  ],
+  "Java Properties": [
+   "microservices-demo",
+   "nowinandroid",
+   "play-samples",
+   "keycloak"
+  ],
+  "Microsoft Visual Studio Solution": [
+   "microservices-demo",
+   "eShop"
+  ],
+  "Go Module": [
+   "microservices-demo",
+   "kubernetes"
+  ],
+  "Pip Requirements": [
+   "microservices-demo",
+   "jaffle-shop",
+   "llama2.c",
+   "fortran-stdlib"
+  ],
+  "Protocol Buffer": [
+   "microservices-demo",
+   "nowinandroid",
+   "eShop",
+   "play-samples",
+   "kubernetes"
+  ],
+  "Gradle": [
+   "microservices-demo",
+   "home-manager"
+  ],
+  "Go Checksums": [
+   "microservices-demo",
+   "kubernetes"
+  ],
+  "INI": [
+   "neovim",
+   "nowinandroid",
+   "jaffle-shop",
+   "ansible-examples",
+   "home-manager",
+   "play-samples",
+   "keycloak",
+   "kubernetes"
+  ],
+  "Git Config": [
+   "dotfiles",
+   "rubygems.org"
+  ],
+  "Gradle Kotlin DSL": [
+   "nowinandroid",
+   "play-samples"
+  ],
+  "Jupyter Notebook": [
+   "llama2.c"
+  ],
+  "JCL": [
+   "cobol-course"
+  ],
+  "Visual Basic 6.0": [
+   "db-sample-schemas"
+  ],
+  "Starlark": [
+   "shellcheck"
+  ],
+  "XML Property List": [
+   "eShop",
+   "home-manager",
+   "IceCubesApp"
+  ],
+  "Nix": [
+   "home-manager"
+  ],
+  "JSON with Comments": [
+   "home-manager",
+   "rubygems.org",
+   "keycloak"
+  ],
+  "AsciiDoc": [
+   "home-manager",
+   "keycloak"
+  ],
+  "Gemfile.lock": [
+   "rubygems.org"
+  ],
+  "Dotenv": [
+   "laravel"
+  ],
+  "Maven POM": [
+   "keycloak"
+  ],
+  "Ant Build System": [
+   "keycloak"
+  ],
+  "TSX": [
+   "keycloak"
+  ],
+  "TSQL": [
+   "keycloak"
+  ],
+  "Go Workspace": [
+   "kubernetes"
+  ]
+ }
+}

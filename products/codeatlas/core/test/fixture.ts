@@ -83,6 +83,8 @@ export const FIXTURE: Record<string, string> = {
   'src/repo.ts':
     "declare const sql: { prepare(q: string): { all(): unknown[] } };\nexport function allUsers() {\n  return sql.prepare('SELECT id, name FROM users').all();\n}\n",
   'tools/report.py': 'def report():\n    print("quarterly report generator")\n',
+  // A language nothing analyses (no compiler front end, no declaration patterns).
+  'tools/legacy.apl': 'Avg ← {(+/⍵)÷≢⍵} ⍝ yearly average\n',
   '.env': 'SECRET_TOKEN=supersecretvalue123\n',
   'docs/README.md':
     '# Fixture App\n\n## Math\n\nThe `add` function lives in `src/lib/math.ts`.\n\n## Unrelated\n\nNothing here.\n',

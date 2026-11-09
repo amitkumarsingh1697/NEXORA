@@ -1,0 +1,22 @@
+{
+  "name": "@nexora/languages",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "description": "Language and file-format support registry shared by CodeAtlas and ArchLens: identification, file types, analysis levels and the coverage inventory.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./node": "./src/listing.ts"
+  },
+  "scripts": {
+    "build": "vite build && node scripts/make-skill-inventory.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "matrix": "node --import tsx scripts/support-matrix.ts"
+  },
+  "devDependencies": {
+    "tsx": "4.23.15",
+    "vite": "8.3.5"
+  }
+}

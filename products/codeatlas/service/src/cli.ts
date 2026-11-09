@@ -61,6 +61,19 @@ async function main(): Promise<void> {
           `${brain.coverage.partial ? 'Partial coverage' : 'Coverage'}: ${brain.coverage.summary}\n`,
         );
         for (const g of brain.coverage.gaps) process.stdout.write(`  - ${g}\n`);
+        const inv = brain.coverage.inventory;
+        if (inv) {
+          const pct = (x: number | null) => (x === null ? 'n/a' : `${Math.round(x * 100)}%`);
+          process.stdout.write('Languages and formats (files, analysed, status):\n');
+          for (const l of inv.languages.slice(0, 20))
+            process.stdout.write(
+              `  ${l.language.padEnd(28)} ${String(l.files).padStart(7)} ${pct(l.coverage).padStart(5)}  ${l.status}\n`,
+            );
+          if (inv.languages.length > 20)
+            process.stdout.write(
+              `  … and ${inv.languages.length - 20} more (see Languages & files in the brain)\n`,
+            );
+        }
       }
       return;
     }

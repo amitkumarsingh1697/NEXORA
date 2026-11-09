@@ -124,16 +124,30 @@ The page opens offline in any browser with WebGL. Without WebGL the lists, searc
 
 ### Fields
 
-| Field                | Values                                                                                                                                                                                                                                                                        |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| neuron `kind`        | `class`, `interface`, `function`, `method`, `component`, `route`, `file`, `table`, `database` (a client such as Drizzle or pg), `service`, `config`                                                                                                                           |
-| neuron `region`      | `frontend`, `backend`, `database`, `devops`, `core`. Leave it out to let the page place the neuron from its file path (and its parent).                                                                                                                                       |
-| synapse `kind`       | `calls`, `renders`, `extends`, `implements`, `instantiates`, `handles` (route → handler), `accesses_db`, `reads_config`, `writes_config`, `calls_service`, `imports`, `starts`, `reads_table`, `writes_table` (function → table), `references` (table → table, a foreign key) |
-| synapse `confidence` | `observed` (you read the call at `file:line`), `inferred` (concluded; say why in `detail`), `unknown`                                                                                                                                                                         |
-| table `columns`      | `name`, `type` as written (`varchar`, `numeric`, `Int`…), `length` or `precision` and `scale` when written, `nullable`, `primaryKey`, `unique`, `default` as written, `references` `{ table, column }`, `line`                                                                |
-| `returnsDeclared`    | `true` when the source wrote the return type, `false` when you worked it out                                                                                                                                                                                                  |
+| Field                | Values                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| neuron `kind`        | `class`, `interface`, `function`, `method`, `component`, `route`, `file`, `table`, `database` (a client such as Drizzle or pg), `service`, `config`                                                                                                                                                                                                         |
+| neuron `region`      | `frontend`, `backend`, `database`, `devops`, `core`. Leave it out to let the page place the neuron from its file path (and its parent).                                                                                                                                                                                                                     |
+| synapse `kind`       | `calls`, `renders`, `extends`, `implements`, `instantiates`, `handles` (route → handler), `accesses_db`, `reads_config`, `writes_config`, `calls_service`, `imports`, `starts`, `reads_table`, `writes_table` (function → table), `references` (table → table, a foreign key; or file → file), `builds`, `runs`, `includes` (build, CI and container files) |
+| synapse `confidence` | `observed` (you read the call at `file:line`), `inferred` (concluded; say why in `detail`), `unknown`                                                                                                                                                                                                                                                       |
+| table `columns`      | `name`, `type` as written (`varchar`, `numeric`, `Int`…), `length` or `precision` and `scale` when written, `nullable`, `primaryKey`, `unique`, `default` as written, `references` `{ table, column }`, `line`                                                                                                                                              |
+| `returnsDeclared`    | `true` when the source wrote the return type, `false` when you worked it out                                                                                                                                                                                                                                                                                |
 
 `coverage` is optional but expected: `partial` (boolean), `summary` (one sentence shown on the overview), `gaps` (one sentence each), `unreadSchemas` (shown when the Database lobe or table diagrams are empty).
+
+`coverage.inventory` is optional and is written by `scripts/inventory.mjs --model` (or by CodeAtlas); do not write it by hand. It holds `total` (every listed path), `counts` per status, and per-language (`languages`), per-file-type (`fileTypes`), per-folder (`directories`) and per-reason (`reasons`) rows, plus a bounded `notAnalysed` list and `unlisted` paths (submodules, ignored folders). The page drops an inventory whose status counts do not add up to `total`. Statuses are distinct and never merged:
+
+| Status        | Meaning                                                                                          |
+| ------------- | ------------------------------------------------------------------------------------------------ |
+| `full`        | Parsed completely (the TypeScript compiler for code, or a parser for the file format).           |
+| `partial`     | Structure read by declaration patterns, a format reader, or by hand; not checked by a compiler.  |
+| `text`        | Listed and identified, searchable as text; no structure extracted.                               |
+| `unsupported` | Identified but not readable (for example a Git LFS pointer).                                     |
+| `failed`      | An analyser ran and could not read the file.                                                     |
+| `excluded`    | Not read on purpose: generated, vendored, secret, symbolic link, submodule, size or count limit. |
+| `binary`      | Binary content.                                                                                  |
+
+Synapse kinds `builds`, `runs` and `includes` link build, CI and container files to what they build, run or include (for example a workflow step that runs `./bin/deploy`).
 
 Limits: 20,000 neurons, 100,000 synapses and 500 columns per table. The page drops unknown kinds, duplicate ids and links to missing neurons, and lists what it dropped.
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { Confidence } from '../types';
 
 export function cn(...c: (string | false | null | undefined)[]): string {
@@ -50,11 +50,17 @@ export function Card({
   children: ReactNode;
   className?: string;
 }) {
+  const id = useId();
   return (
-    <section className={cn('rounded-xl border border-line bg-panel', className)}>
+    <section
+      className={cn('rounded-xl border border-line bg-panel', className)}
+      aria-labelledby={title ? id : undefined}
+    >
       {(title || actions) && (
         <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
-          <h2 className="text-sm font-semibold">{title}</h2>
+          <h2 id={id} className="text-sm font-semibold">
+            {title}
+          </h2>
           {actions}
         </header>
       )}

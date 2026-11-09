@@ -60,3 +60,25 @@ body {
 .react-flow__attribution {
   display: none;
 }
+/* File processing status colours (Languages & files). */
+.st-full {
+  background: #0f766e;
+}
+.st-partial {
+  background: #2dd4bf;
+}
+.st-text {
+  background: #f59e0b;
+}
+.st-unsupported {
+  background: #a855f7;
+}
+.st-failed {
+  background: #dc2626;
+}
+.st-excluded {
+  background: #94a3b8;
+}
+.st-binary {
+  background: #475569;
+}

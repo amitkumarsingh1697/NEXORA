@@ -15,6 +15,9 @@ test('index a repository, explore it, ask a question, and take a bug through rev
   page,
   request,
 }) => {
+  // One journey across every screen with 17 axe scans. It takes about 55 s locally; the CI runner
+  // is roughly twice as slow, and the Languages & files checks pushed it past the 120 s default.
+  test.setTimeout(240_000);
   const root = makeFixtureRepo();
   execFileSync('git', ['-C', root, 'config', 'user.name', 'Repo Owner']);
   execFileSync('git', ['-C', root, 'config', 'user.email', 'owner@example.com']);
@@ -50,7 +53,19 @@ test('index a repository, explore it, ask a question, and take a bug through rev
     // Overview: coverage and gaps.
     await expect(page.getByText('Coverage report')).toBeVisible();
     await expect(page.getByText(/Not read \(may contain credentials\)/)).toContainText('.env');
-    await expect(page.getByText(/text only.*\.py/)).toBeVisible();
+    await expect(
+      page.getByText(/searchable as text only, with no structure extracted: .*1 APL/),
+    ).toBeVisible();
+    // Languages & files: counts per language and file type, and every file with its status.
+    const lc = page.getByRole('region', { name: 'Languages & files' });
+    await expect(
+      lc.getByRole('row', { name: /^Python programming 1 1 100% Partially analysed/ }),
+    ).toBeVisible();
+    await expect(lc.getByRole('row', { name: /^APL programming 1 0 0% Text only/ })).toBeVisible();
+    await lc.getByRole('combobox', { name: 'Status' }).selectOption('text');
+    await expect(lc.getByRole('cell', { name: 'tools/legacy.apl' })).toBeVisible();
+    await expect(lc.getByRole('cell', { name: 'tools/report.py' })).toHaveCount(0);
+    await expectAccessible(page, 'languages and files');
 
     // Coverage shows branch, manifests and declared frameworks (S1-2).
     await expect(page.getByText(/branch main at [0-9a-f]{10}/)).toBeVisible();
@@ -122,6 +137,17 @@ test('index a repository, explore it, ask a question, and take a bug through rev
     await expect(details).toContainText('Read by');
     await expect(details).toContainText('allUsers');
     await expect(details).toContainText('migrations/001_users.sql:1');
+
+    // Languages & files inside the brain: the same counts, from the model.
+    await brain.getByRole('button', { name: 'Languages & files' }).click();
+    const files = brain.getByRole('dialog', { name: 'Languages and files' });
+    await expect(files.getByRole('heading', { name: 'Coverage summary' })).toBeVisible();
+    await expect(
+      files.getByRole('row', { name: /^APL programming 1 0 0% Text only/ }),
+    ).toBeVisible();
+    await expectAccessible(page, 'brain languages and files');
+    await files.getByRole('button', { name: 'Close languages and files' }).click();
+    await expect(files).toBeHidden();
 
     // Diagrams: ER, schema and class diagrams, with a download.
     await brain.getByRole('button', { name: 'Diagrams' }).click();

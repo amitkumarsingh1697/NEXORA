@@ -7,10 +7,18 @@ import { addSchema, parsePrismaSchema, parseSqlSchema } from './schema';
 import {
   IGNORED_DIRS as IGNORED_DIR_NAMES,
   discoverFiles,
-  readText,
   sha1,
   type DiscoveredFile,
+  type UnlistedPaths,
 } from './files';
+import { analyseNonTsFiles, type AnalyseStats } from './extract/analyse';
+import {
+  checkInventory,
+  coverageSentence,
+  summarize,
+  type FileRecord,
+  type InventorySummary,
+} from '@nexora/languages';
 import { readGitHistory } from './git';
 import { detectFrameworks, findManifests, type Framework, type Manifest } from './manifests';
 import { GraphBuilder, splitTerms, type ChunkRec, type Confidence, type NodeRef } from './model';
@@ -18,7 +26,6 @@ import {
   DEFAULT_ADAPTERS,
   type AdapterCache,
   runAdapters,
-  unsupportedLanguageOf,
   type AdapterCoverage,
   type LanguageAdapter,
 } from './adapters';
@@ -77,6 +84,17 @@ export interface CoverageReport {
   unresolvedRecorded: number;
   unresolvedDropped: number;
   limitations: string[];
+  /**
+   * Every listed path with what was done to it, summarised (one status per file, counts add up
+   * to `inventory.total`). The per-file list is stored in the file_inventory table.
+   */
+  inventory: InventorySummary & {
+    /** Paths not listed file by file: ignored by .gitignore, or folders the walk did not enter. */
+    unlisted: UnlistedPaths[];
+    summary: string;
+  };
+  /** Declarations, imports and file links found by the non-TypeScript analysers. */
+  otherAnalysis: AnalyseStats;
 }
 
 export interface IndexOptions {
@@ -124,17 +142,27 @@ function windows(lines: string[], from: number, to: number, size: number): [numb
   return out;
 }
 
-function codeChunks(graph: GraphBuilder, path: string, text: string): ChunkRec[] {
+/** File path → its top-level symbols, from the graph's file→symbol contains edges (built once). */
+function topSymbolsByFile(graph: GraphBuilder): Map<string, NodeRef[]> {
+  const out = new Map<string, NodeRef[]>();
+  for (const e of graph.edges) {
+    if (e.kind !== 'contains' || e.src.kind !== 'file' || e.dst.kind !== 'symbol') continue;
+    const list = out.get(e.src.key);
+    if (list) list.push(e.dst);
+    else out.set(e.src.key, [e.dst]);
+  }
+  return out;
+}
+
+function codeChunks(
+  graph: GraphBuilder,
+  path: string,
+  text: string,
+  topRefs: NodeRef[],
+): ChunkRec[] {
   const lines = text.split('\n');
-  const tops = graph.edges
-    .filter(
-      (e) =>
-        e.kind === 'contains' &&
-        e.src.kind === 'file' &&
-        e.src.key === path &&
-        e.dst.kind === 'symbol',
-    )
-    .map((e) => graph.get(e.dst))
+  const tops = topRefs
+    .map((r) => graph.get(r))
     .filter(
       (n): n is NonNullable<typeof n> =>
         !!n && n.startLine !== undefined && n.endLine !== undefined,
@@ -227,11 +255,8 @@ function buildAndPersist(
   progress('Discovering files');
   const disc = discoverFiles(repo.root);
   const paths = new Set(disc.files.map((f) => f.path));
-  const texts = new Map<string, string>();
-  for (const f of disc.files) {
-    const t = readText(f);
-    if (t !== null) texts.set(f.path, t);
-  }
+  const texts = disc.texts;
+  const records = disc.records;
 
   const packages = readPackages(disc.files, texts);
   const pkgDirs = packages.map((p) => p.dir);
@@ -276,6 +301,8 @@ function buildAndPersist(
       endLine: text ? text.split('\n').length : undefined,
       data: {
         lang: f.lang,
+        language: f.language,
+        ...(f.role ? { role: f.role } : {}),
         size: f.size,
         loc: text ? text.split('\n').filter((l) => l.trim()).length : 0,
         sha: text ? sha1(text) : undefined,
@@ -289,9 +316,7 @@ function buildAndPersist(
       confidence: 'observed',
     });
     if (f.lang === 'unsupported' || f.lang === 'text' || f.lang === 'json') {
-      const ext = extname(f.path).toLowerCase() || basename(f.path);
-      if (f.lang === 'unsupported') textOnly[ext] = (textOnly[ext] ?? 0) + 1;
-      if (text && f.lang !== 'json') {
+      if (text && f.lang !== 'json' && f.role !== 'lockfile') {
         const lines = text.split('\n');
         for (const [a, b] of windows(lines, 1, lines.length, WINDOW_LINES))
           graph.chunks.push({
@@ -313,19 +338,53 @@ function buildAndPersist(
     incremental ? { previous: loadCaches(db, repo.id) } : undefined,
   );
   const handled = new Set(adapters.flatMap((a) => a.languages));
-  const unsupportedLanguages: Record<string, number> = {};
-  for (const f of disc.files) {
-    if (handled.has(f.lang)) continue;
-    const language = unsupportedLanguageOf(f.path);
-    if (language) unsupportedLanguages[language] = (unsupportedLanguages[language] ?? 0) + 1;
+  // Inventory status of files the compiler adapters read: full, or failed with the reason.
+  const failedPass1 = new Map<string, string>();
+  const failedRefs = new Map<string, string>();
+  for (const x of tsStats.filesFailed) {
+    if (x.error.startsWith('reference pass:')) failedRefs.set(x.path, x.error);
+    else failedPass1.set(x.path, x.error);
   }
+  const adapterFiles = new Set<string>();
+  for (const f of disc.files) {
+    if (!handled.has(f.lang) || !texts.has(f.path)) continue;
+    adapterFiles.add(f.path);
+    const rec = records.get(f.path);
+    if (!rec) continue;
+    const adapter = adapters.find((a) => a.languages.includes(f.lang));
+    rec.method = adapter?.name ?? 'language adapter';
+    if (failedPass1.has(f.path)) {
+      rec.status = 'failed';
+      rec.reason = failedPass1.get(f.path);
+    } else if (failedRefs.has(f.path)) {
+      rec.status = 'partial';
+      rec.reason = failedRefs.get(f.path);
+    } else rec.status = 'full';
+  }
+
+  progress('Analysing other languages and file formats');
+  const otherAnalysis = analyseNonTsFiles(
+    { graph, records, allPaths: paths, moduleOf },
+    disc.files,
+    texts,
+    adapterFiles,
+  );
 
   // Database schemas in SQL files (migrations, schema.sql) and Prisma schema files.
   for (const f of disc.files) {
     const text = texts.get(f.path);
     if (!text) continue;
-    if (/\.sql$/i.test(f.path)) addSchema(graph, f.path, parseSqlSchema(text));
-    else if (/\.prisma$/i.test(f.path)) addSchema(graph, f.path, parsePrismaSchema(text));
+    try {
+      if (/\.(sql|ddl|pks|pkb|pls|plsql|psql|pgsql|tsql)$/i.test(f.path))
+        addSchema(graph, f.path, parseSqlSchema(text));
+      else if (/\.prisma$/i.test(f.path)) addSchema(graph, f.path, parsePrismaSchema(text));
+    } catch (e) {
+      const rec = records.get(f.path);
+      if (rec) {
+        rec.status = 'failed';
+        rec.reason = `schema reader error: ${e instanceof Error ? e.message.slice(0, 160) : String(e)}`;
+      }
+    }
   }
 
   // Entry points declared in package.json (observed: they are declared).
@@ -371,13 +430,19 @@ function buildAndPersist(
     if (text) {
       indexMarkdown(graph, f.path, text, paths, exportedByName, moduleOf);
       docs++;
+      const rec = records.get(f.path);
+      if (rec) {
+        rec.status = 'partial';
+        rec.method = 'Markdown section and link reader';
+      }
     }
   }
 
+  const topsByFile = topSymbolsByFile(graph);
   for (const f of disc.files) {
     if (f.lang !== 'typescript' && f.lang !== 'javascript') continue;
     const text = texts.get(f.path);
-    if (text) graph.chunks.push(...codeChunks(graph, f.path, text));
+    if (text) graph.chunks.push(...codeChunks(graph, f.path, text, topsByFile.get(f.path) ?? []));
   }
 
   progress('Reading git history');
@@ -403,6 +468,7 @@ function buildAndPersist(
 
   progress('Saving index');
   persist(db, repo.id, graph, tsStats.caches);
+  persistInventory(db, repo.id, records);
 
   const edgesByConfidence: Record<Confidence, number> = { observed: 0, inferred: 0, unknown: 0 };
   for (const e of graph.edges) edgesByConfidence[e.confidence]++;
@@ -450,11 +516,63 @@ function buildAndPersist(
     );
   if (git.truncated)
     limitations.push(`Git history truncated to the latest ${git.commitsScanned} commits.`);
-  const unsupported = Object.entries(textOnly)
-    .map(([ext, n]) => `${n} ${ext}`)
+  // Inventory: every listed path, with what was done to it.
+  const recordList = [...records.values()].sort((a, b) => a.path.localeCompare(b.path));
+  const inventory = summarize(recordList, { producer: 'codeatlas' });
+  const inventoryErrors = checkInventory(inventory);
+  if (inventoryErrors.length)
+    throw new Error(`Inventory invariant broken: ${inventoryErrors.join('; ')}`);
+  const unsupportedLanguages: Record<string, number> = {};
+  for (const r of recordList) {
+    if (r.status === 'text') {
+      const ext = extname(r.path).toLowerCase() || basename(r.path);
+      textOnly[ext] = (textOnly[ext] ?? 0) + 1;
+      if (/^(programming|scripting|database)$/.test(r.category))
+        unsupportedLanguages[r.language] = (unsupportedLanguages[r.language] ?? 0) + 1;
+    }
+  }
+  const textLangs = inventory.languages
+    .filter((l) => l.counts.text > 0)
+    .slice(0, 12)
+    .map((l) => `${l.counts.text.toLocaleString('en-US')} ${l.language}`)
     .join(', ');
-  if (unsupported)
-    limitations.push(`Searchable as text only, not analysed structurally: ${unsupported}.`);
+  if (inventory.counts.text)
+    limitations.push(
+      `${inventory.counts.text.toLocaleString('en-US')} files are searchable as text only, with no structure extracted: ${textLangs}${inventory.languages.filter((l) => l.counts.text > 0).length > 12 ? ', …' : ''}.`,
+    );
+  if (inventory.counts.partial)
+    limitations.push(
+      `${inventory.counts.partial.toLocaleString('en-US')} files are partially analysed (declaration patterns, generic parsers or schema readers): their structure is shown, but not checked by a compiler, and calls between their functions are not extracted.`,
+    );
+  if (inventory.counts.failed)
+    limitations.push(
+      `${inventory.counts.failed.toLocaleString('en-US')} files could not be analysed (see the inventory for each reason), e.g. ${inventory.reasons
+        .filter((r) => r.status === 'failed')
+        .slice(0, 2)
+        .map((r) => `${r.examples[0]}: ${r.reason}`)
+        .join('; ')}.`,
+    );
+  if (inventory.counts.unsupported)
+    limitations.push(
+      `${inventory.counts.unsupported} files are recognised but their content is not readable (for example Git LFS pointers).`,
+    );
+  if (skipped.binary)
+    limitations.push(`${skipped.binary} binary files were recorded but not read.`);
+  if (skipped.submodule)
+    limitations.push(
+      `${skipped.submodule} git submodules were not indexed (separate repositories).`,
+    );
+  if (skipped.symlink)
+    limitations.push(
+      `${skipped.symlink} symbolic links were recorded; their targets were not followed.`,
+    );
+  if (disc.unlisted.length)
+    limitations.push(
+      `Not listed file by file: ${disc.unlisted
+        .slice(0, 5)
+        .map((u) => `${u.path} (${u.reason})`)
+        .join(', ')}${disc.unlisted.length > 5 ? ', …' : ''}.`,
+    );
   if (tsStats.filesFailed.length)
     limitations.push(`${tsStats.filesFailed.length} source files could not be fully analysed.`);
   if (tsStats.calls.dynamic)
@@ -505,6 +623,8 @@ function buildAndPersist(
         .slice(0, 50),
       textOnlyByExtension: textOnly,
     },
+    inventory: { ...inventory, unlisted: disc.unlisted, summary: coverageSentence(inventory) },
+    otherAnalysis,
     manifests: findManifests([
       ...disc.files.map((f) => f.path),
       ...disc.skipped
@@ -543,6 +663,29 @@ function buildAndPersist(
     repo.id,
   );
   return report;
+}
+
+function persistInventory(db: Db, repoId: number, records: Map<string, FileRecord>): void {
+  tx(db, () => {
+    db.prepare('DELETE FROM file_inventory WHERE repo_id = ?').run(repoId);
+    const ins = db.prepare(
+      'INSERT INTO file_inventory (repo_id, path, language, category, role, status, method, reason, bytes, detected_by, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    );
+    for (const r of records.values())
+      ins.run(
+        repoId,
+        r.path,
+        r.language,
+        r.category,
+        r.role ?? null,
+        r.status,
+        r.method,
+        r.reason ?? null,
+        r.bytes ?? null,
+        r.detectedBy ?? null,
+        r.confidence ?? null,
+      );
+  });
 }
 
 function loadCaches(db: Db, repoId: number): Record<string, AdapterCache> {

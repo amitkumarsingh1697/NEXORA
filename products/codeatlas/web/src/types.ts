@@ -70,6 +70,8 @@ export interface Coverage {
     filesFailed: number;
   }[];
   unsupportedLanguages?: Record<string, number>;
+  /** Per-file processing counts (schema 7 and later). */
+  inventory?: Inventory;
   incremental?: {
     adapter: string;
     mode: 'full' | 'incremental';
@@ -143,4 +145,74 @@ export interface GraphView {
   edges: ViewEdge[];
   truncated: boolean;
   notes: string[];
+}
+
+export const FILE_STATUSES = [
+  'full',
+  'partial',
+  'text',
+  'unsupported',
+  'failed',
+  'excluded',
+  'binary',
+] as const;
+export type FileStatus = (typeof FILE_STATUSES)[number];
+export type StatusCounts = Record<FileStatus, number>;
+
+/** The file inventory of an index: every listed path counted by how it was processed. */
+export interface Inventory {
+  producer: string;
+  total: number;
+  counts: StatusCounts;
+  analysed: number;
+  readable: number;
+  coverage: number | null;
+  fullCoverage: number | null;
+  summary: string;
+  languages: {
+    language: string;
+    category: string;
+    files: number;
+    counts: StatusCounts;
+    analysed: number;
+    coverage: number | null;
+    status: string;
+    method: string;
+  }[];
+  categories: { category: string; label: string; files: number; analysed: number }[];
+  fileTypes: {
+    role: string;
+    label: string;
+    group: string;
+    groupLabel: string;
+    files: number;
+    counts: StatusCounts;
+    analysed: number;
+    coverage: number | null;
+    examples: string[];
+  }[];
+  directories: {
+    path: string;
+    files: number;
+    counts: StatusCounts;
+    analysed: number;
+    coverage: number | null;
+  }[];
+  reasons: { status: FileStatus; reason: string; files: number; examples: string[] }[];
+  notAnalysedTotal: number;
+  ambiguous: { language: string; alternatives: string[]; files: number }[];
+  unlisted: { path: string; reason: string }[];
+}
+
+export interface InventoryFile {
+  path: string;
+  language: string;
+  category: string;
+  role: string | null;
+  status: FileStatus;
+  method: string;
+  reason: string | null;
+  bytes: number | null;
+  detectedBy: string | null;
+  confidence: string | null;
 }
