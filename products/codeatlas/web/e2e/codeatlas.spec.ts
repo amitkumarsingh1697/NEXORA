@@ -15,6 +15,9 @@ test('index a repository, explore it, ask a question, and take a bug through rev
   page,
   request,
 }) => {
+  // One journey across every screen with 17 axe scans. It takes about 55 s locally; the CI runner
+  // is roughly twice as slow, and the Languages & files checks pushed it past the 120 s default.
+  test.setTimeout(240_000);
   const root = makeFixtureRepo();
   execFileSync('git', ['-C', root, 'config', 'user.name', 'Repo Owner']);
   execFileSync('git', ['-C', root, 'config', 'user.email', 'owner@example.com']);
