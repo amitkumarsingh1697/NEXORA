@@ -181,8 +181,18 @@ describe('indexer: safety and coverage', () => {
   });
 
   it('reports unsupported languages as text-only and keeps them searchable', () => {
-    expect(report.files.textOnlyByExtension['.py']).toBe(1);
-    expect(report.limitations.join(' ')).toMatch(/text only.*\.py/);
+    expect(report.files.textOnlyByExtension['.apl']).toBe(1);
+    expect(report.limitations.join(' ')).toMatch(/text only, with no structure extracted: .*1 APL/);
+    expect(search(db, repoId, 'yearly average')[0]?.filePath).toBe('tools/legacy.apl');
+    // Python has declaration patterns: partially analysed, never counted as fully analysed.
+    expect(report.files.textOnlyByExtension['.py']).toBeUndefined();
+    const py = report.inventory.languages.find((l) => l.language === 'Python');
+    expect(py).toMatchObject({
+      files: 1,
+      analysed: 1,
+      status: 'partial',
+      method: expect.stringMatching(/^Declaration/),
+    });
     expect(search(db, repoId, 'quarterly report')[0]?.filePath).toBe('tools/report.py');
   });
 
@@ -507,7 +517,7 @@ describe('language adapters (S3-1)', () => {
         filesAnalysed: report.files.structurallyAnalysed,
       }),
     ]);
-    expect(report.unsupportedLanguages).toEqual({ Python: 1 });
+    expect(report.unsupportedLanguages).toEqual({ APL: 1 });
   });
 
   it('claims no structure for a language without an adapter', () => {
@@ -517,7 +527,11 @@ describe('language adapters (S3-1)', () => {
     expect(r.files.structurallyAnalysed).toBe(0);
     expect(r.symbols).toBe(0);
     expect(r.unsupportedLanguages.TypeScript).toBeGreaterThan(0);
-    expect(r.unsupportedLanguages.Python).toBe(1);
+    expect(r.unsupportedLanguages.APL).toBe(1);
+    // With no TypeScript adapter, TypeScript files are text only, never claimed as analysed.
+    const ts = r.inventory.languages.find((l) => l.language === 'TypeScript');
+    expect(ts?.counts.text).toBe(ts?.files);
+    expect(ts?.analysed).toBe(0);
     // Every file is still registered, just without symbols.
     const files = other.prepare("SELECT COUNT(*) AS n FROM nodes WHERE kind = 'file'").get() as {
       n: number;

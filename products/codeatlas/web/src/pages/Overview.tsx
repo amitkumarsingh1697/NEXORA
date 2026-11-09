@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import type { Coverage, Job, Repo } from '../types';
 import { Button, Card, Empty, ErrorBox, Spinner, Stat, useAsync } from '../components/ui';
+import { LanguageCoverage } from '../components/LanguageCoverage';
 
 interface RepoDetail {
   repo: Repo;
@@ -66,11 +67,19 @@ export function Overview({ repoId }: { repoId: number }) {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Stat
-              label="Files analysed"
-              value={`${c.files.structurallyAnalysed} / ${c.files.discovered}`}
-              hint="TypeScript/JavaScript files analysed structurally / all files discovered"
-            />
+            {c.inventory ? (
+              <Stat
+                label="Files analysed"
+                value={`${c.inventory.analysed.toLocaleString('en-US')} / ${c.inventory.total.toLocaleString('en-US')}`}
+                hint="Files analysed fully or partially / every file listed (see Languages & files)"
+              />
+            ) : (
+              <Stat
+                label="Files analysed"
+                value={`${c.files.structurallyAnalysed} / ${c.files.discovered}`}
+                hint="TypeScript/JavaScript files analysed structurally / all files discovered"
+              />
+            )}
             <Stat label="Symbols" value={c.symbols} />
             <Stat label="Routes" value={c.routes} />
             <Stat
@@ -238,6 +247,7 @@ export function Overview({ repoId }: { repoId: number }) {
               </div>
             )}
           </Card>
+          {c.inventory && <LanguageCoverage repoId={repoId} inv={c.inventory} />}
           <Card title={`Unresolved references (${unresolved.data?.items.length ?? 0})`}>
             {unresolved.data && !unresolved.data.items.length ? (
               <Empty>Nothing unresolved.</Empty>

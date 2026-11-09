@@ -8,7 +8,7 @@ import { DatabaseSync } from 'node:sqlite';
  */
 export type Db = DatabaseSync;
 
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -91,6 +91,23 @@ CREATE TABLE IF NOT EXISTS unresolved (
   reason TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS unresolved_repo ON unresolved(repo_id, kind);
+
+-- v7: one row per listed repository path and what was done to it (no silent omissions).
+CREATE TABLE IF NOT EXISTS file_inventory (
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  path TEXT NOT NULL,
+  language TEXT NOT NULL,
+  category TEXT NOT NULL,
+  role TEXT,
+  status TEXT NOT NULL CHECK (status IN ('full','partial','text','unsupported','failed','excluded','binary')),
+  method TEXT NOT NULL,
+  reason TEXT,
+  bytes INTEGER,
+  detected_by TEXT,
+  confidence TEXT,
+  PRIMARY KEY (repo_id, path)
+);
+CREATE INDEX IF NOT EXISTS file_inventory_status ON file_inventory(repo_id, status);
 
 CREATE TABLE IF NOT EXISTS chunks (
   id INTEGER PRIMARY KEY,

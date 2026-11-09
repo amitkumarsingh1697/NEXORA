@@ -154,9 +154,13 @@ export class GraphBuilder {
 }
 
 /** Split identifiers into search terms: refreshDeviceToken -> "refresh device token". */
+const SPLITTABLE = /[_$]|[a-z0-9][A-Z]|[A-Z]{2}[a-z]/;
+
 export function splitTerms(text: string): string {
   const out = new Set<string>();
   for (const m of text.matchAll(/[A-Za-z_$][\w$]{2,}/g)) {
+    // Only identifiers with a separator or a case change split into parts; skip the rest cheaply.
+    if (!SPLITTABLE.test(m[0])) continue;
     const parts = m[0]
       .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
       .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')

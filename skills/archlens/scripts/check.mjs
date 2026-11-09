@@ -56,7 +56,7 @@ for (const f of files) {
   }
 }
 
-for (const f of ['assets/brain-template.html', 'scripts/render-brain.mjs'])
+for (const f of ['assets/brain-template.html', 'scripts/render-brain.mjs', 'scripts/inventory.mjs'])
   if (!existsSync(join(root, f))) errors.push(`missing ${f}`);
 const template = join(root, 'assets/brain-template.html');
 if (existsSync(template) && !readFileSync(template, 'utf8').includes('__BRAIN_DATA__'))

@@ -1,7 +1,26 @@
-import { execFileSync } from 'node:child_process';
+/**
+ * Repository file discovery. Every path git lists (or a directory walk finds) gets exactly one
+ * inventory record: readable files go on to analysis, everything else is recorded with the
+ * reason it was not read. Nothing is dropped without a record (requirement: no silent
+ * omissions). Language and file type come from @nexora/languages, the single registry.
+ */
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { extname, join, relative, sep } from 'node:path';
+import { lstatSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  classify,
+  generatedReason,
+  IGNORED_DIRS,
+  inIgnoredDir,
+  isLockfile,
+  isSecretPath,
+  looksGenerated,
+  decodeText,
+  type Category,
+  type Classification,
+  type FileRecord,
+} from '@nexora/languages';
+import { listRepository, readHead, type UnlistedPaths } from '@nexora/languages/node';
 
 export type FileLang = 'typescript' | 'javascript' | 'markdown' | 'json' | 'text' | 'unsupported';
 
@@ -9,229 +28,241 @@ export interface DiscoveredFile {
   /** Repo-relative POSIX path. */
   path: string;
   abs: string;
+  /** Routing for language adapters. */
   lang: FileLang;
   size: number;
+  /** Registry language name (GitHub Linguist naming). */
+  language: string;
+  category: Category;
+  /** File type from the registry, for build, deployment, CI, schema and other files. */
+  role?: string;
+  classification: Classification;
 }
+
+export type SkipReason =
+  | 'secret'
+  | 'binary'
+  | 'too_large'
+  | 'generated'
+  | 'limit'
+  | 'ignored_dir'
+  | 'submodule'
+  | 'symlink'
+  | 'unreadable'
+  | 'lfs_pointer';
 
 export interface SkippedFile {
   path: string;
-  reason: 'secret' | 'binary' | 'too_large' | 'generated' | 'limit' | 'ignored_dir';
+  reason: SkipReason;
 }
+
+/** A directory or path set that was not listed file by file, with why. */
+export type { UnlistedPaths };
 
 export interface DiscoveryResult {
   files: DiscoveredFile[];
   skipped: SkippedFile[];
   usedGit: boolean;
+  /** One record per listed path: readable files start as 'text' and analysers raise them. */
+  records: Map<string, FileRecord>;
+  /** Text of every readable file, read once. */
+  texts: Map<string, string>;
+  /** Paths git ignores, and folders the walk did not enter (counted, not listed file by file). */
+  unlisted: UnlistedPaths[];
 }
 
-export const LIMITS = { maxFiles: 20_000, maxFileBytes: 512 * 1024 };
-
-const TS_EXT = new Set(['.ts', '.tsx', '.mts', '.cts']);
-const JS_EXT = new Set(['.js', '.jsx', '.mjs', '.cjs']);
-const TEXT_EXT = new Set([
-  '.yml',
-  '.yaml',
-  '.toml',
-  '.sql',
-  '.css',
-  '.scss',
-  '.html',
-  '.sh',
-  '.txt',
-  '.graphql',
-  '.prisma',
-  '.env.example',
-]);
-const OTHER_CODE_EXT = new Set([
-  '.py',
-  '.go',
-  '.java',
-  '.kt',
-  '.rb',
-  '.rs',
-  '.cs',
-  '.php',
-  '.swift',
-  '.c',
-  '.cc',
-  '.cpp',
-  '.h',
-  '.hpp',
-  '.scala',
-  '.dart',
-  '.vue',
-  '.svelte',
-]);
+export const LIMITS = {
+  maxFiles: 20_000,
+  maxFileBytes: 512 * 1024,
+  /** Lockfiles are often larger than source files and are only counted, so they get more room. */
+  maxLockfileBytes: 16 * 1024 * 1024,
+};
 
 /**
  * Directories never walked, and never indexed even when git tracks files in them (build
- * output, dependencies). Tracked files dropped this way are reported as skipped, because a
+ * output, dependencies). Tracked files dropped this way are reported as excluded, because a
  * repository can keep real source in a folder with one of these names (QA AL-05).
  */
-export const IGNORED_DIRS = new Set([
-  'node_modules',
-  '.git',
-  'dist',
-  'build',
-  'out',
-  '.next',
-  '.output',
-  '.wxt',
-  'coverage',
-  '.turbo',
-  '.cache',
-  '.data',
-  'vendor',
-  'target',
-  '__pycache__',
-  '.venv',
-  'venv',
-  'test-results',
-  'playwright-report',
-]);
+export { IGNORED_DIRS, isSecretPath, looksGenerated };
 
-/** Files that may hold credentials are never read or indexed. */
-const SECRET_PATTERNS = [
-  /(^|\/)\.env(\..*)?$/,
-  /\.(pem|key|p12|pfx|jks|keystore|crt|cer)$/i,
-  /(^|\/)id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$/,
-  /(^|\/)\.npmrc$/,
-  /(^|\/)\.netrc$/,
-  /(^|\/)credentials(\.json)?$/i,
-  /secrets?\.(json|ya?ml)$/i,
-];
-const SECRET_ALLOW = [/\.env\.example$/, /\.env\.sample$/, /\.env\.template$/];
+export const SKIP_REASON_TEXT: Record<SkipReason, string> = {
+  secret: 'may contain credentials; never read',
+  binary: 'binary content',
+  too_large: `larger than the ${LIMITS.maxFileBytes / 1024} KiB per-file limit`,
+  generated: 'generated',
+  limit: `beyond the ${LIMITS.maxFiles.toLocaleString('en-US')}-file limit`,
+  ignored_dir: 'in a build-output or dependency folder',
+  submodule: 'git submodule; its content is a separate repository and was not indexed',
+  symlink: 'symbolic link; the target is not followed',
+  unreadable: 'could not be read',
+  lfs_pointer: 'Git LFS pointer; the real content is not in the clone',
+};
 
-const GENERATED = [
-  /\.min\.(js|css)$/,
-  /(^|\/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$/,
-  /\.map$/,
-  /(^|\/)migrations\/meta\//,
-  /\.d\.ts$/,
-];
-
-export function isSecretPath(p: string): boolean {
-  return SECRET_PATTERNS.some((r) => r.test(p)) && !SECRET_ALLOW.some((r) => r.test(p));
+/** Adapter routing for a classified file. */
+export function fileLangOf(path: string, c: Classification): FileLang {
+  if (c.language === 'TypeScript' || c.language === 'TSX')
+    return /\.(ts|tsx|mts|cts)$/i.test(path) ? 'typescript' : 'text';
+  if (c.language === 'JavaScript') return /\.(js|jsx|mjs|cjs)$/i.test(path) ? 'javascript' : 'text';
+  if (c.language === 'Markdown' || c.language === 'MDX') return 'markdown';
+  if (c.language === 'JSON' || c.language === 'JSON with Comments' || c.language === 'JSON5')
+    return 'json';
+  return 'text';
 }
 
+/** Kept for callers that only have a path. Uses the registry; content-based rules do not apply. */
 export function langOf(p: string): FileLang {
-  const ext = extname(p).toLowerCase();
-  if (TS_EXT.has(ext)) return 'typescript';
-  if (JS_EXT.has(ext)) return 'javascript';
-  if (ext === '.md' || ext === '.mdx') return 'markdown';
-  if (ext === '.json') return 'json';
-  if (TEXT_EXT.has(ext) || p.endsWith('.env.example')) return 'text';
-  if (OTHER_CODE_EXT.has(ext)) return 'unsupported';
-  return 'unsupported';
+  return fileLangOf(p, classify({ path: p, head: null }));
 }
 
-function gitFiles(root: string): string[] | null {
-  try {
-    const out = execFileSync(
-      'git',
-      ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
-      { encoding: 'buffer', maxBuffer: 256 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] },
-    );
-    return out.toString('utf8').split('\0').filter(Boolean);
-  } catch {
-    return null;
-  }
-}
-
-function walk(root: string): string[] {
-  const out: string[] = [];
-  const stack = [root];
-  while (stack.length && out.length < LIMITS.maxFiles * 2) {
-    const dir = stack.pop() as string;
-    let entries;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const e of entries) {
-      if (e.isSymbolicLink()) continue;
-      const abs = join(dir, e.name);
-      if (e.isDirectory()) {
-        if (!IGNORED_DIRS.has(e.name)) stack.push(abs);
-      } else if (e.isFile()) out.push(relative(root, abs).split(sep).join('/'));
-    }
-  }
-  return out;
-}
-
-function looksBinary(buf: Buffer): boolean {
-  const n = Math.min(buf.length, 8000);
-  for (let i = 0; i < n; i++) if (buf[i] === 0) return true;
-  return false;
-}
-
-/** Long average line length usually means minified or generated output. */
-export function looksGenerated(text: string): boolean {
-  if (text.length < 5000) return false;
-  const lines = text.split('\n').length;
-  return text.length / lines > 300;
-}
+const HEAD_BYTES = 8192;
 
 export function discoverFiles(root: string): DiscoveryResult {
-  const listed = gitFiles(root);
-  const usedGit = listed !== null;
+  const { paths, usedGit, submodules, unlisted } = listRepository(root);
   const files: DiscoveredFile[] = [];
   const skipped: SkippedFile[] = [];
-  const candidates: string[] = [];
-  for (const p of (listed ?? walk(root)).sort()) {
-    const segs = p.split('/');
-    if (!segs.slice(0, -1).some((seg) => IGNORED_DIRS.has(seg))) candidates.push(p);
-    // Only git-tracked files count as dropped: an untracked dist/ is build output.
-    else if (usedGit && !segs.includes('node_modules') && !segs.includes('.git'))
-      skipped.push({ path: p, reason: 'ignored_dir' });
-  }
-  for (const path of candidates) {
+  const records = new Map<string, FileRecord>();
+  const texts = new Map<string, string>();
+
+  const record = (
+    path: string,
+    c: Classification,
+    status: FileRecord['status'],
+    method: string,
+    reason?: string,
+    bytes?: number,
+  ) => {
+    const r: FileRecord = {
+      path,
+      language: c.language,
+      category: c.category,
+      status,
+      method,
+      detectedBy: c.detectedBy,
+      confidence: c.confidence,
+    };
+    if (c.role) r.role = c.role;
+    if (reason) r.reason = reason;
+    if (bytes !== undefined) r.bytes = bytes;
+    if (c.alternatives) r.alternatives = c.alternatives;
+    records.set(path, r);
+  };
+  const skip = (
+    path: string,
+    c: Classification,
+    reason: SkipReason,
+    status: FileRecord['status'] = 'excluded',
+    bytes?: number,
+  ) => {
+    skipped.push({ path, reason });
+    record(path, c, status, 'not read', SKIP_REASON_TEXT[reason], bytes);
+  };
+  const byName = (path: string) => classify({ path, head: null });
+
+  for (const path of paths) {
+    if (records.has(path)) continue;
+    const segs = path.split('/');
+    if (submodules.has(path)) {
+      skip(path, { ...byName(path), language: 'Git submodule', category: 'data' }, 'submodule');
+      continue;
+    }
+    if (inIgnoredDir(path)) {
+      // Only git-tracked files are recorded: an untracked dist/ is build output.
+      if (usedGit && !segs.includes('node_modules') && !segs.includes('.git'))
+        skip(path, byName(path), 'ignored_dir');
+      continue;
+    }
     if (isSecretPath(path)) {
-      skipped.push({ path, reason: 'secret' });
+      skip(path, byName(path), 'secret');
       continue;
     }
-    if (GENERATED.some((r) => r.test(path))) {
+    const gen = generatedReason(path);
+    if (gen) {
       skipped.push({ path, reason: 'generated' });
+      record(path, byName(path), 'excluded', 'not read', `generated: ${gen}`);
       continue;
     }
-    const lang = langOf(path);
     const abs = join(root, path);
     let size: number;
     try {
-      const st = statSync(abs);
-      if (!st.isFile()) continue;
+      const st = lstatSync(abs);
+      if (st.isSymbolicLink()) {
+        skip(path, byName(path), 'symlink');
+        continue;
+      }
+      if (!st.isFile()) {
+        skip(path, byName(path), 'unreadable', 'failed');
+        continue;
+      }
       size = st.size;
-    } catch {
-      continue; // deleted since listing
+    } catch (e) {
+      skipped.push({ path, reason: 'unreadable' });
+      record(
+        path,
+        byName(path),
+        'failed',
+        'not read',
+        `could not be read (${(e as NodeJS.ErrnoException).code ?? 'error'})`,
+      );
+      continue;
     }
     if (files.length >= LIMITS.maxFiles) {
-      skipped.push({ path, reason: 'limit' });
+      skip(path, byName(path), 'limit', 'excluded', size);
       continue;
     }
-    if (size > LIMITS.maxFileBytes) {
-      skipped.push({ path, reason: 'too_large' });
+    const isLock = isLockfile(path);
+    const max = isLock ? LIMITS.maxLockfileBytes : LIMITS.maxFileBytes;
+    let buf: Buffer;
+    try {
+      buf = size > max ? readHead(abs, HEAD_BYTES) : readFileSync(abs);
+    } catch (e) {
+      skipped.push({ path, reason: 'unreadable' });
+      record(
+        path,
+        byName(path),
+        'failed',
+        'not read',
+        `could not be read (${(e as NodeJS.ErrnoException).code ?? 'error'})`,
+        size,
+      );
       continue;
     }
-    if (lang !== 'unsupported' || OTHER_CODE_EXT.has(extname(path).toLowerCase()))
-      files.push({ path, abs, lang, size });
-    else {
-      // Unknown extension: keep only if it is text, for search.
-      try {
-        if (looksBinary(readFileSync(abs))) skipped.push({ path, reason: 'binary' });
-        else files.push({ path, abs, lang: 'text', size });
-      } catch {
-        // unreadable: ignore
-      }
+    const c = classify({ path, head: buf.subarray(0, HEAD_BYTES) });
+    if (c.category === 'binary') {
+      skip(path, c, 'binary', 'binary', size);
+      continue;
     }
+    if (c.lfsPointer) {
+      skip(path, c, 'lfs_pointer', 'unsupported', size);
+      continue;
+    }
+    if (size > max) {
+      skip(path, c, 'too_large', 'excluded', size);
+      continue;
+    }
+    const text = decodeText(buf);
+    texts.set(path, text);
+    const lang = fileLangOf(path, c);
+    files.push({
+      path,
+      abs,
+      lang,
+      size,
+      language: c.language,
+      category: c.category,
+      ...(c.role ? { role: c.role } : {}),
+      classification: c,
+    });
+    record(path, c, 'text', 'Generic text indexer', undefined, size);
   }
-  return { files, skipped, usedGit };
+  return { files, skipped, usedGit, records, texts, unlisted };
 }
 
+/** Reads a discovered file as text, or null when it is binary. */
 export function readText(file: DiscoveredFile): string | null {
   const buf = readFileSync(file.abs);
-  if (looksBinary(buf)) return null;
-  return buf.toString('utf8');
+  const c = classify({ path: file.path, head: buf.subarray(0, HEAD_BYTES) });
+  if (c.category === 'binary') return null;
+  return decodeText(buf);
 }
 
 export function sha1(text: string): string {

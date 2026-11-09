@@ -35,7 +35,7 @@ INSERT INTO inv_patches VALUES (3, 7, 'sha', 'diff', '[]', '', 'manual', 'commit
 `;
 
 describe('schema migration', () => {
-  it('upgrades a v2 database to the current schema (v3 rebuild, v4, v5, v6) without losing rows or breaking foreign keys', () => {
+  it('upgrades a v2 database to the current schema (v3 rebuild, v4, v5, v6, v7) without losing rows or breaking foreign keys', () => {
     const file = join(dir, 'v2.db');
     const old = new DatabaseSync(file);
     old.exec(V2);
@@ -43,7 +43,7 @@ describe('schema migration', () => {
 
     const db = openDb(file);
     expect(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({
-      value: '6',
+      value: '7',
     });
     expect(
       (db.prepare('PRAGMA table_info(repos)').all() as { name: string }[]).map((c) => c.name),
@@ -100,7 +100,7 @@ INSERT INTO edges (repo_id, src, dst, kind, confidence) VALUES (1, 10, 11, 'impo
 
     const db = openDb(file);
     expect(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({
-      value: '6',
+      value: '7',
     });
     expect(db.prepare('SELECT id, kind, key FROM nodes ORDER BY id').all()).toEqual([
       { id: 10, kind: 'file', key: 'a.ts' },

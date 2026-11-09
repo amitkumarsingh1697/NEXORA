@@ -6,10 +6,21 @@
  * or a package declares a dependency. That a declared framework is actually
  * used at runtime is not claimed.
  */
+import { roleOf } from '@nexora/languages';
 import { basename } from 'node:path';
 
 export type ManifestKind =
-  'package' | 'workspace' | 'tsconfig' | 'lockfile' | 'container' | 'ci' | 'build' | 'env-example';
+  | 'package'
+  | 'workspace'
+  | 'tsconfig'
+  | 'lockfile'
+  | 'container'
+  | 'ci'
+  | 'build'
+  | 'env-example'
+  | 'dependencies'
+  | 'orchestration'
+  | 'iac';
 
 export interface Manifest {
   path: string;
@@ -28,33 +39,39 @@ export interface Framework {
   confidence: 'observed';
 }
 
-const RULES: [RegExp, ManifestKind][] = [
-  [/(^|\/)package\.json$/, 'package'],
-  [/(^|\/)(pnpm-workspace\.yaml|lerna\.json|nx\.json|turbo\.json)$/, 'workspace'],
-  [/(^|\/)(tsconfig|jsconfig)[^/]*\.json$/, 'tsconfig'],
-  [
-    /(^|\/)(pnpm-lock\.yaml|package-lock\.json|yarn\.lock|bun\.lockb?|npm-shrinkwrap\.json)$/,
-    'lockfile',
-  ],
-  [
-    /(^|\/)(Dockerfile[^/]*|[^/]*\.Dockerfile|docker-compose[^/]*\.ya?ml|compose\.ya?ml)$/,
-    'container',
-  ],
-  [
-    /(^|\/)(\.github\/workflows\/[^/]+\.ya?ml|\.gitlab-ci\.yml|\.circleci\/config\.yml|azure-pipelines\.yml|Jenkinsfile|bitbucket-pipelines\.yml)$/,
-    'ci',
-  ],
-  [
-    /(^|\/)(vite|vitest|webpack|rollup|next|nuxt|svelte|astro|tsup|esbuild|playwright|jest|wxt|drizzle)\.config\.[cm]?[jt]s$/,
-    'build',
-  ],
-  [/(^|\/)\.env\.(example|sample|template)$/, 'env-example'],
-];
+const WORKSPACE = /(^|\/)(pnpm-workspace\.yaml|lerna\.json|nx\.json|turbo\.json)$/;
 
-/** Classify a repository-relative path as a manifest, or null. */
-export function manifestKind(path: string): ManifestKind | null {
-  for (const [re, kind] of RULES) if (re.test(path)) return kind;
-  return null;
+/**
+ * Classify a repository-relative path as a manifest, or null. The file type comes from the
+ * shared registry (@nexora/languages roles), so manifests and the coverage inventory agree.
+ */
+export function manifestKind(path: string, head?: string): ManifestKind | null {
+  const role = roleOf(path, head);
+  if (!role) return null;
+  if (role.id === 'npm-package') return 'package';
+  if (WORKSPACE.test(path)) return 'workspace';
+  if (role.id === 'compiler-config')
+    return /(^|\/)(ts|js)config[^/]*\.json$/.test(path) ? 'tsconfig' : null;
+  switch (role.group) {
+    case 'lockfile':
+      return 'lockfile';
+    case 'container':
+      return role.id === 'dockerignore' ? null : 'container';
+    case 'ci':
+      return 'ci';
+    case 'build':
+      return 'build';
+    case 'env':
+      return 'env-example';
+    case 'dependencies':
+      return 'dependencies';
+    case 'orchestration':
+      return 'orchestration';
+    case 'iac':
+      return 'iac';
+    default:
+      return null;
+  }
 }
 
 export function findManifests(paths: Iterable<string>): Manifest[] {

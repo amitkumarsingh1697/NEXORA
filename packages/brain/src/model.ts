@@ -76,6 +76,9 @@ export const SYNAPSE_KINDS = [
   'reads_table',
   'writes_table',
   'references',
+  'builds',
+  'runs',
+  'includes',
 ] as const;
 export type SynapseKind = (typeof SYNAPSE_KINDS)[number];
 
@@ -150,6 +153,83 @@ export interface BrainCoverage {
   gaps: string[];
   /** Schema sources that exist but are in formats the producer does not read. */
   unreadSchemas?: string;
+  /** Per-file processing counts, by language, file type, folder and status. */
+  inventory?: BrainInventory;
+}
+
+/** Processing status of one file. Kept distinct: text-only is never counted as analysed. */
+export const INVENTORY_STATUSES = [
+  'full',
+  'partial',
+  'text',
+  'unsupported',
+  'failed',
+  'excluded',
+  'binary',
+] as const;
+export type InventoryStatus = (typeof INVENTORY_STATUSES)[number];
+export type InventoryCounts = Record<InventoryStatus, number>;
+
+export interface InventoryLanguage {
+  language: string;
+  category: string;
+  files: number;
+  bytes?: number;
+  counts: InventoryCounts;
+  analysed: number;
+  coverage: number | null;
+  status: string;
+  method: string;
+}
+
+export interface InventoryFileType {
+  role: string;
+  label: string;
+  group: string;
+  groupLabel: string;
+  files: number;
+  counts: InventoryCounts;
+  analysed: number;
+  coverage: number | null;
+  examples: string[];
+}
+
+export interface InventoryDirectory {
+  path: string;
+  files: number;
+  counts: InventoryCounts;
+  analysed: number;
+  coverage: number | null;
+}
+
+/**
+ * The repository's file inventory, as counted by the producer. Every number is a count of
+ * files the producer listed and processed; the status counts add up to `total`.
+ */
+export interface BrainInventory {
+  producer?: string;
+  total: number;
+  counts: InventoryCounts;
+  analysed: number;
+  readable: number;
+  coverage: number | null;
+  fullCoverage: number | null;
+  languages: InventoryLanguage[];
+  categories: { category: string; label: string; files: number; analysed: number }[];
+  fileTypes: InventoryFileType[];
+  directories: InventoryDirectory[];
+  reasons: { status: InventoryStatus; reason: string; files: number; examples: string[] }[];
+  notAnalysed: {
+    path: string;
+    language: string;
+    status: InventoryStatus;
+    method: string;
+    reason?: string;
+  }[];
+  notAnalysedTotal: number;
+  ambiguous: { language: string; alternatives: string[]; files: number }[];
+  /** Paths that exist but were not listed (submodules, ignored folders). */
+  unlisted?: { path: string; reason: string }[];
 }
 
 export interface BrainModel {
@@ -214,11 +294,150 @@ function columnsOf(raw: unknown[]): BrainColumn[] {
     });
 }
 
+const count = (v: unknown): number =>
+  typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e9 ? v : 0;
+const fraction = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : null;
+const isStatus = (v: unknown): v is InventoryStatus =>
+  (INVENTORY_STATUSES as readonly string[]).includes(v as string);
+const countsOf = (raw: unknown): InventoryCounts => {
+  const o = isObj(raw) ? raw : {};
+  return Object.fromEntries(INVENTORY_STATUSES.map((k) => [k, count(o[k])])) as InventoryCounts;
+};
+const listOf = <T>(
+  raw: unknown,
+  max: number,
+  map: (o: Record<string, unknown>) => T | undefined,
+): T[] =>
+  Array.isArray(raw)
+    ? raw
+        .filter(isObj)
+        .slice(0, max)
+        .map(map)
+        .filter((x): x is T => x !== undefined)
+    : [];
+const strings = (raw: unknown, max: number, len = 300): string[] =>
+  Array.isArray(raw)
+    ? raw
+        .filter((x): x is string => typeof x === 'string')
+        .slice(0, max)
+        .map((x) => x.slice(0, len))
+    : [];
+
+/** Bounded copy of an untrusted inventory. Returns undefined when its counts do not add up. */
+export function inventoryOf(raw: unknown): BrainInventory | undefined {
+  if (!isObj(raw)) return undefined;
+  const counts = countsOf(raw.counts);
+  const total = count(raw.total);
+  const sum = INVENTORY_STATUSES.reduce((t, k) => t + counts[k], 0);
+  if (sum !== total) return undefined;
+  const inv: BrainInventory = {
+    ...(typeof raw.producer === 'string' ? { producer: raw.producer.slice(0, 60) } : {}),
+    total,
+    counts,
+    analysed: counts.full + counts.partial,
+    readable: total - counts.excluded - counts.binary,
+    coverage: fraction(raw.coverage),
+    fullCoverage: fraction(raw.fullCoverage),
+    languages: listOf(raw.languages, 400, (o) =>
+      typeof o.language === 'string'
+        ? {
+            language: o.language.slice(0, 120),
+            category: str(o.category, 40) ?? 'unknown',
+            files: count(o.files),
+            ...(typeof o.bytes === 'number' ? { bytes: count(o.bytes) } : {}),
+            counts: countsOf(o.counts),
+            analysed: count(o.analysed),
+            coverage: fraction(o.coverage),
+            status: str(o.status, 20) ?? 'mixed',
+            method: str(o.method, 60) ?? '',
+          }
+        : undefined,
+    ),
+    categories: listOf(raw.categories, 40, (o) =>
+      typeof o.category === 'string'
+        ? {
+            category: o.category.slice(0, 40),
+            label: str(o.label, 60) ?? o.category.slice(0, 40),
+            files: count(o.files),
+            analysed: count(o.analysed),
+          }
+        : undefined,
+    ),
+    fileTypes: listOf(raw.fileTypes, 200, (o) =>
+      typeof o.role === 'string'
+        ? {
+            role: o.role.slice(0, 60),
+            label: str(o.label, 120) ?? o.role.slice(0, 60),
+            group: str(o.group, 40) ?? 'config',
+            groupLabel: str(o.groupLabel, 60) ?? 'Other',
+            files: count(o.files),
+            counts: countsOf(o.counts),
+            analysed: count(o.analysed),
+            coverage: fraction(o.coverage),
+            examples: strings(o.examples, 5),
+          }
+        : undefined,
+    ),
+    directories: listOf(raw.directories, 200, (o) =>
+      typeof o.path === 'string'
+        ? {
+            path: o.path.slice(0, 300),
+            files: count(o.files),
+            counts: countsOf(o.counts),
+            analysed: count(o.analysed),
+            coverage: fraction(o.coverage),
+          }
+        : undefined,
+    ),
+    reasons: listOf(raw.reasons, 100, (o) =>
+      isStatus(o.status) && typeof o.reason === 'string'
+        ? {
+            status: o.status,
+            reason: o.reason.slice(0, 300),
+            files: count(o.files),
+            examples: strings(o.examples, 5),
+          }
+        : undefined,
+    ),
+    notAnalysed: listOf(raw.notAnalysed, 500, (o) =>
+      typeof o.path === 'string' && isStatus(o.status)
+        ? {
+            path: o.path.slice(0, 300),
+            language: str(o.language, 120) ?? 'Unknown',
+            status: o.status,
+            method: str(o.method, 60) ?? '',
+            ...(typeof o.reason === 'string' ? { reason: o.reason.slice(0, 300) } : {}),
+          }
+        : undefined,
+    ),
+    notAnalysedTotal: count(raw.notAnalysedTotal),
+    ambiguous: listOf(raw.ambiguous, 50, (o) =>
+      typeof o.language === 'string'
+        ? {
+            language: o.language.slice(0, 120),
+            alternatives: strings(o.alternatives, 8, 120),
+            files: count(o.files),
+          }
+        : undefined,
+    ),
+  };
+  const unlisted = listOf(raw.unlisted, 100, (o) =>
+    typeof o.path === 'string' && typeof o.reason === 'string'
+      ? { path: o.path.slice(0, 300), reason: o.reason.slice(0, 200) }
+      : undefined,
+  );
+  if (unlisted.length) inv.unlisted = unlisted;
+  return inv;
+}
+
 function coverageOf(raw: unknown): BrainCoverage | undefined {
   if (!isObj(raw)) return undefined;
   const summary = str(raw.summary, 500);
   if (!summary) return undefined;
+  const inventory = inventoryOf(raw.inventory);
   return {
+    ...(inventory ? { inventory } : {}),
     partial: raw.partial === true,
     summary,
     gaps: Array.isArray(raw.gaps)

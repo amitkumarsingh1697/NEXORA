@@ -62,10 +62,29 @@ beforeAll(() => {
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe('brain coverage on a mixed-language repository', () => {
-  it('says on the model that most of the code was not analysed (QA AL-01)', () => {
+  it('says on the model how each file was processed, and never claims it all (QA AL-01)', () => {
     expect(brain.coverage?.partial).toBe(true);
-    expect(brain.coverage?.summary).toMatch(/Only 2 of 5 code files \(40%\) were analysed/);
-    expect(brain.coverage?.gaps.join(' ')).toMatch(/3 \.java/);
+    // Counts from the inventory: 9 tracked files; the Java and Liquibase files are only partially read.
+    expect(brain.coverage?.summary).toBe(
+      '9 files found, 3 fully analysed, 5 partially analysed, 0 text only, 1 excluded, 0 binary. 100% of readable files were analysed (37.5% fully).',
+    );
+    expect(brain.coverage?.gaps.join(' ')).toMatch(/5 files are partially analysed/);
+    const inv = brain.coverage?.inventory;
+    expect(inv?.languages.find((l) => l.language === 'Java')).toMatchObject({
+      files: 3,
+      analysed: 3,
+      status: 'partial',
+    });
+    expect(inv?.notAnalysed.find((f) => f.path === 'server/dist/bin/run.sh')).toMatchObject({
+      status: 'excluded',
+      reason: 'in a build-output or dependency folder',
+    });
+    // Java classes found by declaration patterns are drawn, labelled as such.
+    const token = brain.neurons.find((n) => n.name === 'TokenEndpoint');
+    expect(token).toMatchObject({ kind: 'class', region: 'backend' });
+    expect(token?.signature).toBe('public class TokenEndpoint {');
+    expect(token?.doc).toMatch(/Java declaration pattern \(class\); not checked by a compiler/);
+    expect(brain.neurons.find((n) => n.name === 'TokenEndpoint.token')?.parent).toBe(token?.id);
     // It survives the page's validation unchanged.
     const r = validateBrain(JSON.parse(JSON.stringify(brain)));
     expect(r.ok && r.model.coverage).toEqual(brain.coverage);

@@ -2,6 +2,7 @@ import {
   BRAIN_FORMAT,
   DEFAULT_REGIONS,
   classifyFile,
+  inventoryOf,
   type BrainColumn,
   type BrainCoverage,
   type BrainModel,
@@ -11,6 +12,7 @@ import {
   type NeuronKind,
   type SynapseKind,
 } from '@nexora/brain';
+import { roleInfo, roleOf } from '@nexora/languages';
 import { readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Db } from '../store/db';
@@ -40,7 +42,13 @@ const SYNAPSE_OF: Record<string, SynapseKind> = {
   reads_table: 'reads_table',
   writes_table: 'writes_table',
   references: 'references',
+  builds: 'builds',
+  runs: 'runs',
+  includes: 'includes',
 };
+
+/** Links between files (from build, CI, container and config files). */
+const FILE_LINKS = new Set(['builds', 'runs', 'includes', 'references']);
 
 const SYMBOL_KINDS = new Map<string, NeuronKind>([
   ['class', 'class'],
@@ -51,9 +59,16 @@ const SYMBOL_KINDS = new Map<string, NeuronKind>([
   ['accessor', 'method'],
 ]);
 
-/** Non-code files that still belong in the brain (CI, containers, deployment). */
-const DEVOPS_FILE =
-  /(^|\/)(\.github\/workflows\/[^/]+\.ya?ml|Dockerfile[^/]*|docker-compose[^/]*\.ya?ml|compose\.ya?ml|Makefile|Procfile)$|\.(sh|bash|tf)$/i;
+/**
+ * Non-code files that still belong in the brain (CI, containers, orchestration, build and
+ * infrastructure), by their file type in the shared registry; shell scripts and Procfiles too.
+ */
+const DEVOPS_GROUPS = new Set(['container', 'orchestration', 'ci', 'build', 'iac']);
+const SCRIPT_FILE = /(^|\/)Procfile$|\.(sh|bash|zsh|ps1|bat|cmd)$/i;
+function isDevopsFile(path: string, role: unknown): boolean {
+  const info = typeof role === 'string' ? roleInfo(role) : roleOf(path);
+  return (!!info && DEVOPS_GROUPS.has(info.group)) || SCRIPT_FILE.test(path);
+}
 
 /** Above this many neurons the least-connected parts are left out so the page stays fast. */
 export const BRAIN_MAX_NEURONS = 6000;
@@ -153,6 +168,7 @@ function unreadSchemas(root: string, files: string[]): string | undefined {
 }
 
 interface StoredCoverage {
+  inventory?: BrainCoverage['inventory'] & { summary?: string };
   files?: {
     structurallyAnalysed?: number;
     textOnlyByExtension?: Record<string, number>;
@@ -171,6 +187,8 @@ function coverageOf(
   schemaNote: string | undefined,
   unresolvedAny: number,
 ): BrainCoverage {
+  if (stored?.inventory) return inventoryCoverage(stored, schemaNote, unresolvedAny);
+  // Indexes made before the file inventory (schema 6 and older) only knew TypeScript and JavaScript.
   const analysed = stored?.files?.structurallyAnalysed ?? 0;
   const textOnly = Object.entries(stored?.files?.textOnlyByExtension ?? {}).sort(
     (a, b) => b[1] - a[1],
@@ -214,6 +232,39 @@ function coverageOf(
   else summary = `All ${fmt(analysed)} TypeScript and JavaScript code files were analysed.`;
   if (skippedByLimit) summary += ' Some files were skipped by the file-count limit.';
   return { partial: partial || !stored, summary, gaps, unreadSchemas: schemaNote };
+}
+
+/** Coverage from the per-file inventory: every number is a count of processed files. */
+function inventoryCoverage(
+  stored: StoredCoverage,
+  schemaNote: string | undefined,
+  unresolvedAny: number,
+): BrainCoverage {
+  const inv = stored.inventory!;
+  const fmt = (n: number) => n.toLocaleString('en-US');
+  const gaps: string[] = [...(stored.limitations ?? [])];
+  const rate = stored.calls?.resolutionRate;
+  if (typeof rate === 'number' && rate < 1 && inv.counts.full)
+    gaps.push(
+      `${Math.round(rate * 100)}% of call sites in the TypeScript and JavaScript code were resolved to a target; a missing link is not proof that no call exists.`,
+    );
+  if (schemaNote) gaps.push(schemaNote);
+  if (unresolvedAny)
+    gaps.push(
+      `${fmt(unresolvedAny)} return types could not be worked out (shown as "not resolved"), usually because the repository's dependencies were not installed.`,
+    );
+  const readable = inv.total - inv.counts.excluded - inv.counts.binary;
+  const partial =
+    inv.counts.full < readable ||
+    inv.counts.excluded > 0 ||
+    (inv.unlisted?.length ?? 0) > 0 ||
+    !!schemaNote;
+  const summary =
+    inv.summary ??
+    `${fmt(inv.total)} files found; ${fmt(inv.counts.full + inv.counts.partial)} of ${fmt(readable)} readable files were analysed.`;
+  // The same bounded copy the viewer makes, so the model survives validation unchanged.
+  const inventory = inventoryOf(inv);
+  return { partial, summary, gaps, unreadSchemas: schemaNote, ...(inventory ? { inventory } : {}) };
 }
 
 function rows(db: Db, sql: string, ...params: (string | number)[]) {
@@ -283,6 +334,16 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
   ).map((r) => r.key);
   const uiPkgs = uiPackages(repo.root, filePaths);
 
+  // Files at either end of a build, run or include link are drawn, so the link is visible.
+  const linkedFiles = new Set<number>();
+  for (const e of edges)
+    if (
+      FILE_LINKS.has(e.kind) &&
+      nodeById.get(e.src)?.kind === 'file' &&
+      nodeById.get(e.dst)?.kind === 'file'
+    )
+      linkedFiles.add(e.src).add(e.dst);
+
   const neuronOf = new Map<number, BrainNeuron>();
   const placeFile = (path: string | null) =>
     classifyFile(path ?? undefined, {
@@ -305,7 +366,8 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     else if (n.kind === 'service') kind = n.data.category === 'database' ? 'database' : 'service';
     else if (n.kind === 'config') kind = 'config';
     else if (n.kind === 'table') kind = 'table';
-    else if (n.kind === 'file' && DEVOPS_FILE.test(n.key)) kind = 'file';
+    else if (n.kind === 'file' && (isDevopsFile(n.key, n.data.role) || linkedFiles.has(n.id)))
+      kind = 'file';
     if (!kind) continue;
 
     let place: { region: BrainNeuron['region']; reason: string };
@@ -341,6 +403,11 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
       returnsDeclared:
         typeof n.data.returnsDeclared === 'boolean' ? n.data.returnsDeclared : undefined,
       doc: str(n.data.doc),
+      ...(n.data.extraction === 'pattern' && !str(n.data.doc)
+        ? {
+            doc: `Found by the ${str(n.data.language) ?? 'source'} declaration pattern (${str(n.data.declKind) ?? n.symbolKind ?? 'declaration'}); not checked by a compiler, and calls are not traced.`,
+          }
+        : {}),
       columns:
         kind === 'table' && Array.isArray(n.data.columns)
           ? (n.data.columns as BrainColumn[])
@@ -361,11 +428,24 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     }
   }
 
+  // A file read by declaration patterns has no file neuron; its links and imports are drawn
+  // from its first top-level declaration instead.
+  const primaryOf = new Map<number, BrainNeuron>();
+  for (const e of edges) {
+    if (e.kind !== 'contains' || nodeById.get(e.src)?.kind !== 'file') continue;
+    const child = nodeById.get(e.dst);
+    const neuron = neuronOf.get(e.dst);
+    if (!child || !neuron || child.data.extraction !== 'pattern') continue;
+    const cur = primaryOf.get(e.src);
+    if (!cur || (neuron.line ?? 0) < (cur.line ?? 0)) primaryOf.set(e.src, neuron);
+  }
+  const neuronFor = (id: number) => neuronOf.get(id) ?? primaryOf.get(id);
+
   const seen = new Set<string>();
   const synapses: BrainSynapse[] = [];
   const add = (e: EdgeRow, kind: SynapseKind) => {
-    const a = neuronOf.get(e.src);
-    const b = neuronOf.get(e.dst);
+    const a = neuronFor(e.src);
+    const b = neuronFor(e.dst);
     if (!a || !b || a === b) return;
     const k = `${a.id}>${b.id}>${kind}`;
     if (seen.has(k)) return;
@@ -383,6 +463,9 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
   for (const e of edges) {
     const kind = SYNAPSE_OF[e.kind];
     if (kind) add(e, kind);
+    // Imports between files resolved by the pattern analyser (TypeScript imports are drawn as calls).
+    else if (e.kind === 'imports' && primaryOf.has(e.src) && primaryOf.has(e.dst))
+      add(e, 'imports');
   }
 
   let neurons = [...neuronOf.values()];
@@ -420,10 +503,11 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     unresolvedAny,
   );
   notes.push(
-    `Built by CodeAtlas from its index${repo.headCommit ? ` at commit ${repo.headCommit.slice(0, 10)}` : ''}. Links are labelled observed (resolved by the TypeScript compiler), inferred (matched by name or convention) or unknown.`,
+    `Built by CodeAtlas from its index${repo.headCommit ? ` at commit ${repo.headCommit.slice(0, 10)}` : ''}. Links are labelled observed (resolved by the TypeScript compiler, or a path written literally in a build, CI or container file), inferred (matched by name or convention) or unknown.`,
     'Which lobe a part sits in is inferred from its file path and the packages the file imports.',
     'Tables and columns are read from SQL files (CREATE TABLE, ALTER TABLE), Prisma schemas, Drizzle table definitions and CREATE TABLE statements inside code, with types, sizes and keys as written. A Drizzle query that names a table is an observed read or write; a Prisma call or a table named in a SQL string is inferred. Views, stored procedures, dynamic SQL and the Drizzle relational query API are not linked.',
-    'Inputs and return types come from the TypeScript type checker. Test files, type aliases and plain variables are left out. Only TypeScript and JavaScript have method-level detail.',
+    'Inputs and return types of TypeScript and JavaScript come from the type checker. Classes, functions and methods of other languages come from declaration patterns: their names and lines are reliable, their parameters are as written, and calls between them are not extracted. An import between two such files is drawn from the first declaration of each. Test files, type aliases and plain variables are left out.',
+    'Languages & files lists every language and file type found, with how each file was processed.',
   );
   return {
     format: BRAIN_FORMAT,

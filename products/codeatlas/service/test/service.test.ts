@@ -125,6 +125,29 @@ describe('indexing and views over HTTP', () => {
     expect((await svc.api(`/api/repos/${repoId}/brain`, { token: null })).status).toBe(401);
   });
 
+  it('lists every indexed file with its status, filtered and paged', async () => {
+    type Inv = {
+      total: number;
+      offset: number;
+      items: { path: string; status: string; language: string; method: string }[];
+    };
+    const all = await svc.api<Inv>(`/api/repos/${repoId}/inventory?limit=500`);
+    expect(all.status).toBe(200);
+    const detail = await svc.api<{ coverage: { inventory: { total: number } } }>(
+      `/api/repos/${repoId}`,
+    );
+    expect(all.body.total).toBe(detail.body.coverage.inventory.total);
+    expect(all.body.items.length).toBe(Math.min(500, all.body.total));
+    const py = await svc.api<Inv>(`/api/repos/${repoId}/inventory?language=Python`);
+    expect(py.body.items.map((i) => [i.path, i.status])).toEqual([['tools/report.py', 'partial']]);
+    const text = await svc.api<Inv>(`/api/repos/${repoId}/inventory?status=text&limit=1`);
+    expect(text.body.items.every((i) => i.status === 'text')).toBe(true);
+    expect(text.body.items.length).toBeLessThanOrEqual(1);
+    const bad = await svc.api(`/api/repos/${repoId}/inventory?status=perfect`);
+    expect(bad.status).toBe(400);
+    expect((await svc.api(`/api/repos/${repoId}/inventory`, { token: null })).status).toBe(401);
+  });
+
   it('searches, finds nodes, shows details and impact', async () => {
     const s = await svc.api<{ hits: { filePath: string }[] }>(
       `/api/repos/${repoId}/search?q=${encodeURIComponent('list users')}`,

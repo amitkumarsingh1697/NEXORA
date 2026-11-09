@@ -17,6 +17,9 @@ export const SYNAPSE_WORDS: Record<SynapseKind, { out: string; in: string }> = {
   reads_table: { out: 'Reads table', in: 'Read by' },
   writes_table: { out: 'Writes table', in: 'Written by' },
   references: { out: 'References', in: 'Referenced by' },
+  builds: { out: 'Builds', in: 'Built by' },
+  runs: { out: 'Runs', in: 'Run by' },
+  includes: { out: 'Includes', in: 'Included by' },
 };
 
 export interface Relation {

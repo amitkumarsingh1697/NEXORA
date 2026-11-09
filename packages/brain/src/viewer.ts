@@ -12,6 +12,7 @@ import {
 } from './model';
 import { BrainIndex, SYNAPSE_WORDS } from './relations';
 import { columnTypeText } from './columns';
+import { mountCoveragePanel } from './coverage-panel';
 import { mountDiagramPanel } from './diagram-panel';
 import { VIEWER_CSS } from './viewer-css';
 
@@ -56,6 +57,9 @@ const SYNAPSE_COLORS: Record<SynapseKind, string> = {
   reads_table: '#34d399',
   writes_table: '#fb923c',
   references: '#a7f3d0',
+  builds: '#fdba74',
+  runs: '#f9a8d4',
+  includes: '#c4b5fd',
 };
 
 const KIND_SIZE: Record<NeuronKind, number> = {
@@ -282,7 +286,12 @@ export function mountBrain(
   const results = el('ul', { class: 'nb-results', role: 'listbox', 'aria-label': 'Matches' });
   searchWrap.append(searchInput, results);
   const diagramsButton = el('button', { type: 'button', class: 'nb-dg-open' }, 'Diagrams');
-  top.append(titleEl, crumbs, diagramsButton, searchWrap);
+  const filesButton = el(
+    'button',
+    { type: 'button', class: 'nb-dg-open nb-cv-open' },
+    'Languages & files',
+  );
+  top.append(titleEl, crumbs, filesButton, diagramsButton, searchWrap);
 
   const left = el('aside', { class: 'nb-left', 'aria-label': 'Brain regions' });
   const right = el('aside', { class: 'nb-right', 'aria-label': 'Details', hidden: '' });
@@ -298,6 +307,8 @@ export function mountBrain(
     () => diagramsButton.focus(),
   );
   diagramsButton.addEventListener('click', () => diagrams.open());
+  const filesPanel = mountCoveragePanel(root, model, () => filesButton.focus());
+  filesButton.addEventListener('click', () => filesPanel.open());
 
   // ---------- 3D ----------
   const has3d = webglAvailable();
@@ -703,6 +714,15 @@ export function mountBrain(
           more.append(ml);
           cov.append(more);
         }
+        if (model.coverage.inventory) {
+          const open = el(
+            'button',
+            { type: 'button', class: 'nb-cv-link' },
+            'See every language and file type',
+          );
+          open.addEventListener('click', () => filesPanel.open());
+          cov.append(open);
+        }
         left.append(cov);
       }
       left.append(el('h3', {}, 'Regions'));
@@ -971,7 +991,8 @@ export function mountBrain(
   results.hidden = true;
 
   const onKey = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape' || e.target === searchInput || diagrams.isOpen) return;
+    if (e.key !== 'Escape' || e.target === searchInput || diagrams.isOpen || filesPanel.isOpen)
+      return;
     if (selected) api.select(null);
     else if (region) api.enterRegion(null);
   };
@@ -1212,6 +1233,7 @@ export function mountBrain(
     },
     destroy() {
       diagrams.destroy();
+      filesPanel.destroy();
       cancelAnimationFrame(frame);
       ro?.disconnect();
       root.removeEventListener('keydown', onKey);

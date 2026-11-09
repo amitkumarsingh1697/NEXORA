@@ -29,6 +29,7 @@ export * from './query/tree';
 export * from './query/moduledoc';
 export * from './query/cycles';
 export * from './query/brain';
+export * from './query/inventory';
 export * from './chat/redact';
 export * from './chat/retrieve';
 export * from './chat/answer';
