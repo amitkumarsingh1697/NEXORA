@@ -169,6 +169,26 @@ Index time rose on repositories with much non-TypeScript code, because those fil
 
 Brain build time rose (Kubernetes 0.2 s → 3.4 s, Keycloak 0.3 s → 2.3 s) because the brain now draws up to its 6,000-neuron limit for these repositories instead of a few hundred TypeScript symbols.
 
+## Follow-up round: templates, multi-document JSON, CSV, Graphviz, gettext
+
+A review of the Kubernetes inventory asked why some YAML, JSON, CSV, DOT and other files were text only. Each one was checked; the changes below were then made and the 23 repositories were run again on the same machine.
+
+- **Templates.** Helm, Go, Jinja and `${…}` templates are no longer text only when the document around the tags is valid: a line holding only template tags is blanked, a tag inside a line becomes a placeholder, and the result is parsed and labelled partial ("template placeholders not rendered"). GitHub Actions `${{ }}` expressions are valid YAML and are not treated as templates. A file that is still not valid with placeholders stays text, with the parse error in its reason.
+- **JSON objects with placeholders** (for example `cluster/gce/manifests/*.manifest` in Kubernetes) are recognised as JSON by their shape, as an inference.
+- **Several JSON documents in one file** are read as a sequence (partial).
+- **New readers:** CSV and TSV (row and column counts; cell values are never kept, because `auth-tokens.csv`-style files hold credentials), Graphviz DOT (graph, nodes, edges), gettext `.po`/`.pot` (message counts and language).
+
+| Repository         | Coverage before | Coverage after | Failed before | Failed after |
+| ------------------ | --------------: | -------------: | ------------: | -----------: |
+| kubernetes         |           98.7% |          98.9% |             5 |            2 |
+| keycloak           |           94.3% |          94.6% |             3 |            2 |
+| home-manager       |           94.8% |          96.7% |             2 |            1 |
+| microservices-demo |           84.4% |          90.0% |             0 |            0 |
+| ansible-examples   |           45.9% |          69.3% |             0 |            0 |
+| jaffle-shop        |           69.2% |          88.5% |             0 |            0 |
+
+Failed files across all 23 repositories went from 13 to 8. Kubernetes text-only files went from 254 to 218; the remaining YAML and JSON among them are kubectl test fixtures that contain syntax errors on purpose, and one manifest that uses `__PLACEHOLDER__` lines that only a `sed` step makes valid. Index time on Kubernetes was 40.1 s in this round (37.6 s before it), from the extra parsing; the baseline was 24.5 s.
+
 ## Limitations
 
 - Only TypeScript and JavaScript are analysed by a compiler. Every other language is `partial`: declaration patterns give names, kinds, lines, parameters as written and imports; calls are not traced. Patterns can miss multi-line signatures and macro-generated code and can be fooled by code inside strings.

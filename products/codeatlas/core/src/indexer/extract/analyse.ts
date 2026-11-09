@@ -22,6 +22,9 @@ import {
   readIdl,
   readIni,
   readJson,
+  readDelimited,
+  readDot,
+  readGettext,
   readMakefile,
   readRequirements,
   readSln,
@@ -120,6 +123,12 @@ export function readStructured(f: DiscoveredFile, text: string): StructuredResul
       return readIdl(f.language, text);
     case 'doc-headings':
       return readDocHeadings(f.language, text);
+    case 'delimited':
+      return readDelimited(f.path, text);
+    case 'dot':
+      return readDot(text);
+    case 'gettext':
+      return readGettext(text);
     default:
       if (/\.sln$/i.test(f.path)) return readSln(text);
       if (role === 'dotnet-project' || role === 'maven') return readXml(f.path, text, role);

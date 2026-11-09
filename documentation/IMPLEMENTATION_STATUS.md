@@ -17,7 +17,7 @@ This is the single tracker required by spec §19.
 | Command                                    | Result                                                                                            |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
 | `pnpm format:check`                        | clean (2026-11-09)                                                                                |
-| `pnpm check` (typecheck, lint, tests)      | pass: 507 tests (2026-11-09)                                                                      |
+| `pnpm check` (typecheck, lint, tests)      | pass: 521 tests (2026-11-09)                                                                      |
 | `node skills/archlens/scripts/check.mjs`   | pass (2026-11-09)                                                                                 |
 | `pnpm --filter @nexora/codeatlas-web e2e`  | 1 passed, including axe scans and the Languages & files sections (2026-11-09)                     |
 | `pnpm --filter @nexora/cvforge-web e2e`    | 4 passed (2026-11-04, end of Sprint 3; CVForge unchanged since)                                   |
@@ -32,11 +32,11 @@ Test counts by package:
 | logging           | 1     |
 | ai                | 11    |
 | brain             | 45    |
-| languages         | 106   |
+| languages         | 108   |
 | cvforge-core      | 72    |
 | cvforge-extension | 16    |
 | cvforge-backend   | 42    |
-| codeatlas-core    | 179   |
+| codeatlas-core    | 191   |
 | codeatlas-service | 31    |
 
 ## Requirement status summary

@@ -345,3 +345,22 @@ describe('refinements from the validation runs', () => {
     );
   });
 });
+
+describe('readers added after the Kubernetes review', () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+  it('recognises a JSON object with template placeholders by its shape', () => {
+    const r = classify({
+      path: 'cluster/gce/manifests/etcd.manifest',
+      head: enc(
+        '{\n"apiVersion": "v1",\n"metadata": {"name": "etcd{{ suffix }}"}, "x": {{ y }}\n}',
+      ),
+    });
+    expect(r).toMatchObject({ language: 'JSON', detectedBy: 'content', confidence: 'inferred' });
+  });
+  it('gives CSV, TSV, Graphviz and gettext a reader', () => {
+    expect(analyserOf('CSV')).toBe('delimited');
+    expect(analyserOf('TSV')).toBe('delimited');
+    expect(analyserOf('Graphviz (DOT)')).toBe('dot');
+    expect(analyserOf('Gettext Catalog')).toBe('gettext');
+  });
+});

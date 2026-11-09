@@ -131,7 +131,133 @@ function result(
 
 // ---------------------------------------------------------------- JSON
 
+const TEMPLATE_SYNTAX = /(?<!\$)\{\{[-\s]*[^}\s]|\{%-?\s*\w|\$\{[^}\s"]{1,100}\}/;
+
+/** True when a file holds Go, Helm, Jinja, Liquid or `${…}` placeholders. */
+export function hasTemplateSyntax(text: string): boolean {
+  return TEMPLATE_SYNTAX.test(text);
+}
+
+const TAG = /\{\{[\s\S]*?\}\}|\{%[\s\S]*?%\}|\{#[\s\S]*?#\}/g;
+const MARK = '\u0000';
+
+/**
+ * Replaces template tags so that the document around them can be parsed. Line numbers are kept.
+ * A line that holds only tags (`{{- if … }}`, `{% for … %}`, `{{ end }}`) becomes blank; a tag
+ * inside a line becomes the word TEMPLATE. The rendered document can differ: conditional
+ * sections are all kept, and values are placeholders.
+ */
+export function neutraliseTemplates(text: string): string {
+  const marked = text.replace(TAG, (m) => (m.includes('\n') ? m.replace(/[^\n]/g, '') : MARK));
+  return marked
+    .split('\n')
+    .map((l) =>
+      l.includes(MARK) && l.split(MARK).join('').trim() === ''
+        ? ''
+        : l.split(MARK).join('TEMPLATE'),
+    )
+    .join('\n');
+}
+
+/** neutraliseTemplates for JSON: a placeholder outside a string becomes the string "TEMPLATE". */
+export function neutraliseJsonTemplates(text: string): string {
+  const t = neutraliseTemplates(text.replace(/\$\{[^}\s"]{1,100}\}/g, '{{x}}'));
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i] as string;
+    if (inString) {
+      if (c === '\\') {
+        out += c + (t[i + 1] ?? '');
+        i++;
+        continue;
+      }
+      if (c === '"') inString = false;
+      out += c;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      out += c;
+      continue;
+    }
+    if (t.startsWith('TEMPLATE', i)) {
+      out += '"TEMPLATE"';
+      i += 'TEMPLATE'.length - 1;
+      continue;
+    }
+    out += c;
+  }
+  return out;
+}
+
+/** Splits text holding several JSON values one after another (`{…}{…}` or one per block). */
+export function splitConcatenatedJson(text: string): string[] | undefined {
+  const parts: string[] = [];
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    while (i < n && /\s/.test(text[i] as string)) i++;
+    if (i >= n) break;
+    const open = text[i];
+    if (open !== '{' && open !== '[') return undefined;
+    let depth = 0;
+    let inString = false;
+    let j = i;
+    for (; j < n; j++) {
+      const c = text[j];
+      if (inString) {
+        if (c === '\\') j++;
+        else if (c === '"') inString = false;
+        continue;
+      }
+      if (c === '"') inString = true;
+      else if (c === '{' || c === '[') depth++;
+      else if (c === '}' || c === ']') {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    if (depth !== 0) return undefined;
+    parts.push(text.slice(i, j + 1));
+    i = j + 1;
+  }
+  return parts.length >= 2 ? parts : undefined;
+}
+
 export function readJson(
+  path: string,
+  text: string,
+  role: string | undefined,
+  language: string,
+): StructuredResult {
+  const r = readJsonDocument(path, text, role, language);
+  if (!r.error) return r;
+  if (hasTemplateSyntax(text)) {
+    const t = readJsonDocument(path, neutraliseJsonTemplates(text), role, language);
+    if (!t.error)
+      return {
+        ...t,
+        level: 'partial',
+        method: `${t.method}; template placeholders not rendered`,
+        facts: { ...t.facts, template: true },
+      };
+  }
+  const parts = splitConcatenatedJson(text);
+  if (parts) {
+    try {
+      const docs = parts.map((p) => JSON.parse(p) as unknown);
+      return result('partial', `JSON parser (${docs.length} concatenated documents)`, {
+        facts: { documents: docs.length, topLevelKeys: cap(keys(docs[0])) },
+      });
+    } catch {
+      // not a sequence of valid documents either: report the first error
+    }
+  }
+  return r;
+}
+
+function readJsonDocument(
   path: string,
   text: string,
   role: string | undefined,
@@ -262,11 +388,23 @@ function openApi(doc: Record<string, unknown>, text: string, method: string): St
 // ---------------------------------------------------------------- YAML
 
 export function readYaml(path: string, text: string, role: string | undefined): StructuredResult {
-  if (role === 'helm-template' || /\{\{[-\s]*[.\w]/.test(text))
-    return result('partial', 'Template (not rendered)', {
-      skipReason:
-        'Go/Helm/Jinja template syntax: not valid YAML before rendering, so it is indexed as text',
-    });
+  if (role === 'helm-template' || /(?<!\$)\{\{[-\s]*[^}\s]|\{%-?\s*\w/.test(text)) {
+    const r = readYamlDocument(path, neutraliseTemplates(text), role);
+    if (r.error)
+      return result('partial', 'Template (not rendered)', {
+        skipReason: `Go/Helm/Jinja template syntax: not valid YAML even with its template tags replaced by placeholders (${r.error.slice(0, 100)}), so it is indexed as text`,
+      });
+    return {
+      ...r,
+      level: 'partial',
+      method: `${r.method}; template placeholders not rendered`,
+      facts: { ...r.facts, template: true },
+    };
+  }
+  return readYamlDocument(path, text, role);
+}
+
+function readYamlDocument(path: string, text: string, role: string | undefined): StructuredResult {
   let docs;
   try {
     docs = parseAllDocuments(text, {
@@ -1405,4 +1543,130 @@ export function sqlObjects(text: string): StructSymbol[] {
     if (out.length >= 2000) break;
   }
   return out;
+}
+
+// ---------------------------------------------------------------- CSV / TSV
+
+/** Row and column counts of comma- or tab-separated data. Cell values are never kept. */
+export function readDelimited(path: string, text: string): StructuredResult {
+  const sep = /\.(tsv|tab)$/i.test(path) ? '\t' : ',';
+  let rows = 0;
+  let cols = 0;
+  let minCols = Infinity;
+  let maxCols = 0;
+  let inQuote = false;
+  let fields = 1;
+  let any = false;
+  const endRow = () => {
+    if (!any && fields === 1) return;
+    rows++;
+    if (rows === 1) cols = fields;
+    minCols = Math.min(minCols, fields);
+    maxCols = Math.max(maxCols, fields);
+    fields = 1;
+    any = false;
+  };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuote) {
+      if (c === '"') {
+        if (text[i + 1] === '"') i++;
+        else inQuote = false;
+      }
+      continue;
+    }
+    if (c === '"') inQuote = true;
+    else if (c === sep) fields++;
+    else if (c === '\n') {
+      endRow();
+      continue;
+    } else if (c === '\r') continue;
+    any = true;
+  }
+  if (inQuote) return result('partial', 'CSV/TSV reader', { error: 'unterminated quoted field' });
+  endRow();
+  const method = `${sep === '\t' ? 'TSV' : 'CSV'} reader (row and column counts; cell values are not kept)`;
+  return result(minCols === maxCols ? 'full' : 'partial', method, {
+    facts: {
+      rows,
+      columns: cols,
+      ...(minCols !== maxCols && rows ? { columnsVary: `${minCols}-${maxCols}` } : {}),
+    },
+  });
+}
+
+// ---------------------------------------------------------------- Graphviz DOT
+
+/** Graph name, nodes and edges of a Graphviz file, by pattern. */
+export function readDot(text: string): StructuredResult {
+  const code = text
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/^\s*#.*$/gm, '')
+    .replace(/\/\/.*$/gm, '');
+  const head = /^\s*(strict\s+)?(di)?graph\b\s*("[^"]*"|[\w.]+)?\s*\{/im.exec(code);
+  if (!head)
+    return result('partial', 'Graphviz reader', {
+      skipReason: 'no graph statement was found, so it is indexed as text',
+    });
+  const id = '("(?:[^"\\\\]|\\\\.)*"|[\\w.]+)';
+  const edgeRe = new RegExp(`${id}\\s*(->|--)\\s*${id}`, 'g');
+  const nodeRe = new RegExp(`^\\s*${id}\\s*\\[`, 'gm');
+  const nodes = new Map<string, number>();
+  const lineAt = (idx: number) => code.slice(0, idx).split('\n').length;
+  const clean = (s: string) => s.replace(/^"|"$/g, '');
+  const reserved = new Set(['graph', 'node', 'edge', 'subgraph', 'digraph', 'strict']);
+  let edges = 0;
+  for (const m of code.matchAll(edgeRe)) {
+    edges++;
+    for (const n of [m[1], m[3]])
+      if (n && !reserved.has(n) && !nodes.has(clean(n))) nodes.set(clean(n), lineAt(m.index));
+  }
+  for (const m of code.matchAll(nodeRe)) {
+    const n = m[1] as string;
+    if (!reserved.has(n) && !nodes.has(clean(n))) nodes.set(clean(n), lineAt(m.index));
+  }
+  const symbols = cap([...nodes].map(([name, line]) => ({ name, kind: 'node', line })));
+  return result('partial', 'Graphviz reader (graph, nodes and edges by pattern)', {
+    facts: {
+      graph: head[3] ? clean(head[3]) : '(unnamed)',
+      directed: Boolean(head[2]),
+      nodes: nodes.size,
+      edges,
+    },
+    symbols,
+  });
+}
+
+// ---------------------------------------------------------------- gettext
+
+/** Message count and language of a gettext catalog (.po/.pot). */
+export function readGettext(text: string): StructuredResult {
+  let messages = 0;
+  let plural = 0;
+  let unknown = 0;
+  let headerSeen = false;
+  let language: string | undefined;
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const l = (lines[i] as string).trim();
+    if (!l || l.startsWith('#')) continue;
+    if (/^msgid\s+"/.test(l)) {
+      if (/^msgid\s+""\s*$/.test(l) && !headerSeen && messages === 0) headerSeen = true;
+      else messages++;
+      continue;
+    }
+    if (/^msgid_plural\s+"/.test(l)) {
+      plural++;
+      continue;
+    }
+    if (/^(msgstr(\[\d+\])?|msgctxt)\s+"/.test(l) || /^"/.test(l)) {
+      const lang = /^"Language:\s*([\w@-]+)/.exec(l);
+      if (lang && !language) language = lang[1];
+      continue;
+    }
+    unknown++;
+  }
+  return result(unknown ? 'partial' : 'full', 'gettext catalog reader (message count)', {
+    facts: { messages, pluralForms: plural, ...(language ? { language } : {}) },
+  });
 }
