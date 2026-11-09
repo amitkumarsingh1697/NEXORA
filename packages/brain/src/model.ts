@@ -137,6 +137,21 @@ export interface BrainSynapse {
   detail?: string;
 }
 
+/**
+ * How much of the repository the brain covers. A reader must be able to see what was
+ * not analysed without opening anything, so the viewer shows `summary` on the overview.
+ */
+export interface BrainCoverage {
+  /** True when part of the repository was not analysed (another language, a limit, a format). */
+  partial: boolean;
+  /** One sentence, shown on the overview without a click. */
+  summary: string;
+  /** Specific gaps, each one sentence. */
+  gaps: string[];
+  /** Schema sources that exist but are in formats the producer does not read. */
+  unreadSchemas?: string;
+}
+
 export interface BrainModel {
   format: typeof BRAIN_FORMAT;
   title: string;
@@ -151,6 +166,8 @@ export interface BrainModel {
   synapses: BrainSynapse[];
   /** Coverage and limits the reader should know about. */
   notes?: string[];
+  /** What was and was not analysed; shown on the overview. */
+  coverage?: BrainCoverage;
 }
 
 export type ValidationResult =
@@ -195,6 +212,23 @@ function columnsOf(raw: unknown[]): BrainColumn[] {
       if (line) col.line = line;
       return col;
     });
+}
+
+function coverageOf(raw: unknown): BrainCoverage | undefined {
+  if (!isObj(raw)) return undefined;
+  const summary = str(raw.summary, 500);
+  if (!summary) return undefined;
+  return {
+    partial: raw.partial === true,
+    summary,
+    gaps: Array.isArray(raw.gaps)
+      ? raw.gaps
+          .filter((x): x is string => typeof x === 'string')
+          .slice(0, 30)
+          .map((x) => x.slice(0, 500))
+      : [],
+    unreadSchemas: str(raw.unreadSchemas, 500),
+  };
 }
 
 /**
@@ -323,6 +357,7 @@ export function validateBrain(input: unknown): ValidationResult {
       notes: Array.isArray(input.notes)
         ? input.notes.filter((x): x is string => typeof x === 'string').map((x) => x.slice(0, 500))
         : undefined,
+      coverage: coverageOf(input.coverage),
     },
   };
 }

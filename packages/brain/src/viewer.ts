@@ -205,6 +205,11 @@ function cerebellum(): BrainPart {
 }
 
 /** The columns of a table: name, type with size, null, key, default and reference. */
+/** A return type TypeScript inferred as plain `any`: unresolved, not a fact (QA AL-07). */
+function unresolvedReturn(n: BrainNeuron): boolean {
+  return n.returnsDeclared === false && n.returns?.trim() === 'any';
+}
+
 function columnsTable(n: BrainNeuron): HTMLElement {
   const sec = el('section', { class: 'nb-cols' });
   sec.append(el('h4', {}, `Columns (${n.columns?.length ?? 0})`));
@@ -672,6 +677,34 @@ export function mountBrain(
   function renderLeft() {
     left.replaceChildren();
     if (!region) {
+      // Coverage first, without a click: a partial brain must not look complete (QA AL-01, UX-01).
+      if (model.coverage) {
+        const cov = el('section', {
+          class: `nb-coverage${model.coverage.partial ? ' nb-partial' : ''}`,
+          'aria-label': 'Coverage',
+        });
+        cov.append(
+          el('h3', {}, model.coverage.partial ? 'Partial coverage' : 'Coverage'),
+          el('p', {}, model.coverage.summary),
+        );
+        // The first gap (usually the languages not analysed) stays visible; the rest fold
+        // away so the lobe list is not pushed off the screen.
+        const [first, ...rest] = model.coverage.gaps;
+        if (first) {
+          const gl = el('ul');
+          gl.append(el('li', {}, first));
+          cov.append(gl);
+        }
+        if (rest.length) {
+          const more = el('details');
+          more.append(el('summary', {}, `${rest.length} more gap${rest.length === 1 ? '' : 's'}`));
+          const ml = el('ul');
+          for (const g of rest) ml.append(el('li', {}, g));
+          more.append(ml);
+          cov.append(more);
+        }
+        left.append(cov);
+      }
       left.append(el('h3', {}, 'Regions'));
       const ul = el('ul', { class: 'nb-regions' });
       for (const r of regions) {
@@ -711,6 +744,16 @@ export function mountBrain(
     }
     const files = [...byFile.entries()].sort((x, y) => x[0].localeCompare(y[0]));
     left.append(el('p', { class: 'nb-hint' }, `${top.length} parts in ${files.length} files`));
+    if (!top.length) {
+      // Say why a lobe is empty instead of implying the system has nothing there (QA AL-04, UX-02).
+      left.append(
+        el('p', { class: 'nb-empty' }, 'Nothing was placed here from the code that was analysed.'),
+      );
+      if (region === 'database' && model.coverage?.unreadSchemas)
+        left.append(el('p', { class: 'nb-empty' }, model.coverage.unreadSchemas));
+      else if (model.coverage?.partial)
+        left.append(el('p', { class: 'nb-empty' }, model.coverage.summary));
+    }
     const list = el('div', { class: 'nb-files' });
     for (const [file, items] of files) {
       const d = el('details');
@@ -825,7 +868,7 @@ export function mountBrain(
           el(
             'li',
             {},
-            `out ${n.returns}${n.returnsDeclared === false ? '  (worked out by TypeScript)' : ''}${callers ? `, returned to ${callers} caller${callers === 1 ? '' : 's'}` : ''}`,
+            `out ${unresolvedReturn(n) ? 'not resolved' : n.returns}${unresolvedReturn(n) ? '  (TypeScript could not work it out; dependencies may not be installed)' : n.returnsDeclared === false ? '  (worked out by TypeScript)' : ''}${callers ? `, returned to ${callers} caller${callers === 1 ? '' : 's'}` : ''}`,
           ),
         );
       }
@@ -872,9 +915,19 @@ export function mountBrain(
   // ---------- search ----------
   let active = -1;
   function showResults() {
+    const query = searchInput.value.trim();
     const found = index.search(searchInput.value);
     results.replaceChildren();
     active = -1;
+    if (query && !found.length) {
+      // Tell the reader nothing matched, and why that may be (QA UX-03).
+      const li = el('li', { class: 'nb-nomatch', role: 'presentation' });
+      li.append(el('strong', {}, `No match for "${query}".`));
+      if (model.coverage?.partial) li.append(el('small', {}, ` ${model.coverage.summary}`));
+      results.append(li);
+      results.hidden = false;
+      return;
+    }
     found.forEach((n, i) => {
       const li = el('li', { role: 'option', id: `nb-opt-${i}`, 'aria-selected': 'false' });
       const laid = nById.get(n.id)?.n;
@@ -897,7 +950,7 @@ export function mountBrain(
   }
   searchInput.addEventListener('input', showResults);
   searchInput.addEventListener('keydown', (e) => {
-    const items = [...results.children] as HTMLElement[];
+    const items = [...results.querySelectorAll('[role=option]')] as HTMLElement[];
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (!items.length) return;

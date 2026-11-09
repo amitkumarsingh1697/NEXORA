@@ -15,7 +15,7 @@ export interface DiscoveredFile {
 
 export interface SkippedFile {
   path: string;
-  reason: 'secret' | 'binary' | 'too_large' | 'generated' | 'limit';
+  reason: 'secret' | 'binary' | 'too_large' | 'generated' | 'limit' | 'ignored_dir';
 }
 
 export interface DiscoveryResult {
@@ -63,8 +63,12 @@ const OTHER_CODE_EXT = new Set([
   '.svelte',
 ]);
 
-/** Directories never walked (when git is unavailable). */
-const IGNORED_DIRS = new Set([
+/**
+ * Directories never walked, and never indexed even when git tracks files in them (build
+ * output, dependencies). Tracked files dropped this way are reported as skipped, because a
+ * repository can keep real source in a folder with one of these names (QA AL-05).
+ */
+export const IGNORED_DIRS = new Set([
   'node_modules',
   '.git',
   'dist',
@@ -172,11 +176,16 @@ export function looksGenerated(text: string): boolean {
 export function discoverFiles(root: string): DiscoveryResult {
   const listed = gitFiles(root);
   const usedGit = listed !== null;
-  const candidates = (listed ?? walk(root))
-    .filter((p) => !p.split('/').some((seg) => IGNORED_DIRS.has(seg)))
-    .sort();
   const files: DiscoveredFile[] = [];
   const skipped: SkippedFile[] = [];
+  const candidates: string[] = [];
+  for (const p of (listed ?? walk(root)).sort()) {
+    const segs = p.split('/');
+    if (!segs.slice(0, -1).some((seg) => IGNORED_DIRS.has(seg))) candidates.push(p);
+    // Only git-tracked files count as dropped: an untracked dist/ is build output.
+    else if (usedGit && !segs.includes('node_modules') && !segs.includes('.git'))
+      skipped.push({ path: p, reason: 'ignored_dir' });
+  }
   for (const path of candidates) {
     if (isSecretPath(path)) {
       skipped.push({ path, reason: 'secret' });

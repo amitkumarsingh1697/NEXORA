@@ -55,6 +55,13 @@ async function main(): Promise<void> {
       process.stdout.write(
         `Architecture brain: ${brain.neurons.length} parts, ${brain.synapses.length} connections.\nOpen ${file} in a browser.\n`,
       );
+      // Coverage is part of the result, not a detail: a partial brain must say so (QA AL-01).
+      if (brain.coverage) {
+        process.stdout.write(
+          `${brain.coverage.partial ? 'Partial coverage' : 'Coverage'}: ${brain.coverage.summary}\n`,
+        );
+        for (const g of brain.coverage.gaps) process.stdout.write(`  - ${g}\n`);
+      }
       return;
     }
     case 'search': {

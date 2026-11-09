@@ -3,6 +3,7 @@ import {
   DEFAULT_REGIONS,
   classifyFile,
   type BrainColumn,
+  type BrainCoverage,
   type BrainModel,
   type BrainNeuron,
   type BrainParam,
@@ -10,9 +11,19 @@ import {
   type NeuronKind,
   type SynapseKind,
 } from '@nexora/brain';
+import { readFileSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type { Db } from '../store/db';
 import { isTestSupportPath } from '../indexer/test-paths';
-import { EDGE_COLS, NODE_COLS, getRepo, toEdge, toNode, type EdgeRow } from './graph';
+import {
+  EDGE_COLS,
+  NODE_COLS,
+  getRepo,
+  latestCoverage,
+  toEdge,
+  toNode,
+  type EdgeRow,
+} from './graph';
 
 /** CodeAtlas edge kinds drawn as synapses, and what they become. */
 const SYNAPSE_OF: Record<string, SynapseKind> = {
@@ -46,6 +57,164 @@ const DEVOPS_FILE =
 
 /** Above this many neurons the least-connected parts are left out so the page stays fast. */
 export const BRAIN_MAX_NEURONS = 6000;
+
+/** UI frameworks whose presence in a package.json makes its package a browser app. */
+const UI_FRAMEWORKS = ['react', 'vue', 'svelte', '@angular/core', 'solid-js', 'preact'];
+
+/** Reads a small text file under the repository root; null when missing or too big. */
+function readSmall(root: string, path: string, maxBytes = 512 * 1024): string | null {
+  try {
+    const abs = join(root, path);
+    if (statSync(abs).size > maxBytes) return null;
+    return readFileSync(abs, 'utf8');
+  } catch {
+    return null; // a file deleted since indexing is simply not counted
+  }
+}
+
+/**
+ * Maps each workspace package directory to the UI framework it depends on, so browser
+ * code in src/api/ is not drawn as a server (QA AL-03).
+ */
+function uiPackages(root: string, files: string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const f of files) {
+    if (!/(^|\/)package\.json$/.test(f) || f.includes('node_modules/')) continue;
+    const text = readSmall(root, f, 256 * 1024);
+    if (!text) continue;
+    try {
+      const pkg = JSON.parse(text) as Record<string, Record<string, string> | undefined>;
+      const deps = { ...pkg.dependencies, ...pkg.peerDependencies };
+      const ui = UI_FRAMEWORKS.find((d) => d in deps);
+      if (ui) out.set(dirname(f) === '.' ? '' : dirname(f), ui);
+    } catch {
+      // not JSON: ignore this manifest
+    }
+  }
+  return out;
+}
+
+function uiPackageOf(path: string, packages: Map<string, string>): string | undefined {
+  let dir = dirname(path);
+  for (;;) {
+    const key = dir === '.' ? '' : dir;
+    const hit = packages.get(key);
+    if (hit) return hit;
+    if (!key) return undefined;
+    dir = dirname(dir);
+  }
+}
+
+/** Schema sources in formats CodeAtlas does not parse, found by path or a bounded content check. */
+const UNREAD_SCHEMA_KINDS: {
+  label: string;
+  path: RegExp;
+  content?: RegExp;
+}[] = [
+  { label: 'Liquibase changelogs', path: /(^|\/)[^/]*change-?log[^/]*\.(xml|ya?ml)$/i },
+  {
+    label: 'JPA/Hibernate @Entity classes',
+    path: /\.(java|kt)$/,
+    content: /^\s*@(javax\.persistence\.|jakarta\.persistence\.)?Entity\b/m,
+  },
+  { label: 'Django models files', path: /(^|\/)models\.py$/, content: /models\.Model\b/ },
+  {
+    label: 'SQLAlchemy model files',
+    path: /\.py$/,
+    content: /\b(declarative_base\(|DeclarativeBase\b)/,
+  },
+  { label: 'Rails schema files', path: /(^|\/)db\/schema\.rb$/ },
+  {
+    label: 'Entity Framework migrations',
+    path: /(^|\/)Migrations\/[^/]+\.cs$/,
+    content: /migrationBuilder\.CreateTable/,
+  },
+];
+
+/** Test trees hold fixture schemas, not the product's schema. */
+const TEST_TREE = /(^|\/)(tests?|testsuite|test-providers|__tests__|fixtures?)\//i;
+
+function unreadSchemas(root: string, files: string[]): string | undefined {
+  const counts: string[] = [];
+  for (const k of UNREAD_SCHEMA_KINDS) {
+    let n = 0;
+    for (const f of files) {
+      if (!k.path.test(f) || isTestSupportPath(f) || TEST_TREE.test(f)) continue;
+      if (k.content) {
+        const text = readSmall(root, f);
+        if (!text || !k.content.test(text)) continue;
+      }
+      n++;
+    }
+    if (n) counts.push(`${n} ${k.label}`);
+  }
+  if (!counts.length) return undefined;
+  return `Schema sources in formats this brain does not read were found and are not drawn: ${counts.join(', ')}.`;
+}
+
+interface StoredCoverage {
+  files?: {
+    structurallyAnalysed?: number;
+    textOnlyByExtension?: Record<string, number>;
+    skipped?: Record<string, number>;
+  };
+  calls?: { resolutionRate?: number };
+  limitations?: string[];
+}
+
+/**
+ * What the brain covers, from the index's own coverage report, so a partial brain never
+ * looks complete (QA AL-01, AL-06, AL-09).
+ */
+function coverageOf(
+  stored: StoredCoverage | null,
+  schemaNote: string | undefined,
+  unresolvedAny: number,
+): BrainCoverage {
+  const analysed = stored?.files?.structurallyAnalysed ?? 0;
+  const textOnly = Object.entries(stored?.files?.textOnlyByExtension ?? {}).sort(
+    (a, b) => b[1] - a[1],
+  );
+  const notAnalysed = textOnly.reduce((t, [, n]) => t + n, 0);
+  const total = analysed + notAnalysed;
+  const fmt = (n: number) => n.toLocaleString('en-US');
+  const gaps: string[] = [];
+  if (notAnalysed)
+    gaps.push(
+      `Not analysed (searchable as text only, nothing drawn): ${textOnly
+        .map(([ext, n]) => `${fmt(n)} ${ext}`)
+        .join(', ')} files.`,
+    );
+  for (const l of stored?.limitations ?? [])
+    if (!l.startsWith('Searchable as text only')) gaps.push(l);
+  const rate = stored?.calls?.resolutionRate;
+  if (typeof rate === 'number' && rate < 1 && analysed)
+    gaps.push(
+      `${Math.round(rate * 100)}% of call sites in the analysed code were resolved to a target; a missing link is not proof that no call exists.`,
+    );
+  if (schemaNote) gaps.push(schemaNote);
+  if (unresolvedAny)
+    gaps.push(
+      `${fmt(unresolvedAny)} return types could not be worked out (shown as "not resolved"), usually because the repository's dependencies were not installed.`,
+    );
+  const skippedByLimit = (stored?.files?.skipped?.limit ?? 0) > 0;
+  const partial =
+    notAnalysed > 0 ||
+    skippedByLimit ||
+    !!schemaNote ||
+    (stored?.files?.skipped?.ignored_dir ?? 0) > 0;
+  let summary: string;
+  if (!stored) summary = 'No coverage report was found for this index.';
+  else if (!total)
+    summary = 'No TypeScript or JavaScript code was found, so no code structure is drawn.';
+  else if (!analysed)
+    summary = `None of the ${fmt(total)} code files were analysed: this brain reads only TypeScript and JavaScript structurally, so no code structure is drawn.`;
+  else if (notAnalysed)
+    summary = `Only ${fmt(analysed)} of ${fmt(total)} code files (${Math.round((analysed / total) * 100)}%) were analysed: TypeScript and JavaScript. The rest of the code is not in this brain.`;
+  else summary = `All ${fmt(analysed)} TypeScript and JavaScript code files were analysed.`;
+  if (skippedByLimit) summary += ' Some files were skipped by the file-count limit.';
+  return { partial: partial || !stored, summary, gaps, unreadSchemas: schemaNote };
+}
 
 function rows(db: Db, sql: string, ...params: (string | number)[]) {
   return db.prepare(sql).all(...params) as unknown[];
@@ -107,9 +276,19 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
   }
   const renders = new Set(edges.filter((e) => e.kind === 'renders').map((e) => e.dst));
 
+  const filePaths = (
+    rows(db, `SELECT key FROM nodes WHERE repo_id = ? AND kind = 'file'`, repoId) as {
+      key: string;
+    }[]
+  ).map((r) => r.key);
+  const uiPkgs = uiPackages(repo.root, filePaths);
+
   const neuronOf = new Map<number, BrainNeuron>();
   const placeFile = (path: string | null) =>
-    classifyFile(path ?? undefined, { imports: path ? importsOf.get(path) : undefined });
+    classifyFile(path ?? undefined, {
+      imports: path ? importsOf.get(path) : undefined,
+      uiPackage: path ? uiPackageOf(path, uiPkgs) : undefined,
+    });
 
   for (const n of nodes) {
     if (n.filePath && isTestSupportPath(n.filePath)) continue;
@@ -232,6 +411,14 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
   }
   const kept = new Set(neurons.map((n) => n.id));
 
+  const unresolvedAny = neurons.filter(
+    (n) => n.returnsDeclared === false && n.returns?.trim() === 'any',
+  ).length;
+  const coverage = coverageOf(
+    latestCoverage(db, repoId) as StoredCoverage | null,
+    unreadSchemas(repo.root, filePaths),
+    unresolvedAny,
+  );
   notes.push(
     `Built by CodeAtlas from its index${repo.headCommit ? ` at commit ${repo.headCommit.slice(0, 10)}` : ''}. Links are labelled observed (resolved by the TypeScript compiler), inferred (matched by name or convention) or unknown.`,
     'Which lobe a part sits in is inferred from its file path and the packages the file imports.',
@@ -251,5 +438,6 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     neurons,
     synapses: synapses.filter((s) => kept.has(s.source) && kept.has(s.target)),
     notes,
+    coverage,
   };
 }

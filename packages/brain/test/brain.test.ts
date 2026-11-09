@@ -107,6 +107,28 @@ describe('validateBrain', () => {
     expect(r.warnings.join('\n')).toMatch(/2 synapse\(s\)/);
   });
 
+  it('keeps a coverage summary and bounds it (QA AL-01)', () => {
+    const r = validateBrain({
+      ...MODEL,
+      coverage: {
+        partial: true,
+        summary: 'Only 1 of 9 code files were analysed.',
+        gaps: ['8 .java files not analysed.', 42, 'x'.repeat(900)],
+        unreadSchemas: 'Schema sources … 3 Liquibase changelogs.',
+      },
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.model.coverage).toEqual({
+      partial: true,
+      summary: 'Only 1 of 9 code files were analysed.',
+      gaps: ['8 .java files not analysed.', 'x'.repeat(500)],
+      unreadSchemas: 'Schema sources … 3 Liquibase changelogs.',
+    });
+    const none = validateBrain({ ...MODEL, coverage: { partial: true } });
+    expect(none.ok && none.model.coverage).toBeUndefined();
+  });
+
   it('refuses oversized models', () => {
     const neurons = Array.from({ length: 20_001 }, (_, i) => ({ id: `n${i}`, name: 'x' }));
     expect(validateBrain({ format: 1, neurons, synapses: [] }).ok).toBe(false);
@@ -148,6 +170,26 @@ describe('classifyFile', () => {
     expect(classifyFile(undefined, { kind: 'route' }).region).toBe('backend');
     expect(classifyFile(undefined, { kind: 'config' }).region).toBe('devops');
     expect(classifyFile('C:\\repo\\src\\db\\client.ts').region).toBe('database');
+  });
+  it("keeps a browser app's src/api/ client out of the Backend lobe (QA AL-03)", () => {
+    // Keycloak account console: fetch wrappers under src/api/ in a React package.
+    expect(classifyFile('js/apps/account-ui/src/api/request.ts', { uiPackage: 'react' })).toEqual({
+      region: 'frontend',
+      reason: 'API client in a package that depends on react',
+    });
+    expect(classifyFile('js/apps/account-ui/src/api.ts', { uiPackage: 'react' }).region).toBe(
+      'frontend',
+    );
+    // Without the package hint the old placement is unchanged.
+    expect(classifyFile('js/apps/account-ui/src/api/request.ts').region).toBe('backend');
+    // Real server code inside a React (e.g. Next.js) package stays backend.
+    expect(classifyFile('src/server/api/users.ts', { uiPackage: 'react' }).region).toBe('backend');
+    expect(classifyFile('app/api/items/route.ts', { uiPackage: 'react' }).region).toBe('backend');
+    expect(classifyFile('pages/api/hello.ts', { uiPackage: 'react' }).region).toBe('backend');
+    expect(
+      classifyFile('src/api/handlers.ts', { uiPackage: 'react', imports: ['express'] }).region,
+    ).toBe('backend');
+    expect(classifyFile('src/api/routes/users.ts', { uiPackage: 'react' }).region).toBe('backend');
   });
 });
 
@@ -261,6 +303,48 @@ describe('renderBrainHtml', () => {
     expect(readFileSync(output, 'utf8')).toBe(
       renderBrainHtml({ ...MODEL, title: 'A $& <b>' }, template),
     );
+  });
+
+  it('refuses models the page cannot show and flags observed links without evidence (QA AL-08)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'brain-'));
+    const script = new URL('../scripts/render-brain.mjs', import.meta.url).pathname;
+    const run = (model: unknown, ...flags: string[]) => {
+      const input = join(dir, 'm.json');
+      writeFileSync(input, JSON.stringify(model));
+      try {
+        const out = execFileSync(process.execPath, [script, input, join(dir, 'o.html'), ...flags], {
+          stdio: 'pipe',
+          encoding: 'utf8',
+        });
+        return { code: 0, out };
+      } catch (e) {
+        const err = e as { status: number; stderr: string };
+        return { code: err.status, out: err.stderr };
+      }
+    };
+    expect(run({ ...MODEL, format: 2 })).toMatchObject({ code: 1 });
+    const many = Array.from({ length: 20001 }, (_, i) => ({
+      id: `n${i}`,
+      name: 'n',
+      kind: 'function',
+    }));
+    expect(run({ ...MODEL, neurons: many, synapses: [] }).out).toMatch(/Too many neurons/);
+    const unbacked = {
+      ...MODEL,
+      synapses: [
+        {
+          source: MODEL.neurons[0]!.id,
+          target: MODEL.neurons[1]!.id,
+          kind: 'calls',
+          confidence: 'observed',
+        },
+      ],
+    };
+    expect(run(unbacked).code).toBe(0);
+    expect(run(unbacked, '--strict')).toMatchObject({
+      code: 1,
+      out: expect.stringMatching(/no file and line/),
+    });
   });
 
   it('ships the same template and script inside the ArchLens skill', () => {

@@ -113,6 +113,12 @@ The page opens offline in any browser with WebGL. Without WebGL the lists, searc
   "notes": [
     "Read 42 of 180 source files: routes, services and the database layer. UI components were not read.",
   ],
+  "coverage": {
+    "partial": true,
+    "summary": "Read 42 of 180 source files: routes, services and the database layer.",
+    "gaps": ["UI components (120 files) were not read."],
+    "unreadSchemas": "Schema sources in formats this brain does not read were found and are not drawn: 3 Liquibase changelogs.", // optional
+  },
 }
 ```
 
@@ -127,6 +133,8 @@ The page opens offline in any browser with WebGL. Without WebGL the lists, searc
 | table `columns`      | `name`, `type` as written (`varchar`, `numeric`, `Int`…), `length` or `precision` and `scale` when written, `nullable`, `primaryKey`, `unique`, `default` as written, `references` `{ table, column }`, `line`                                                                |
 | `returnsDeclared`    | `true` when the source wrote the return type, `false` when you worked it out                                                                                                                                                                                                  |
 
+`coverage` is optional but expected: `partial` (boolean), `summary` (one sentence shown on the overview), `gaps` (one sentence each), `unreadSchemas` (shown when the Database lobe or table diagrams are empty).
+
 Limits: 20,000 neurons, 100,000 synapses and 500 columns per table. The page drops unknown kinds, duplicate ids and links to missing neurons, and lists what it dropped.
 
 ## Rules for a hand-written model
@@ -137,6 +145,6 @@ Limits: 20,000 neurons, 100,000 synapses and 500 columns per table. The page dro
 - Tables come only from schema code you read: `CREATE TABLE` / `ALTER TABLE` in SQL and migrations, Prisma `model` blocks, Drizzle `pgTable` / `mysqlTable` / `sqliteTable`, or ORM entity classes. Record each column's type, length, precision, scale, nullability, keys and default exactly as written; leave out anything not written (never fill in database defaults).
 - `reads_table` / `writes_table` are `observed` when the code names the table object at that line (`db.select().from(carts)`, `db.insert(carts)`), and `inferred` when you matched a name (a SQL string, `prisma.cart.findMany()`, a repository method name).
 - Region placement is always an inference. Give `regionReason` when you override the path-based placement.
-- Say what you did **not** read in `notes`. The page shows notes under "About this brain".
+- Say what you did **not** read in `coverage` (summary, gaps, `partial: true`). The page shows coverage at the top of the overview, without a click; `notes` stay under "About this brain".
 - Never put secrets, credentials or `.env` values into `doc`, `signature` or `detail`.
 - Do not add commit authors or emails.

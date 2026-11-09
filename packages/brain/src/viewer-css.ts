@@ -90,7 +90,7 @@ export const VIEWER_CSS = `
 .nb-dot{display:inline-block;width:9px;height:9px;border-radius:50%}
 .nb-dot.nb-in{background:#38bdf8}.nb-dot.nb-out{background:#fb923c}
 .nb-status{position:absolute;right:12px;bottom:10px;margin:0;font-size:12px;color:var(--nb-muted)}
-.nb-notes{margin-top:12px;font-size:12px;color:var(--nb-muted)}
+.nb-notes{margin-top:12px;font-size:12px;color:var(--nb-muted)}.nb-coverage{margin:0 0 14px;padding:10px 12px;border:1px solid var(--nb-line);border-radius:8px;font-size:12.5px;line-height:1.45}.nb-coverage h3{margin:0 0 4px}.nb-coverage p{margin:0}.nb-coverage ul{margin:6px 0 0;padding-left:18px;color:var(--nb-muted)}.nb-coverage li{margin:3px 0}.nb-coverage summary{cursor:pointer;margin-top:6px;color:var(--nb-accent)}.nb-coverage.nb-partial{border-color:rgba(252,211,77,.55);background:rgba(252,211,77,.08)}.nb-coverage.nb-partial h3{color:#fcd34d}.nb-empty{font-size:12.5px;color:var(--nb-text);margin:8px 0}.nb-results li.nb-nomatch{cursor:default;background:none}
 .nb-notes li{margin:4px 0}
 @media (max-width:820px){
   .nb-left{top:auto;bottom:44px;left:8px;right:8px;width:auto;max-height:34%}

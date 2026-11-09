@@ -4,7 +4,13 @@ import type { Db } from '../store/db';
 import { tx } from '../store/db';
 import { indexMarkdown } from './docs';
 import { addSchema, parsePrismaSchema, parseSqlSchema } from './schema';
-import { discoverFiles, readText, sha1, type DiscoveredFile } from './files';
+import {
+  IGNORED_DIRS as IGNORED_DIR_NAMES,
+  discoverFiles,
+  readText,
+  sha1,
+  type DiscoveredFile,
+} from './files';
 import { readGitHistory } from './git';
 import { detectFrameworks, findManifests, type Framework, type Manifest } from './manifests';
 import { GraphBuilder, splitTerms, type ChunkRec, type Confidence, type NodeRef } from './model';
@@ -457,6 +463,18 @@ function buildAndPersist(
     );
   if (skipped.secret)
     limitations.push(`${skipped.secret} files that may contain credentials were not read.`);
+  if (skipped.ignored_dir) {
+    const folders = [
+      ...new Set(
+        disc.skipped
+          .filter((s) => s.reason === 'ignored_dir')
+          .map((s) => s.path.split('/').find((seg) => IGNORED_DIR_NAMES.has(seg))),
+      ),
+    ].slice(0, 5);
+    limitations.push(
+      `${skipped.ignored_dir} files tracked by git in folders named ${folders.map((f) => `${f}/`).join(', ')} were not indexed (treated as build output or dependencies).`,
+    );
+  }
   if (skipped.too_large || skipped.limit)
     limitations.push(
       `${(skipped.too_large ?? 0) + (skipped.limit ?? 0)} files were skipped by size or count limits.`,
@@ -489,7 +507,9 @@ function buildAndPersist(
     },
     manifests: findManifests([
       ...disc.files.map((f) => f.path),
-      ...disc.skipped.filter((x) => x.reason !== 'secret').map((x) => x.path),
+      ...disc.skipped
+        .filter((x) => x.reason !== 'secret' && x.reason !== 'ignored_dir')
+        .map((x) => x.path),
     ]),
     frameworks: detectFrameworks(
       disc.files
