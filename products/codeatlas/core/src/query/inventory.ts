@@ -15,6 +15,8 @@ export interface InventoryFile {
   bytes: number | null;
   detectedBy: string | null;
   confidence: string | null;
+  /** How references were linked: 'compiler', 'syntax', or null when none were. */
+  resolution: string | null;
 }
 
 export interface InventoryFilter {
@@ -75,7 +77,7 @@ export function inventoryFiles(
   const items = (
     db
       .prepare(
-        `SELECT path, language, category, role, status, method, reason, bytes, detected_by AS detectedBy, confidence FROM file_inventory WHERE ${sql} ORDER BY path LIMIT ? OFFSET ?`,
+        `SELECT path, language, category, role, status, method, reason, bytes, detected_by AS detectedBy, confidence, resolution FROM file_inventory WHERE ${sql} ORDER BY path LIMIT ? OFFSET ?`,
       )
       .all(...args, limit, offset) as unknown as InventoryFile[]
   ).map((r) => ({ ...r }));

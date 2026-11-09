@@ -29,6 +29,12 @@ export interface FileRecord {
   detectedBy?: string;
   confidence?: 'observed' | 'inferred';
   alternatives?: string[];
+  /**
+   * How references between declarations were linked: `compiler` by a type checker, `syntax`
+   * from a full parse by names, scope and imports (each link labelled observed, inferred or
+   * unresolved). Absent when no references were linked.
+   */
+  resolution?: 'compiler' | 'syntax';
 }
 
 export type StatusCounts = Record<FileStatus, number>;

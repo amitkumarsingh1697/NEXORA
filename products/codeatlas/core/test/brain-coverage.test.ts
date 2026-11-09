@@ -64,27 +64,35 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 describe('brain coverage on a mixed-language repository', () => {
   it('says on the model how each file was processed, and never claims it all (QA AL-01)', () => {
     expect(brain.coverage?.partial).toBe(true);
-    // Counts from the inventory: 9 tracked files; the Java and Liquibase files are only partially read.
+    // Counts from the inventory: 9 tracked files. The Java files parse completely with the Java
+    // grammar (full); the two Liquibase changelogs are only partially read.
     expect(brain.coverage?.summary).toBe(
-      '9 files found, 3 fully analysed, 5 partially analysed, 0 text only, 1 excluded, 0 binary. 100% of readable files were analysed (37.5% fully).',
+      '9 files found, 6 fully analysed, 2 partially analysed, 0 text only, 1 excluded, 0 binary. 100% of readable files were analysed (75% fully).',
     );
-    expect(brain.coverage?.gaps.join(' ')).toMatch(/5 files are partially analysed/);
+    expect(brain.coverage?.gaps.join(' ')).toMatch(/2 files are partially analysed/);
     const inv = brain.coverage?.inventory;
     expect(inv?.languages.find((l) => l.language === 'Java')).toMatchObject({
       files: 3,
       analysed: 3,
-      status: 'partial',
+      status: 'full',
+      method: expect.stringMatching(/^Full syntax parse \(tree-sitter tree-sitter-java@/),
     });
     expect(inv?.notAnalysed.find((f) => f.path === 'server/dist/bin/run.sh')).toMatchObject({
       status: 'excluded',
       reason: 'in a build-output or dependency folder',
     });
-    // Java classes found by declaration patterns are drawn, labelled as such.
+    // Java classes from the full parse are drawn with their members, parameters and returns.
     const token = brain.neurons.find((n) => n.name === 'TokenEndpoint');
-    expect(token).toMatchObject({ kind: 'class', region: 'backend' });
-    expect(token?.signature).toBe('public class TokenEndpoint {');
-    expect(token?.doc).toMatch(/Java declaration pattern \(class\); not checked by a compiler/);
-    expect(brain.neurons.find((n) => n.name === 'TokenEndpoint.token')?.parent).toBe(token?.id);
+    expect(token).toMatchObject({ kind: 'class', region: 'backend', line: 2 });
+    expect(token?.signature).toBe('public class TokenEndpoint');
+    const method = brain.neurons.find((n) => n.name === 'TokenEndpoint.token');
+    expect(method).toMatchObject({
+      kind: 'method',
+      parent: token?.id,
+      returns: 'String',
+      returnsDeclared: true,
+      params: [],
+    });
     // It survives the page's validation unchanged.
     const r = validateBrain(JSON.parse(JSON.stringify(brain)));
     expect(r.ok && r.model.coverage).toEqual(brain.coverage);

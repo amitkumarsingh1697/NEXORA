@@ -1,0 +1,6 @@
+import shop::firewall @5 module
+#0 class shop::web(docroot?: String, port: Integer) @1-8 extends shop::params
+#1 resource package[nginx] @6-6 in #0
+#2 resource service[nginx] @7-7 in #0
+#3 type shop::vhost(name: String) @10-12
+#4 resource file[/etc/nginx/${name}.conf] @11-11 in #3

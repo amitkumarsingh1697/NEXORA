@@ -1,0 +1,19 @@
+namespace Shop\Cart
+import Shop\Store\Store @4 module
+import helpers.php @5 path
+#0 class Cart @7-22 extends Base, Saver
+#1 constructor __construct(store: Store) @11-11 in #0
+#2 method add(sku: string, qty?: int) -> ?int @13-19 in #0
+#3 method check(sku) @21-21 in #0
+#4 function helper(n: int) -> int @24-24
+#5 interface Saver @26-26
+#6 method save(sku: string) -> void @26-26 in #5
+#7 trait Logs @27-27
+#8 method log() @27-27 in #7
+call #2 $this . check @15
+call #2 helper @16
+call #2 $this->store . save @17
+call #2 Util . count @18
+call #3 strlen @21
+call #4 (new Counter()) . next @24
+call #4 new Counter @24

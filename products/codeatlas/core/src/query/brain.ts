@@ -385,7 +385,8 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     const params = Array.isArray(n.data.params)
       ? (n.data.params as BrainParam[]).map((p) => ({
           name: String(p.name).replace(/\s+/g, ' '),
-          type: String(p.type),
+          // An empty type means the source does not declare one (Python, Ruby, Lua…).
+          type: p.type === undefined || p.type === null ? '' : String(p.type),
           optional: !!p.optional,
         }))
       : undefined;
@@ -428,14 +429,19 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     }
   }
 
-  // A file read by declaration patterns has no file neuron; its links and imports are drawn
-  // from its first top-level declaration instead.
+  // A file read by declaration patterns or the syntax layer has no file neuron; its links and
+  // imports are drawn from its first top-level declaration instead.
   const primaryOf = new Map<number, BrainNeuron>();
   for (const e of edges) {
     if (e.kind !== 'contains' || nodeById.get(e.src)?.kind !== 'file') continue;
     const child = nodeById.get(e.dst);
     const neuron = neuronOf.get(e.dst);
-    if (!child || !neuron || child.data.extraction !== 'pattern') continue;
+    if (
+      !child ||
+      !neuron ||
+      (child.data.extraction !== 'pattern' && child.data.extraction !== 'syntax')
+    )
+      continue;
     const cur = primaryOf.get(e.src);
     if (!cur || (neuron.line ?? 0) < (cur.line ?? 0)) primaryOf.set(e.src, neuron);
   }
@@ -463,7 +469,7 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
   for (const e of edges) {
     const kind = SYNAPSE_OF[e.kind];
     if (kind) add(e, kind);
-    // Imports between files resolved by the pattern analyser (TypeScript imports are drawn as calls).
+    // Imports between files resolved by the pattern or syntax analysers (TypeScript imports are drawn as calls).
     else if (e.kind === 'imports' && primaryOf.has(e.src) && primaryOf.has(e.dst))
       add(e, 'imports');
   }

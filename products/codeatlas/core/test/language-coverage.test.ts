@@ -104,7 +104,7 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 const rec = (path: string) =>
   db
     .prepare(
-      'SELECT language, category, role, status, method, reason, detected_by FROM file_inventory WHERE repo_id = ? AND path = ?',
+      'SELECT language, category, role, status, method, reason, detected_by, resolution FROM file_inventory WHERE repo_id = ? AND path = ?',
     )
     .get(repoId, path) as
     | {
@@ -115,6 +115,7 @@ const rec = (path: string) =>
         method: string;
         reason: string | null;
         detected_by: string | null;
+        resolution: string | null;
       }
     | undefined;
 
@@ -135,7 +136,8 @@ describe('universal language and file-type inventory', () => {
     expect(rec('scripts/report')).toMatchObject({
       language: 'Python',
       detected_by: 'shebang',
-      status: 'partial',
+      status: 'full',
+      resolution: 'syntax',
     });
   });
 
@@ -170,15 +172,25 @@ describe('universal language and file-type inventory', () => {
     expect(rec('db/packages/billing.pkb')?.language).toBe('PLSQL');
   });
 
-  it('extracts declarations from languages without a compiler front end, as partial', () => {
+  it('parses languages with a grammar completely, and labels pattern-only languages partial', () => {
+    // A grammar parsed the whole file without errors: full, with references linked by syntax.
     for (const p of [
-      'legacy/PAYROLL.cbl',
-      'legacy/solver.f90',
       'services/billing/src/main/kotlin/Billing.kt',
       'services/engine/src/lib.rs',
       'services/api/main.go',
-    ])
+      'services/api/store/store.go',
+      'bin/deploy',
+      'infra/main.tf',
+    ]) {
+      expect(rec(p)?.status, p).toBe('full');
+      expect(rec(p)?.resolution, p).toBe('syntax');
+      expect(rec(p)?.method, p).toMatch(/^Full syntax parse \(tree-sitter /);
+    }
+    // No grammar yet: declaration patterns, never called full.
+    for (const p of ['legacy/PAYROLL.cbl', 'legacy/solver.f90']) {
       expect(rec(p)?.status, p).toBe('partial');
+      expect(rec(p)?.resolution, p).toBeNull();
+    }
     expect(rec('legacy/PAYROLL.cbl')?.language).toBe('COBOL');
     expect(rec('legacy/solver.f90')?.language).toBe('Fortran Free Form');
     const names = (
@@ -187,10 +199,36 @@ describe('universal language and file-type inventory', () => {
       }[]
     ).map((r) => r.name);
     expect(names).toEqual(
-      expect.arrayContaining(['Invoice', 'Invoice.total', 'Engine', 'main', 'Open', 'solver']),
+      expect.arrayContaining([
+        'Invoice',
+        'Invoice.total',
+        'Engine',
+        'Engine.run',
+        'main',
+        'Open',
+        'solver',
+        'aws_s3_bucket.logs',
+      ]),
     );
-    // Nothing is ever "fully" analysed without the TypeScript compiler.
-    expect(report.inventory.counts.full).toBeLessThan(report.inventory.analysed);
+    // main() calls store.Open() through the Go module import: a call edge, labelled inferred.
+    const call = db
+      .prepare(
+        `SELECT e.confidence, e.detail FROM edges e JOIN nodes s ON s.id = e.src JOIN nodes d ON d.id = e.dst
+         WHERE e.repo_id = ? AND e.kind = 'calls' AND s.key = 'services/api/main.go#main' AND d.key = 'services/api/store/store.go#Open'`,
+      )
+      .get(repoId) as { confidence: string; detail: string } | undefined;
+    expect(call).toEqual({
+      confidence: 'inferred',
+      detail: 'store.Open: resolved through the import at line 3',
+    });
+    // Engine.run sits inside struct Engine (the impl block names it).
+    const contains = db
+      .prepare(
+        `SELECT e.confidence FROM edges e JOIN nodes s ON s.id = e.src JOIN nodes d ON d.id = e.dst
+         WHERE e.repo_id = ? AND e.kind = 'contains' AND s.key = 'services/engine/src/lib.rs#Engine' AND d.key = 'services/engine/src/lib.rs#Engine.run'`,
+      )
+      .get(repoId) as { confidence: string } | undefined;
+    expect(contains).toEqual({ confidence: 'observed' });
   });
 
   it('keeps text-only, unknown, binary, LFS, UTF-16, symlink and submodule apart', () => {
@@ -204,7 +242,7 @@ describe('universal language and file-type inventory', () => {
       language: 'Git LFS pointer',
       status: 'unsupported',
     });
-    expect(rec('win/setup.ps1')).toMatchObject({ language: 'PowerShell', status: 'partial' });
+    expect(rec('win/setup.ps1')).toMatchObject({ language: 'PowerShell', status: 'full' });
     expect(rec('docs-link.md')).toMatchObject({ status: 'excluded' });
     expect(rec('docs-link.md')?.reason).toMatch(/symbolic link/);
     expect(rec('vendor/lib')).toMatchObject({ status: 'excluded' });

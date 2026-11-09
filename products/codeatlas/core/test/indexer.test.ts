@@ -184,14 +184,16 @@ describe('indexer: safety and coverage', () => {
     expect(report.files.textOnlyByExtension['.apl']).toBe(1);
     expect(report.limitations.join(' ')).toMatch(/text only, with no structure extracted: .*1 APL/);
     expect(search(db, repoId, 'yearly average')[0]?.filePath).toBe('tools/legacy.apl');
-    // Python has declaration patterns: partially analysed, never counted as fully analysed.
+    // Python is parsed by its tree-sitter grammar: the whole file is read.
     expect(report.files.textOnlyByExtension['.py']).toBeUndefined();
     const py = report.inventory.languages.find((l) => l.language === 'Python');
     expect(py).toMatchObject({
       files: 1,
       analysed: 1,
-      status: 'partial',
-      method: expect.stringMatching(/^Declaration/),
+      status: 'full',
+      method: expect.stringMatching(
+        /^Full syntax parse \(tree-sitter tree-sitter-python@0\.25\.0\)$/,
+      ),
     });
     expect(search(db, repoId, 'quarterly report')[0]?.filePath).toBe('tools/report.py');
   });

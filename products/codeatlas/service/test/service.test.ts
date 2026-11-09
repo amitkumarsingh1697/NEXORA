@@ -129,7 +129,13 @@ describe('indexing and views over HTTP', () => {
     type Inv = {
       total: number;
       offset: number;
-      items: { path: string; status: string; language: string; method: string }[];
+      items: {
+        path: string;
+        status: string;
+        language: string;
+        method: string;
+        resolution: string | null;
+      }[];
     };
     const all = await svc.api<Inv>(`/api/repos/${repoId}/inventory?limit=500`);
     expect(all.status).toBe(200);
@@ -139,7 +145,10 @@ describe('indexing and views over HTTP', () => {
     expect(all.body.total).toBe(detail.body.coverage.inventory.total);
     expect(all.body.items.length).toBe(Math.min(500, all.body.total));
     const py = await svc.api<Inv>(`/api/repos/${repoId}/inventory?language=Python`);
-    expect(py.body.items.map((i) => [i.path, i.status])).toEqual([['tools/report.py', 'partial']]);
+    // Python is parsed by its grammar: full, with references linked by syntax (not a compiler).
+    expect(py.body.items.map((i) => [i.path, i.status, i.resolution])).toEqual([
+      ['tools/report.py', 'full', 'syntax'],
+    ]);
     const text = await svc.api<Inv>(`/api/repos/${repoId}/inventory?status=text&limit=1`);
     expect(text.body.items.every((i) => i.status === 'text')).toBe(true);
     expect(text.body.items.length).toBeLessThanOrEqual(1);

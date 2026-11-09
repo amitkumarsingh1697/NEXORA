@@ -1,0 +1,4 @@
+import @rules_cc//cc:defs.bzl @1 path {cc_library}
+#0 function make_lib(name, srcs?) @3-4
+call #0 cc_library @4
+call top make_lib @6

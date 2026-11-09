@@ -1,0 +1,17 @@
+namespace com.shop.cart
+import java.util.List @3 module
+import com.shop.store.Store @4 module
+#0 class Cart @6-26 extends Base, Saver
+#1 constructor Cart(store: Store) @9-11 in #0
+#2 method add(sku: String, qty: int) -> int @13-18 in #0
+#3 method helper(n: int) -> int @20-22 in #0
+#4 interface Inner @24-24 in #0
+#5 method run() -> void @24-24 in #4
+#6 enum Color @25-25 in #0
+call #2 this . check @14
+call #2 helper @15
+call #2 store . save @16
+call #2 Util . count @17
+call #2 List . of @17
+call #3 new Counter() . next @21
+call #3 new Counter @21

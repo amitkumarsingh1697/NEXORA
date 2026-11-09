@@ -1,0 +1,19 @@
+import os @1 module
+import .store @2 module {Store, load as load_store}
+import typing @3 module {Optional}
+#0 class Base @6-7
+#1 class Cart @10-24 extends Base
+#2 constructor __init__(store: Store, owner?: str) -> None @13-15 in #1
+#3 method add(sku: str, qty?: int) -> Optional[int] @17-21 in #1
+#4 method _check(sku) @23-24 in #1
+#5 function helper(n: int, ...args, ...kwargs) -> int @27-29
+#6 function main() @32-34
+call #3 self . _check @18
+call #3 helper @19
+call #3 self.store . save @20
+call #3 os . getpid @21
+call #4 len @24
+call #5 load_store @28
+call #6 Cart @33
+call #6 Store @33
+call #6 c . add @34

@@ -1,0 +1,10 @@
+import LinearAlgebra @3 module
+import Base @4 module {show}
+#0 module Shop @1-21
+#1 struct Cart @6-8 in #0
+#2 type Saver @10-10 in #0
+#3 function add(c: Cart, sku: String, qty?: Int) -> Int @12-17 in #0
+#4 function helper(n: Int) @19-19 in #0
+call #3 check @13
+call #3 helper @14
+call #3 Base . push! @15

@@ -6669,6 +6669,42 @@ var DECLARATION_LANGUAGES = [
 	"Bicep",
 	"Jsonnet"
 ];
+/**
+* Languages the tree-sitter syntax layer parses (packages/syntax/src/languages.ts; a CodeAtlas
+* test checks the two lists are the same).
+*/
+var SYNTAX_LANGUAGES = [
+	"Python",
+	"Starlark",
+	"Go",
+	"Java",
+	"C#",
+	"C",
+	"C++",
+	"Objective-C",
+	"Cuda",
+	"Rust",
+	"PHP",
+	"Ruby",
+	"Scala",
+	"Kotlin",
+	"Gradle Kotlin DSL",
+	"Groovy",
+	"Gradle",
+	"Lua",
+	"Elixir",
+	"Haskell",
+	"Julia",
+	"OCaml",
+	"F#",
+	"Zig",
+	"Solidity",
+	"Shell",
+	"PowerShell",
+	"Puppet",
+	"Bicep",
+	"HCL"
+];
 var ANALYSER_BY_LANGUAGE = {
 	TypeScript: "ts-compiler",
 	TSX: "ts-compiler",
@@ -6723,6 +6759,7 @@ var ANALYSER_BY_LANGUAGE = {
 	"Graphviz (DOT)": "dot",
 	"Gettext Catalog": "gettext"
 };
+for (const l of SYNTAX_LANGUAGES) ANALYSER_BY_LANGUAGE[l] = "syntax";
 for (const l of DECLARATION_LANGUAGES) ANALYSER_BY_LANGUAGE[l] ??= "declarations";
 /** Formats Linguist does not list that repositories commonly contain. */
 var EXTRA = [

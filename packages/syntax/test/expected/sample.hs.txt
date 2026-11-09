@@ -1,0 +1,13 @@
+namespace Shop.Cart
+import Data.Map @3 module
+import Shop.Store @4 module {save}
+#0 type Cart @6-6
+#1 interface Saver @8-9
+#2 function add(cart: Cart, sku: String, qty: Int) -> IO Int @12-15
+#3 function helper(n: Int) -> Int @18-18
+#4 function check(_: String) -> IO () @21-21
+call #2 check @13
+call #2 save @14
+call #2 return @15
+call #2 helper @15
+call #4 pure @21

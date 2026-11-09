@@ -1,0 +1,12 @@
+namespace cart
+import fmt @4 module
+import example.com/shop/store @5 module
+#0 struct Item @8-11
+#1 interface Saver @13-15
+#2 method Save(sku: string) -> error @14-14 in #1
+#3 method Add(sku: string, qty: int) -> (int, error) @17-22 recv Cart
+#4 function helper(n: int, ...rest: ...string) -> int @24-27
+call #3 c . check @18
+call #3 helper @19
+call #3 fmt . Println @20
+call #4 st . Load @25

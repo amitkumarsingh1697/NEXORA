@@ -353,6 +353,7 @@ function buildAndPersist(
     if (!rec) continue;
     const adapter = adapters.find((a) => a.languages.includes(f.lang));
     rec.method = adapter?.name ?? 'language adapter';
+    rec.resolution = 'compiler';
     if (failedPass1.has(f.path)) {
       rec.status = 'failed';
       rec.reason = failedPass1.get(f.path);
@@ -669,7 +670,7 @@ function persistInventory(db: Db, repoId: number, records: Map<string, FileRecor
   tx(db, () => {
     db.prepare('DELETE FROM file_inventory WHERE repo_id = ?').run(repoId);
     const ins = db.prepare(
-      'INSERT INTO file_inventory (repo_id, path, language, category, role, status, method, reason, bytes, detected_by, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO file_inventory (repo_id, path, language, category, role, status, method, reason, bytes, detected_by, confidence, resolution) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
     for (const r of records.values())
       ins.run(
@@ -684,6 +685,7 @@ function persistInventory(db: Db, repoId: number, records: Map<string, FileRecor
         r.bytes ?? null,
         r.detectedBy ?? null,
         r.confidence ?? null,
+        r.resolution ?? null,
       );
   });
 }

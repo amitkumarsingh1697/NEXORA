@@ -1,0 +1,9 @@
+import ./modules/vpc @10 path
+#0 property var.region -> string @5-8
+#1 module module.vpc @10-13
+#2 resource aws_instance.web @15-19
+#3 resource data.aws_ami.ubuntu @21-23
+#4 property output.ip @25-27
+call #2 data.aws_ami.ubuntu @16
+call #2 module.vpc @18
+call #4 aws_instance.web @26

@@ -85,6 +85,23 @@
 
 ---
 
+## Sprint L1: Full syntax analysis for every language with a grammar
+
+The founder asked for full analysis of every language, file, method, function and database object in CodeAtlas and ArchLens (2026-11-09). The work is split into six sprints so each one can be tested on its own.
+
+| ID   | Item                                        | Requirements     | Acceptance criteria                                                                                                                                                        |
+| ---- | ------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L1-1 | Vendored, hash-checked tree-sitter grammars | LANG-09          | Each grammar at an exact version with licence, npm integrity and SHA-256 in a manifest; a grammar whose hash differs is refused (test).                                    |
+| L1-2 | Extraction for 31 languages                 | LANG-09          | A fixture per language parses with no errors; declarations, parameters, returns, bases, imports and calls match a reviewed snapshot; broken source reports the error line. |
+| L1-3 | Labelled call and inheritance resolution    | LANG-10, LANG-11 | Every link observed, inferred or unresolved with a reason; no name-only member guesses in statically typed languages; built-in names on untyped receivers stay unresolved. |
+| L1-4 | CodeAtlas integration                       | LANG-09, LANG-12 | `full` only on an error-free parse; schema v8 records the resolution; brain draws members, parameters and the new synapses; `pnpm check` passes.                           |
+| L1-5 | Real-repository measurement                 | LANG-10          | Speed and sampled precision recorded for four public repositories (research R28).                                                                                          |
+
+**Status:** done 2026-11-09 (evidence in IMPLEMENTATION_STATUS.md, research R26 to R28, ADR 0015).
+**Excluded from L1, planned next:** L2 databases (views, procedures, functions, triggers, indexes and sequences with their bodies, through a PostgreSQL parser and statement analysers for other dialects); L3 ORM schema readers; L4 compiler-grade resolution through SCIP indexers where a toolchain exists; L5 grammars without published WebAssembly (Dart, Swift, SQL dialects), which need approval to build; L6 the ArchLens bundle, skill update and proof runs on large repositories.
+
+---
+
 ## Blocked or external track (not sprint-scheduled)
 
 | Item                                                                 | Blocker                                       | Owner                                            |

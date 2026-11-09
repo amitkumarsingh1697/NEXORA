@@ -38,6 +38,7 @@ Test counts by package:
 | cvforge-backend   | 42    |
 | codeatlas-core    | 191   |
 | codeatlas-service | 31    |
+| syntax            | 57    |
 
 ## Requirement status summary
 
@@ -47,7 +48,7 @@ Counts are taken from REQUIREMENTS_TRACEABILITY.md.
 | ------------------------------------------------------ | -----: | --------------------: | ----------: | ----------: | ------: |
 | CVForge (RI-*)                                         |     44 |                     2 |           1 |           0 |       0 |
 | CodeAtlas (AB-*)                                       |     47 |                     0 |           0 |           0 |       0 |
-| Languages and file types (LANG-*)                      |      7 |                     0 |           1 |           0 |       0 |
+| Languages and file types (LANG-*)                      |     11 |                     0 |           1 |           0 |       0 |
 | Cross-cutting (AI, SEC, UX, DATA, COST, PERF, DOC, SK) |     14 |                     4 |           0 |           1 |       0 |
 
 **Verification blocked by environment**, so these items are not counted as "verified":
@@ -112,6 +113,7 @@ Counts are taken from REQUIREMENTS_TRACEABILITY.md.
 | Brain coverage disclosure, UI-package lobe placement, renderer guardrails (BRAIN-09)                                                                                                   | tested      | `brain-coverage.test.ts`, `brain.test.ts`; `pnpm check` and CodeAtlas E2E green 2026-11-08; regression on Keycloak `d4d5554` and Kubernetes `896c5b4`                                                                                                                                   |
 | Universal language and file-type support: shared registry, per-file inventory, seven statuses, declaration patterns, format parsers, Languages & files dashboards (LANG-01 to LANG-07) | tested      | `packages/languages`; `languages.test.ts` (106 in the package), `language-coverage.test.ts`, `declarations.test.ts`, `brain.test.ts`, `service.test.ts`, E2E; validation on 23 repositories (2026-11-09)                                                                                |
 | No performance regression (LANG-08)                                                                                                                                                    | in progress | Index time +21% on Keycloak and +54% on Kubernetes against `2228a64` on the same machine; smaller repositories add tens to a few hundred milliseconds. See `reports/LANGUAGE_COVERAGE_VALIDATION.md`                                                                                    |
+| Full syntax analysis for 31 languages with labelled call, instantiation and inheritance links; typed receivers; per-file resolution (LANG-09 to LANG-12)                               | tested      | `packages/syntax` 57 tests; `core/test/syntax-index.test.ts`; `pnpm check` and `pnpm format:check` passed 2026-11-09; measured on requests, gin, sinatra and gson (research R28)                                                                                                        |
 | CVForge: email confirmation (risk S-03)                                                                                                                                                | tested      | `services/auth.ts` `verifyEmail`/`resendVerification`/`assertEmailVerified`, migration `0001_email_verification.sql`; `email-verification.test.ts` (5); E2E `verify-email.spec.ts`                                                                                                      |
 | Licence                                                                                                                                                                                | done        | Apache-2.0 (`LICENSE`), `license` field in every package                                                                                                                                                                                                                                |
 

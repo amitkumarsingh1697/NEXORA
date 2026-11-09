@@ -24,8 +24,9 @@ export const INVENTORY_STATUS_LABEL: Record<InventoryStatus, string> = {
 };
 
 const STATUS_HELP: Record<InventoryStatus, string> = {
-  full: "Parsed completely: by the TypeScript compiler for code, or by a parser for the file's format.",
-  partial: 'Structure read by a format parser or declaration patterns; not compiler-checked.',
+  full: "Parsed completely: by the TypeScript compiler, by the language's grammar (calls linked by name, scope and declared types), or by a parser for the file's format.",
+  partial:
+    'Structure read by declaration patterns or a format reader, or a grammar parse that found syntax errors; not checked by a compiler.',
   text: 'Searchable as text; no structure was extracted.',
   unsupported: 'Identified, but the content cannot be read (for example a Git LFS pointer).',
   failed: 'An analyser ran and could not read the file.',

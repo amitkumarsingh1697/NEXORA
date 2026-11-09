@@ -1,0 +1,13 @@
+import ./Store.sol @4 path
+import @openzeppelin/contracts/access/Ownable.sol @5 path {Ownable}
+#0 interface ISaver @7-9
+#1 method save(sku: string calldata) -> bool @8-8 in #0
+#2 class Cart @11-25 extends Ownable, ISaver
+#3 struct Item @12-12 in #2
+#4 method add(sku: string memory, qty: uint256) -> uint256 @15-21 in #2
+#5 method check(sku: string memory) -> bool @23-23 in #2
+#6 method helper(n: uint256) -> uint256 @24-24 in #2
+call #4 check @16
+call #4 helper @17
+call #4 Store(address(0)) . save @18
+call #4 Store @18
