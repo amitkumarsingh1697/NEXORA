@@ -35,6 +35,12 @@ test('CodeAtlas', async ({ page }) => {
     .click();
   await expect(page.getByText('Coverage report')).toBeVisible();
   await shot(page, 'codeatlas-overview');
+  // Languages & files: the inventory of every file, by language, file type, status and folder.
+  const files = page.getByRole('region', { name: 'Languages & files' });
+  await files.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(500);
+  await files.screenshot({ path: join(OUT_DIR, 'codeatlas-languages.png') });
+  await page.evaluate(() => window.scrollTo(0, 0));
 
   const tab = async (name: string) =>
     page.getByRole('button', { name, exact: true }).first().click();
@@ -72,6 +78,10 @@ test('CodeAtlas', async ({ page }) => {
   await diagrams.getByLabel('Classes in').selectOption('backend');
   await shot(page, 'codeatlas-diagram-class');
   await diagrams.getByRole('button', { name: 'Close diagrams' }).click();
+  await brain.getByRole('button', { name: 'Languages & files' }).click();
+  await expect(brain.getByRole('dialog', { name: 'Languages and files' })).toBeVisible();
+  await shot(page, 'codeatlas-brain-languages');
+  await brain.getByRole('button', { name: 'Close languages and files' }).click();
 
   await tab('Structure');
   const tree = page.getByRole('list', { name: 'Repository structure' });

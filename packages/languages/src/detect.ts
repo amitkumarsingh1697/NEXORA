@@ -428,8 +428,10 @@ function contentSignature(head: string): string | undefined {
       JSON.parse(head);
       return 'JSON';
     } catch {
-      // not complete JSON (or truncated): not decided by content
+      // not complete JSON (or truncated): decided only by the object shape below
     }
+    // An object that opens with a quoted key: JSON with template placeholders, or truncated.
+    if (/^\{\s*"[^"\n]{1,100}"\s*:/.test(t)) return 'JSON';
   }
   if (/^\s*apiVersion:\s*\S+\s*$/m.test(t) && /^\s*kind:\s*\S+/m.test(t)) return 'YAML';
   // Line-shape tests for extensionless config files; both are labelled inferred by the caller.

@@ -142,7 +142,7 @@ function FileBrowser({ repoId, inv }: { repoId: number; inv: Inventory }) {
                 <td className={`${td} text-muted`}>{f.reason ?? f.method}</td>
                 <td className={`${td} text-muted`}>
                   {f.detectedBy ?? ''}
-                  {f.confidence === 'inferred' ? ' (heuristic)' : ''}
+                  {f.confidence === 'inferred' && f.detectedBy !== 'heuristic' ? ' (inferred)' : ''}
                 </td>
               </tr>
             ))}

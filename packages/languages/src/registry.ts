@@ -46,7 +46,11 @@ export const ANALYSERS = {
       'top-level keys',
       'package.json, tsconfig, composer.json, OpenAPI, JSON Schema, Jupyter notebooks, appsettings: document-specific facts',
     ],
-    limitations: ['values of configuration keys are never stored'],
+    limitations: [
+      'values of configuration keys are never stored',
+      'templates ({{ }}, {% %}, ${…}) are read with placeholders and labelled partial',
+      'several JSON documents in one file are read as a sequence, labelled partial',
+    ],
   },
   yaml: {
     name: 'YAML 1.2 parser (yaml package)',
@@ -59,7 +63,7 @@ export const ANALYSERS = {
       'OpenAPI paths and operations, Helm charts, Kustomize resources, Ansible plays',
     ],
     limitations: [
-      'Helm templates ({{ }}) are not rendered; files that are not valid YAML before rendering are text only',
+      'Helm, Go and Jinja templates are not rendered: template tags are replaced by placeholders and the result is read as partial; a file that is still not valid YAML stays text only',
       'values of configuration keys are never stored',
     ],
   },
@@ -172,6 +176,27 @@ export const ANALYSERS = {
       'calls between functions are not extracted',
       'parameter types are as written, not checked',
     ],
+  },
+  delimited: {
+    name: 'CSV/TSV reader',
+    level: 'full',
+    capabilities: ['row and column counts', 'whether every row has the same number of columns'],
+    limitations: [
+      'cell values and header names are never kept (data files can hold credentials)',
+      'partial when rows have different column counts',
+    ],
+  },
+  dot: {
+    name: 'Graphviz reader',
+    level: 'partial',
+    capabilities: ['graph name, direction, nodes with their line, edge count'],
+    limitations: ['pattern based: attributes, subgraph scoping and ports are not modelled'],
+  },
+  gettext: {
+    name: 'gettext catalog reader',
+    level: 'full',
+    capabilities: ['message and plural-form counts', 'catalog language'],
+    limitations: ['message texts are not kept'],
   },
   lockfile: {
     name: 'Lockfile package counter',
@@ -485,6 +510,10 @@ const ANALYSER_BY_LANGUAGE: Record<string, AnalyserId> = {
   'Avro IDL': 'idl',
   Smithy: 'idl',
   WebIDL: 'idl',
+  CSV: 'delimited',
+  TSV: 'delimited',
+  'Graphviz (DOT)': 'dot',
+  'Gettext Catalog': 'gettext',
 };
 for (const l of DECLARATION_LANGUAGES) ANALYSER_BY_LANGUAGE[l] ??= 'declarations';
 

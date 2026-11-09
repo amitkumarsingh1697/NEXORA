@@ -6717,7 +6717,11 @@ var ANALYSER_BY_LANGUAGE = {
 	"Cap'n Proto": "idl",
 	"Avro IDL": "idl",
 	Smithy: "idl",
-	WebIDL: "idl"
+	WebIDL: "idl",
+	CSV: "delimited",
+	TSV: "delimited",
+	"Graphviz (DOT)": "dot",
+	"Gettext Catalog": "gettext"
 };
 for (const l of DECLARATION_LANGUAGES) ANALYSER_BY_LANGUAGE[l] ??= "declarations";
 /** Formats Linguist does not list that repositories commonly contain. */
@@ -7848,10 +7852,13 @@ function contentSignature(head) {
 	if (/^<!DOCTYPE\s+html|^<html\b/i.test(t)) return "HTML";
 	if (/^<\?php\b/.test(t)) return "PHP";
 	if (/^%YAML\b|^---\s*\n\s*\w[\w-]*\s*:/.test(t)) return "YAML";
-	if (/^[{[]/.test(t)) try {
-		JSON.parse(head);
-		return "JSON";
-	} catch {}
+	if (/^[{[]/.test(t)) {
+		try {
+			JSON.parse(head);
+			return "JSON";
+		} catch {}
+		if (/^\{\s*"[^"\n]{1,100}"\s*:/.test(t)) return "JSON";
+	}
 	if (/^\s*apiVersion:\s*\S+\s*$/m.test(t) && /^\s*kind:\s*\S+/m.test(t)) return "YAML";
 	const meaningful = t.split("\n").slice(0, 200).filter((l) => l.trim() && !/^\s*[#;]/.test(l));
 	if (meaningful.length >= 2) {

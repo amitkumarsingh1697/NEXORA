@@ -221,6 +221,88 @@
     0
    ]
   },
+  "YAML parser (GitHub Actions)": {
+   "hello-world": [
+    1,
+    0
+   ],
+   "microservices-demo": [
+    9,
+    0
+   ],
+   "neovim": [
+    24,
+    0
+   ],
+   "dotfiles": [
+    2,
+    0
+   ],
+   "terraform-aws-eks": [
+    6,
+    0
+   ],
+   "nowinandroid": [
+    3,
+    0
+   ],
+   "jaffle-shop": [
+    3,
+    0
+   ],
+   "llama2.c": [
+    1,
+    0
+   ],
+   "fortran-stdlib": [
+    12,
+    0
+   ],
+   "phoenix": [
+    5,
+    0
+   ],
+   "shellcheck": [
+    2,
+    0
+   ],
+   "eShop": [
+    4,
+    0
+   ],
+   "ansible-examples": [
+    1,
+    0
+   ],
+   "home-manager": [
+    8,
+    0
+   ],
+   "posh-git": [
+    2,
+    0
+   ],
+   "rubygems.org": [
+    6,
+    0
+   ],
+   "laravel": [
+    5,
+    0
+   ],
+   "IceCubesApp": [
+    1,
+    0
+   ],
+   "play-samples": [
+    2,
+    0
+   ],
+   "keycloak": [
+    16,
+    0
+   ]
+  },
   "TypeScript and JavaScript (TypeScript Compiler API)": {
    "hello-world": [
     16,
@@ -529,7 +611,7 @@
     0
    ],
    "neovim": [
-    1,
+    3,
     0
    ],
    "terraform-aws-eks": [
@@ -549,7 +631,7 @@
     0
    ],
    "eShop": [
-    6,
+    8,
     0
    ],
    "ansible-examples": [
@@ -561,7 +643,7 @@
     0
    ],
    "rubygems.org": [
-    25,
+    26,
     0
    ],
    "laravel": [
@@ -569,7 +651,7 @@
     0
    ],
    "keycloak": [
-    26,
+    44,
     0
    ],
    "kubernetes": [
@@ -667,11 +749,11 @@
     0
    ],
    "IceCubesApp": [
-    95,
+    96,
     0
    ],
    "keycloak": [
-    154,
+    155,
     0
    ],
    "kubernetes": [
@@ -885,7 +967,7 @@
     0
    ],
    "rubygems.org": [
-    2,
+    3,
     0
    ],
    "laravel": [
@@ -928,40 +1010,6 @@
    ],
    "kubernetes": [
     5213,
-    0
-   ]
-  },
-  "YAML parser (GitHub Actions)": {
-   "microservices-demo": [
-    4,
-    0
-   ],
-   "neovim": [
-    6,
-    0
-   ],
-   "terraform-aws-eks": [
-    1,
-    0
-   ],
-   "eShop": [
-    4,
-    0
-   ],
-   "ansible-examples": [
-    1,
-    0
-   ],
-   "laravel": [
-    3,
-    0
-   ],
-   "IceCubesApp": [
-    1,
-    0
-   ],
-   "keycloak": [
-    1,
     0
    ]
   },
@@ -1119,6 +1167,42 @@
     0
    ]
   },
+  "YAML parser (syntax and top-level keys only); template placeholders not rendered": {
+   "microservices-demo": [
+    13,
+    0
+   ],
+   "jaffle-shop": [
+    2,
+    0
+   ],
+   "ansible-examples": [
+    10,
+    0
+   ],
+   "home-manager": [
+    3,
+    0
+   ],
+   "keycloak": [
+    1,
+    0
+   ],
+   "kubernetes": [
+    2,
+    0
+   ]
+  },
+  "YAML parser (Kubernetes manifest); template placeholders not rendered": {
+   "microservices-demo": [
+    1,
+    0
+   ],
+   "kubernetes": [
+    11,
+    0
+   ]
+  },
   "Interface definition extractor (Protocol Buffer)": {
    "microservices-demo": [
     8,
@@ -1186,6 +1270,20 @@
    ],
    "rubygems.org": [
     1,
+    0
+   ]
+  },
+  "gettext catalog reader (message count)": {
+   "neovim": [
+    32,
+    0
+   ],
+   "home-manager": [
+    86,
+    0
+   ],
+   "kubernetes": [
+    13,
     0
    ]
   },
@@ -1260,6 +1358,38 @@
    ]
   },
   "YAML parser (dbt: key names)": {
+   "jaffle-shop": [
+    1,
+    0
+   ]
+  },
+  "CSV reader (row and column counts; cell values are not kept)": {
+   "jaffle-shop": [
+    4,
+    0
+   ],
+   "cobol-course": [
+    1,
+    0
+   ],
+   "fortran-stdlib": [
+    1,
+    0
+   ],
+   "db-sample-schemas": [
+    2,
+    0
+   ],
+   "home-manager": [
+    1,
+    0
+   ],
+   "kubernetes": [
+    1,
+    0
+   ]
+  },
+  "YAML parser (dbt: key names); template placeholders not rendered": {
    "jaffle-shop": [
     1,
     0
@@ -1347,27 +1477,35 @@
     0
    ]
   },
+  "YAML parser (Ansible); template placeholders not rendered": {
+   "ansible-examples": [
+    61,
+    0
+   ],
+   "keycloak": [
+    5,
+    0
+   ]
+  },
   "TOML parser": {
    "home-manager": [
     0,
     1
    ]
   },
-  "JSON parser": {
+  "YAML parser (GitLab CI)": {
    "home-manager": [
-    0,
-    1
-   ],
-   "keycloak": [
-    0,
-    2
-   ],
-   "kubernetes": [
-    0,
-    3
+    1,
+    0
    ]
   },
-  "YAML parser (GitLab CI)": {
+  "JSON parser (8 concatenated documents)": {
+   "home-manager": [
+    1,
+    0
+   ]
+  },
+  "JSON parser (6 concatenated documents)": {
    "home-manager": [
     1,
     0
@@ -1403,6 +1541,12 @@
    "keycloak": [
     3,
     0
+   ]
+  },
+  "JSON parser": {
+   "keycloak": [
+    0,
+    1
    ]
   },
   "XML element scanner (Maven POM)": {
@@ -1447,6 +1591,16 @@
     0
    ]
   },
+  "JSON parser (syntax and top-level keys only); template placeholders not rendered": {
+   "keycloak": [
+    1,
+    0
+   ],
+   "kubernetes": [
+    6,
+    0
+   ]
+  },
   "JSON parser (kubernetes)": {
    "kubernetes": [
     1083,
@@ -1456,6 +1610,18 @@
   "JSON Lines parser": {
    "kubernetes": [
     2,
+    0
+   ]
+  },
+  "JSON parser (2 concatenated documents)": {
+   "kubernetes": [
+    3,
+    0
+   ]
+  },
+  "Graphviz reader (graph, nodes and edges by pattern)": {
+   "kubernetes": [
+    3,
     0
    ]
   }
@@ -1473,6 +1639,30 @@
    "posh-git",
    "laravel",
    "keycloak"
+  ],
+  "YAML": [
+   "hello-world",
+   "microservices-demo",
+   "neovim",
+   "dotfiles",
+   "terraform-aws-eks",
+   "nowinandroid",
+   "jaffle-shop",
+   "llama2.c",
+   "cobol-course",
+   "fortran-stdlib",
+   "phoenix",
+   "shellcheck",
+   "eShop",
+   "ansible-examples",
+   "home-manager",
+   "posh-git",
+   "rubygems.org",
+   "laravel",
+   "IceCubesApp",
+   "play-samples",
+   "keycloak",
+   "kubernetes"
   ],
   "JavaScript": [
    "hello-world",
@@ -1564,28 +1754,6 @@
    "microservices-demo",
    "play-samples",
    "keycloak"
-  ],
-  "YAML": [
-   "hello-world",
-   "microservices-demo",
-   "neovim",
-   "terraform-aws-eks",
-   "nowinandroid",
-   "jaffle-shop",
-   "cobol-course",
-   "fortran-stdlib",
-   "phoenix",
-   "shellcheck",
-   "eShop",
-   "ansible-examples",
-   "home-manager",
-   "posh-git",
-   "rubygems.org",
-   "laravel",
-   "IceCubesApp",
-   "play-samples",
-   "keycloak",
-   "kubernetes"
   ],
   "Apex": [
    "hello-world"
@@ -1977,6 +2145,11 @@
    "microservices-demo",
    "kubernetes"
   ],
+  "Gettext Catalog": [
+   "neovim",
+   "home-manager",
+   "kubernetes"
+  ],
   "INI": [
    "neovim",
    "nowinandroid",
@@ -1994,6 +2167,14 @@
   "Gradle Kotlin DSL": [
    "nowinandroid",
    "play-samples"
+  ],
+  "CSV": [
+   "jaffle-shop",
+   "cobol-course",
+   "fortran-stdlib",
+   "db-sample-schemas",
+   "home-manager",
+   "kubernetes"
   ],
   "Jupyter Notebook": [
    "llama2.c"
@@ -2043,6 +2224,9 @@
    "keycloak"
   ],
   "Go Workspace": [
+   "kubernetes"
+  ],
+  "Graphviz (DOT)": [
    "kubernetes"
   ]
  }
