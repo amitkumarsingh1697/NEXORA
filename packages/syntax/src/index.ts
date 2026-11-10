@@ -28,3 +28,18 @@ export {
   type DeclRef,
   type ResolveFile,
 } from './resolve';
+
+import type { Tree } from 'web-tree-sitter';
+import { parserFor } from './engine';
+export type { Node as SyntaxNode, Tree as SyntaxTree } from 'web-tree-sitter';
+
+/**
+ * Parses source with one grammar and returns the tree-sitter tree, for readers that need more
+ * than the declarations (such as ORM schema readers). The caller should `delete()` the tree.
+ */
+export function parseTree(grammarId: string, source: string): Tree | Error {
+  const parser = parserFor(grammarId);
+  if (parser instanceof Error) return parser;
+  const tree = parser.parse(source);
+  return tree ?? new Error('the parser returned no tree');
+}

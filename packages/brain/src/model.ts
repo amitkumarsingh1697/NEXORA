@@ -113,6 +113,7 @@ export const SYNAPSE_KINDS = [
   'includes',
   'fires_on',
   'indexes',
+  'maps_to',
 ] as const;
 export type SynapseKind = (typeof SYNAPSE_KINDS)[number];
 

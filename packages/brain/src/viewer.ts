@@ -62,6 +62,7 @@ const SYNAPSE_COLORS: Record<SynapseKind, string> = {
   includes: '#c4b5fd',
   fires_on: '#f87171',
   indexes: '#a5b4fc',
+  maps_to: '#2dd4bf',
 };
 
 const KIND_SIZE: Record<NeuronKind, number> = {

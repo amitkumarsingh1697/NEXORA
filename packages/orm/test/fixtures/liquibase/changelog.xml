@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog">
+  <changeSet id="1" author="a">
+    <createTable tableName="account">
+      <column name="id" type="BIGINT" autoIncrement="true">
+        <constraints primaryKey="true" nullable="false"/>
+      </column>
+      <column name="email" type="VARCHAR(254)">
+        <constraints nullable="false" unique="true"/>
+      </column>
+    </createTable>
+    <rollback><dropTable tableName="account"/></rollback>
+  </changeSet>
+  <changeSet id="2" author="a">
+    <createTable tableName="session">
+      <column name="id" type="UUID"><constraints primaryKey="true"/></column>
+      <column name="account_id" type="BIGINT">
+        <constraints nullable="false" foreignKeyName="fk_session_account" referencedTableName="account" referencedColumnNames="id"/>
+      </column>
+    </createTable>
+    <addColumn tableName="account">
+      <column name="name" type="VARCHAR(100)" defaultValue="anon"/>
+    </addColumn>
+  </changeSet>
+</databaseChangeLog>

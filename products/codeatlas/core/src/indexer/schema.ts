@@ -40,7 +40,8 @@ export interface TableDef {
   name: string;
   columns: ColumnDef[];
   line: number;
-  source: 'sql' | 'prisma' | 'drizzle';
+  /** sql, prisma, drizzle, or the ORM framework that defines it (django, jpa, rails…; see @nexora/orm). */
+  source: string;
   /** Prisma: the model name when the table is mapped to another name. */
   model?: string;
 }

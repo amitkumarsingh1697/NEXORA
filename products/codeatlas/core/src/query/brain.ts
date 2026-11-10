@@ -48,6 +48,7 @@ const SYNAPSE_OF: Record<string, SynapseKind> = {
   includes: 'includes',
   fires_on: 'fires_on',
   indexes: 'indexes',
+  maps_to: 'maps_to',
 };
 
 /** Links between files (from build, CI, container and config files). */
@@ -197,28 +198,52 @@ function uiPackageOf(path: string, packages: Map<string, string>): string | unde
 }
 
 /** Schema sources in formats CodeAtlas does not parse, found by path or a bounded content check. */
+/** Where an ORM table is defined, by which model, and how its name was found. */
+function tableDetails(data: Record<string, unknown>): { details?: BrainDetail[] } {
+  const by = Array.isArray(data.definedBy) ? (data.definedBy as Record<string, unknown>[]) : [];
+  if (!by.length) return {};
+  const details: BrainDetail[] = [];
+  if (data.tableKind === 'collection')
+    details.push({ label: 'Kind', value: 'document collection' });
+  if (data.tableKind === 'join-table')
+    details.push({ label: 'Kind', value: 'join table created by the ORM' });
+  for (const d of by.slice(0, 6)) {
+    const where = `${String(d.path)}:${String(d.line)}`;
+    const what = d.change
+      ? `${String(d.label)} migration adds columns`
+      : d.model
+        ? `${String(d.label)} model ${String(d.model)}`
+        : `${String(d.label)} migration`;
+    details.push({ label: 'Defined by', value: `${what} (${where})` });
+    if (d.rule) details.push({ label: 'Name', value: String(d.rule) });
+  }
+  return { details };
+}
+
 const UNREAD_SCHEMA_KINDS: {
   label: string;
   path: RegExp;
   content?: RegExp;
 }[] = [
-  { label: 'Liquibase changelogs', path: /(^|\/)[^/]*change-?log[^/]*\.(xml|ya?ml)$/i },
+  // Read since sprint L3 (ADR 0017): Liquibase, JPA, Django, SQLAlchemy, Rails, EF Core and the
+  // other frameworks in @nexora/orm. These mapping formats are still not read:
+  { label: 'Hibernate XML mappings', path: /\.hbm\.xml$/i },
+  { label: 'JPA orm.xml mapping files', path: /(^|\/)orm\.xml$/i, content: /<entity-mappings\b/ },
   {
-    label: 'JPA/Hibernate @Entity classes',
-    path: /\.(java|kt)$/,
-    content: /^\s*@(javax\.persistence\.|jakarta\.persistence\.)?Entity\b/m,
+    label: 'MyBatis mapper files',
+    path: /\.xml$/i,
+    content: /<!DOCTYPE\s+mapper\b|<mapper\s+namespace=/,
   },
-  { label: 'Django models files', path: /(^|\/)models\.py$/, content: /models\.Model\b/ },
+  { label: 'Doctrine XML or YAML mappings', path: /\.orm\.(xml|ya?ml)$/i },
   {
-    label: 'SQLAlchemy model files',
-    path: /\.py$/,
-    content: /\b(declarative_base\(|DeclarativeBase\b)/,
+    label: 'Flyway Java migrations',
+    path: /(^|\/)V\d+[\w.]*__\w+\.(java|kt)$/,
+    content: /\bBaseJavaMigration\b/,
   },
-  { label: 'Rails schema files', path: /(^|\/)db\/schema\.rb$/ },
   {
-    label: 'Entity Framework migrations',
-    path: /(^|\/)Migrations\/[^/]+\.cs$/,
-    content: /migrationBuilder\.CreateTable/,
+    label: 'Entity Framework 6 code-first migrations',
+    path: /\.cs$/,
+    content: /\bDbMigration\b[\s\S]*\bCreateTable\(/,
   },
 ];
 
@@ -498,7 +523,7 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
         (kind === 'table' || fromSql) && Array.isArray(n.data.columns)
           ? (n.data.columns as BrainColumn[])
           : undefined,
-      ...(fromSql ? { details: sqlDetails(n.data) } : {}),
+      ...(fromSql ? { details: sqlDetails(n.data) } : kind === 'table' ? tableDetails(n.data) : {}),
       ref: n.id,
     });
   }

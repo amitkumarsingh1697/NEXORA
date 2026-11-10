@@ -70,6 +70,25 @@ importers:
         specifier: 10.4.0
         version: 10.4.0
 
+  packages/orm:
+    dependencies:
+      '@nexora/syntax':
+        specifier: workspace:*
+        version: link:../syntax
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
+    devDependencies:
+      '@nexora/languages':
+        specifier: workspace:*
+        version: link:../languages
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+
   packages/sql:
     dependencies:
       libpg-query:
@@ -113,6 +132,9 @@ importers:
       '@nexora/logging':
         specifier: workspace:*
         version: link:../../../packages/logging
+      '@nexora/orm':
+        specifier: workspace:*
+        version: link:../../../packages/orm
       '@nexora/sql':
         specifier: workspace:*
         version: link:../../../packages/sql

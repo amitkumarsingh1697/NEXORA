@@ -4,6 +4,7 @@ import type { Db } from '../store/db';
 import { tx } from '../store/db';
 import { indexMarkdown } from './docs';
 import { addSchema, parsePrismaSchema, parseSqlSchema } from './schema';
+import { addOrm, readOrmFiles, type OrmStats } from './extract/orm';
 import {
   addSqlObjects,
   analyseSql,
@@ -112,6 +113,8 @@ export interface CoverageReport {
     objects: Record<string, number>;
     links: SqlLinkStats;
   };
+  /** Tables, keys and model-to-table links read from ORM models and migrations. */
+  orm: OrmStats;
 }
 
 export interface IndexOptions {
@@ -432,6 +435,11 @@ function buildAndPersist(
 
   const sqlLinks = linkSqlObjects(graph, sqlFiles);
 
+  // ORM models and migrations (Django, SQLAlchemy, JPA, EF Core, Rails, Laravel, GORM,
+  // TypeORM, Liquibase…), resolved across files once every SQL and Prisma table is known.
+  progress('Reading ORM models and migrations');
+  const orm = addOrm(graph, readOrmFiles(disc.files, texts)).stats;
+
   // Entry points declared in package.json (observed: they are declared).
   for (const p of packages) {
     const entries: [string, string][] = [
@@ -680,6 +688,7 @@ function buildAndPersist(
         .reduce<Record<string, number>>((m, o) => ((m[o.kind] = (m[o.kind] ?? 0) + 1), m), {}),
       links: sqlLinks,
     },
+    orm,
     manifests: findManifests([
       ...disc.files.map((f) => f.path),
       ...disc.skipped

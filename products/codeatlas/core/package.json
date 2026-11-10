@@ -17,6 +17,7 @@
     "@nexora/brain": "workspace:*",
     "@nexora/languages": "workspace:*",
     "@nexora/logging": "workspace:*",
+    "@nexora/orm": "workspace:*",
     "@nexora/sql": "workspace:*",
     "@nexora/syntax": "workspace:*",
     "@nexora/validation": "workspace:*",
