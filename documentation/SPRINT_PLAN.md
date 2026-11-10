@@ -100,6 +100,19 @@ The founder asked for full analysis of every language, file, method, function an
 **Status:** done 2026-11-09 (evidence in IMPLEMENTATION_STATUS.md, research R26 to R28, ADR 0015).
 **Excluded from L1, planned next:** L2 databases (views, procedures, functions, triggers, indexes and sequences with their bodies, through a PostgreSQL parser and statement analysers for other dialects); L3 ORM schema readers; L4 compiler-grade resolution through SCIP indexers where a toolchain exists; L5 grammars without published WebAssembly (Dart, Swift, SQL dialects), which need approval to build; L6 the ArchLens bundle, skill update and proof runs on large repositories.
 
+## Sprint L2: Database objects with their bodies
+
+| ID   | Item                                | Requirements | Acceptance criteria                                                                                                                                                                |
+| ---- | ----------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L2-1 | PostgreSQL through its own parser   | DB-01, DB-02 | Every statement of a PostgreSQL file parsed by libpg-query; PL/pgSQL bodies through its compiler front end; byte offsets mapped to lines (non-ASCII test).                         |
+| L2-2 | Statement reader for other dialects | DB-01, DB-02 | MySQL, SQL Server, Oracle, Db2 and SQLite fixtures: every statement split by its client's rules and recognised; parameters, modes, returns and body references at the right lines. |
+| L2-3 | CodeAtlas graph and status          | DB-03, DB-04 | Objects as nodes; reads, writes, calls, triggers and indexes linked with labels; unmatched names kept; `full` only for a complete PostgreSQL parse.                                |
+| L2-4 | Brain and diagram                   | DB-05        | Database neuron kinds in the database lobe with a definition panel; a database objects diagram.                                                                                    |
+| L2-5 | Real schemas                        | DB-01        | Sakila in 8 dialects and Pagila read (research R30).                                                                                                                               |
+
+**Status:** done 2026-11-10 (evidence in IMPLEMENTATION_STATUS.md, research R29 and R30, ADR 0016).
+**Excluded from L2, planned next:** ORM and migration-tool schemas (L3); complete grammars for MySQL, SQL Server, Oracle and Db2 (L5, needs approval to build tree-sitter grammars from source); search-path-aware name resolution across schemas.
+
 ---
 
 ## Blocked or external track (not sprint-scheduled)

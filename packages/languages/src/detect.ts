@@ -220,7 +220,8 @@ export const HEURISTICS: Record<string, [string, RegExp][]> = {
     ],
     [
       'PLSQL',
-      /\bCREATE\s+(OR\s+REPLACE\s+)?(PACKAGE|TYPE\s+BODY|TRIGGER)\b|^\s*END\s+\w+\s*;\s*\n\s*\/\s*$|\bDBMS_\w+\./im,
+      // MySQL, SQLite and Db2 also write CREATE TRIGGER: only Oracle-only syntax counts.
+      /\bCREATE\s+(OR\s+REPLACE\s+)?(EDITIONABLE\s+)?(PACKAGE|TYPE\s+BODY)\b|^\s*END\s+\w+\s*;\s*\n\s*\/\s*$|\bDBMS_\w+\.|\bVARCHAR2\b/im,
     ],
     ['SQLPL', /\bLANGUAGE\s+SQL\b.*\bBEGIN\s+ATOMIC\b/is],
   ],

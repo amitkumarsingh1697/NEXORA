@@ -39,7 +39,6 @@ import {
   readToml,
   readXml,
   readYaml,
-  sqlObjects,
   type Link,
   type StructuredResult,
   type StructSymbol,
@@ -93,11 +92,6 @@ const BRAIN_KIND: Record<string, string> = {
   'graphql-interface': 'interface',
   'graphql-input': 'class',
   'graphql-enum': 'class',
-  'sql-procedure': 'function',
-  'sql-function': 'function',
-  'sql-package': 'class',
-  'sql-package-body': 'class',
-  'sql-trigger': 'function',
 };
 
 const LINK_BASE_ROOT = new Set([
@@ -583,11 +577,9 @@ export function analyseNonTsFiles(
     const rec = records.get(f.path);
     const analyser = analyserOf(f.language);
 
-    // SQL and Prisma are read by the schema readers in index.ts; procedural objects here.
+    // SQL files are read in index.ts (tables, then every other object, then their links),
+    // which also sets their status.
     if (analyser === 'sql') {
-      const objs = sqlObjects(text);
-      addSymbols(f, objs);
-      setStatus(rec, 'partial', 'SQL schema parser and object extractor');
       bump('sql');
       stats.filesAnalysed++;
       continue;

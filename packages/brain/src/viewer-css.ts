@@ -106,6 +106,9 @@ export const VIEWER_CSS = `
 .nb-cols-wrap{overflow-x:auto;margin:4px 0 8px}
 .nb-cols table{border-collapse:collapse;font-size:12px;width:100%}
 .nb-cols th,.nb-cols td{border-bottom:1px solid var(--nb-line);padding:3px 4px;text-align:left;white-space:nowrap;vertical-align:top}
+.nb-details dl{display:grid;grid-template-columns:max-content 1fr;gap:2px 10px;margin:4px 0 8px;font-size:12px}
+.nb-details dt{color:var(--nb-muted)}
+.nb-details dd{margin:0;word-break:break-word}
 .nb-cols td:first-child,.nb-cols td:last-child{white-space:normal;overflow-wrap:anywhere}
 .nb-cols th{color:var(--nb-muted);font-weight:600}
 .nb-cols td:first-child{font-family:ui-monospace,monospace}

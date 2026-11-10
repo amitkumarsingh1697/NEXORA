@@ -60,6 +60,8 @@ const SYNAPSE_COLORS: Record<SynapseKind, string> = {
   builds: '#fdba74',
   runs: '#f9a8d4',
   includes: '#c4b5fd',
+  fires_on: '#f87171',
+  indexes: '#a5b4fc',
 };
 
 const KIND_SIZE: Record<NeuronKind, number> = {
@@ -74,6 +76,19 @@ const KIND_SIZE: Record<NeuronKind, number> = {
   interface: 0.9,
   config: 0.9,
   method: 0.8,
+  view: 1.1,
+  procedure: 1.0,
+  trigger: 0.9,
+  index: 0.6,
+  sequence: 0.6,
+  datatype: 0.8,
+  package: 1.5,
+  policy: 0.7,
+  rule: 0.7,
+  event: 0.8,
+  synonym: 0.6,
+  schema: 1.4,
+  extension: 0.8,
 };
 
 const KIND_LABEL: Record<NeuronKind, string> = {
@@ -88,6 +103,19 @@ const KIND_LABEL: Record<NeuronKind, string> = {
   service: 'External service',
   config: 'Configuration',
   table: 'Table',
+  view: 'View',
+  procedure: 'Procedure',
+  trigger: 'Trigger',
+  index: 'Index',
+  sequence: 'Sequence',
+  datatype: 'Type',
+  package: 'Package',
+  policy: 'Policy',
+  rule: 'Rule',
+  event: 'Scheduled event',
+  synonym: 'Synonym',
+  schema: 'Schema',
+  extension: 'Extension',
 };
 
 const OVERVIEW_CAMERA: Vec3 = [3.9, 1.5, 2.8];
@@ -872,6 +900,14 @@ export function mountBrain(
     if (n.doc) right.append(el('p', { class: 'nb-doc' }, n.doc));
     if (n.signature) right.append(el('pre', { class: 'nb-sig' }, n.signature));
     if (n.columns?.length) right.append(columnsTable(n));
+    if (n.details?.length) {
+      const sec = el('section', { class: 'nb-details' });
+      sec.append(el('h4', {}, 'Definition'));
+      const dl = el('dl');
+      for (const d of n.details) dl.append(el('dt', {}, d.label), el('dd', {}, d.value));
+      sec.append(dl);
+      right.append(sec);
+    }
 
     const rel = index.relations(n.id);
     if (n.params || n.returns) {
@@ -880,7 +916,13 @@ export function mountBrain(
       const ul = el('ul');
       if (n.params?.length)
         for (const p of n.params)
-          ul.append(el('li', {}, `in  ${p.name}${p.optional ? '?' : ''}: ${p.type}`));
+          ul.append(
+            el(
+              'li',
+              {},
+              `${(p.mode ?? 'in').padEnd(3)} ${p.name}${p.optional ? '?' : ''}: ${p.type}${p.default !== undefined ? ` = ${p.default}` : ''}`,
+            ),
+          );
       else if (n.params) ul.append(el('li', {}, 'in  (no parameters)'));
       if (n.returns) {
         const callers = rel.incoming.get('calls')?.length ?? 0;

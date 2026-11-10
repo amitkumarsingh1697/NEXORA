@@ -7537,7 +7537,7 @@ var HEURISTICS = {
 	".sql": [
 		["PLpgSQL", /\$\$\s*LANGUAGE\s+'?plpgsql/i],
 		["TSQL", /^\s*GO\s*$|\bCREATE\s+PROC(EDURE)?\s+\[?dbo\]?\.|\bNVARCHAR\s*\(\s*MAX\s*\)|^\s*SET\s+NOCOUNT\b/im],
-		["PLSQL", /\bCREATE\s+(OR\s+REPLACE\s+)?(PACKAGE|TYPE\s+BODY|TRIGGER)\b|^\s*END\s+\w+\s*;\s*\n\s*\/\s*$|\bDBMS_\w+\./im],
+		["PLSQL", /\bCREATE\s+(OR\s+REPLACE\s+)?(EDITIONABLE\s+)?(PACKAGE|TYPE\s+BODY)\b|^\s*END\s+\w+\s*;\s*\n\s*\/\s*$|\bDBMS_\w+\.|\bVARCHAR2\b/im],
 		["SQLPL", /\bLANGUAGE\s+SQL\b.*\bBEGIN\s+ATOMIC\b/is]
 	],
 	".cls": [

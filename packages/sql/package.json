@@ -1,0 +1,22 @@
+{
+  "name": "@nexora/sql",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "description": "Database object analysis for CodeAtlas and ArchLens: views, procedures, functions, triggers, indexes, sequences, types and packages with their parameters, bodies and references. PostgreSQL through its own parser (libpg-query); other dialects through a statement reader.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "libpg-query": "18.2.2"
+  },
+  "devDependencies": {
+    "@nexora/languages": "workspace:*",
+    "tsx": "4.23.15"
+  }
+}

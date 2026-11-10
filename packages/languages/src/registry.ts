@@ -127,15 +127,19 @@ export const ANALYSERS = {
     limitations: ['expressions and references between resources are not evaluated'],
   },
   sql: {
-    name: 'SQL schema parser and object extractor',
-    level: 'partial',
+    name: 'SQL: PostgreSQL parser (libpg-query) and statement reader (@nexora/sql)',
+    level:
+      'full when PostgreSQL’s own parser accepts every statement; otherwise partial, with the dialect and the first problem line recorded',
     capabilities: [
       'CREATE/ALTER TABLE with column types, sizes, keys and foreign keys',
-      'views, procedures, functions, triggers, packages, sequences, indexes and types (by name)',
+      'views and materialized views with their columns; functions and procedures with parameters (mode, type, default) and return types; triggers with timing, events and the routine they run; indexes with their columns; sequences, types, domains, packages and package members, policies, rules, events, synonyms, schemas and extensions',
+      'bodies: the tables each object reads and writes and the routines it calls, by line (PL/pgSQL through its compiler front end)',
+      'dialects: PostgreSQL by its parser; MySQL/MariaDB, SQL Server, Oracle, Db2 and SQLite by a statement reader that follows each client’s delimiters (GO, DELIMITER, /, --#SET TERMINATOR)',
     ],
     limitations: [
-      'not a full SQL grammar; dynamic SQL and procedure bodies are not analysed',
-      'dialect-specific syntax may be skipped',
+      'SQL built at run time (EXECUTE, EXECUTE IMMEDIATE, sp_executesql, PREPARE) is recorded by line but not analysed',
+      'names are matched to the repository schema by name, not through the server’s search path',
+      'no complete grammar is bundled for dialects other than PostgreSQL: their statements are read from tokens, and those files are partial',
     ],
   },
   prisma: {

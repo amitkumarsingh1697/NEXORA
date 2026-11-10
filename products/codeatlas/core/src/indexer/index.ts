@@ -5,6 +5,15 @@ import { tx } from '../store/db';
 import { indexMarkdown } from './docs';
 import { addSchema, parsePrismaSchema, parseSqlSchema } from './schema';
 import {
+  addSqlObjects,
+  analyseSql,
+  extraTables,
+  linkSqlObjects,
+  sqlStatus,
+  type SqlFileResult,
+  type SqlLinkStats,
+} from './extract/sql';
+import {
   IGNORED_DIRS as IGNORED_DIR_NAMES,
   discoverFiles,
   sha1,
@@ -13,6 +22,7 @@ import {
 } from './files';
 import { analyseNonTsFiles, type AnalyseStats } from './extract/analyse';
 import {
+  analyserOf,
   checkInventory,
   coverageSentence,
   summarize,
@@ -95,6 +105,13 @@ export interface CoverageReport {
   };
   /** Declarations, imports and file links found by the non-TypeScript analysers. */
   otherAnalysis: AnalyseStats;
+  /** Database objects read from SQL files, and how their references were linked. */
+  database: {
+    files: number;
+    filesFullyParsed: number;
+    objects: Record<string, number>;
+    links: SqlLinkStats;
+  };
 }
 
 export interface IndexOptions {
@@ -371,14 +388,39 @@ function buildAndPersist(
     adapterFiles,
   );
 
-  // Database schemas in SQL files (migrations, schema.sql) and Prisma schema files.
+  // Database schemas in SQL files (migrations, schema.sql) and Prisma schema files. A SQL
+  // file's other objects (views, routines, triggers, indexes…) are linked once every table is known.
+  progress('Reading database schemas and objects');
+  const sqlFiles: SqlFileResult[] = [];
   for (const f of disc.files) {
     const text = texts.get(f.path);
-    if (!text) continue;
+    if (text === undefined) continue;
+    const isSql =
+      analyserOf(f.language) === 'sql' ||
+      /\.(sql|ddl|pks|pkb|pls|plsql|psql|pgsql|tsql)$/i.test(f.path);
     try {
-      if (/\.(sql|ddl|pks|pkb|pls|plsql|psql|pgsql|tsql)$/i.test(f.path))
-        addSchema(graph, f.path, parseSqlSchema(text));
-      else if (/\.prisma$/i.test(f.path)) addSchema(graph, f.path, parsePrismaSchema(text));
+      if (isSql) {
+        const tables = parseSqlSchema(text);
+        const sql = analyseSql(text, f.language);
+        tables.tables.push(...extraTables(sql, tables.tables));
+        addSchema(graph, f.path, tables);
+        sqlFiles.push(addSqlObjects(graph, f.path, f.language, moduleOf(f.path), sql));
+        const rec = records.get(f.path);
+        if (rec) {
+          const st = text.trim()
+            ? sqlStatus(sql)
+            : {
+                status: 'full' as const,
+                method: 'Empty file (nothing to analyse)',
+                reason: undefined,
+                resolution: undefined,
+              };
+          rec.status = st.status;
+          rec.method = st.method;
+          rec.reason = st.reason;
+          rec.resolution = st.resolution;
+        }
+      } else if (/\.prisma$/i.test(f.path)) addSchema(graph, f.path, parsePrismaSchema(text));
     } catch (e) {
       const rec = records.get(f.path);
       if (rec) {
@@ -387,6 +429,8 @@ function buildAndPersist(
       }
     }
   }
+
+  const sqlLinks = linkSqlObjects(graph, sqlFiles);
 
   // Entry points declared in package.json (observed: they are declared).
   for (const p of packages) {
@@ -626,6 +670,16 @@ function buildAndPersist(
     },
     inventory: { ...inventory, unlisted: disc.unlisted, summary: coverageSentence(inventory) },
     otherAnalysis,
+    database: {
+      files: sqlFiles.length,
+      filesFullyParsed: sqlFiles.filter(
+        (x) => x.result.mode === 'parser' && !x.result.problems.length,
+      ).length,
+      objects: sqlFiles
+        .flatMap((x) => x.result.objects)
+        .reduce<Record<string, number>>((m, o) => ((m[o.kind] = (m[o.kind] ?? 0) + 1), m), {}),
+      links: sqlLinks,
+    },
     manifests: findManifests([
       ...disc.files.map((f) => f.path),
       ...disc.skipped

@@ -1,4 +1,11 @@
-import { classDiagram, tableDiagram, tableFiles, type Diagram, type DiagramKind } from './diagrams';
+import {
+  classDiagram,
+  routineDiagram,
+  tableDiagram,
+  tableFiles,
+  type Diagram,
+  type DiagramKind,
+} from './diagrams';
 import { DEFAULT_REGIONS, type BrainModel, type RegionId } from './model';
 
 export interface DiagramPanel {
@@ -12,6 +19,7 @@ const TABS: { kind: DiagramKind; label: string }[] = [
   { kind: 'er', label: 'ER diagram' },
   { kind: 'schema', label: 'Schema diagram' },
   { kind: 'class', label: 'Class diagram' },
+  { kind: 'routines', label: 'Database objects' },
 ];
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -159,7 +167,8 @@ export function mountDiagramPanel(
         scope.append(el('option', { value: f.file }, `${f.file || 'unknown file'} (${f.tables})`));
       scope.value = tableScope;
     }
-    scopeLabel.hidden = kind === 'class' ? regions.length < 2 : files.length < 2;
+    scopeLabel.hidden =
+      kind === 'routines' || (kind === 'class' ? regions.length < 2 : files.length < 2);
   }
 
   function draw() {
@@ -168,13 +177,23 @@ export function mountDiagramPanel(
     current =
       kind === 'class'
         ? classDiagram(model, classScope ? { region: classScope } : {})
-        : tableDiagram(model, kind === 'schema', tableScope ? { file: tableScope } : {});
+        : kind === 'routines'
+          ? routineDiagram(model)
+          : tableDiagram(model, kind === 'schema', tableScope ? { file: tableScope } : {});
     // The SVG is built from escaped text only (see diagrams.ts), so it is safe to insert.
     canvas.innerHTML = current.svg;
-    const what = kind === 'class' ? 'classes and interfaces' : 'tables';
+    const what =
+      kind === 'class'
+        ? 'classes and interfaces'
+        : kind === 'routines'
+          ? 'views, routines and triggers'
+          : 'tables';
     // An empty table diagram must not read as "this system has no database" (QA AL-04).
     const unread =
-      kind !== 'class' && current.total === 0 && model.coverage?.unreadSchemas
+      kind !== 'class' &&
+      kind !== 'routines' &&
+      current.total === 0 &&
+      model.coverage?.unreadSchemas
         ? [model.coverage.unreadSchemas]
         : [];
     note.textContent = [
