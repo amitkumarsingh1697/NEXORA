@@ -21,10 +21,13 @@ const HINTS: [OrmFramework, RegExp][] = [
   ['mikro-orm', /from\s+['"]@mikro-orm\/[\w-]+['"]/],
   [
     'sequelize',
-    /from\s+['"]sequelize(-typescript)?['"]|require\(['"]sequelize(-typescript)?['"]\)|queryInterface\.(createTable|addColumn)/,
+    /from\s+['"]sequelize(-typescript)?['"]|require\(['"]sequelize(-typescript)?['"]\)|queryInterface\.(createTable|addColumn|dropTable|renameTable|removeColumn|renameColumn)/,
   ],
   ['mongoose', /from\s+['"]mongoose['"]|require\(['"]mongoose['"]\)/],
-  ['knex', /\.schema\s*\.\s*(createTable|alterTable|table|createTableIfNotExists)\s*\(/],
+  [
+    'knex',
+    /\.schema\s*\.\s*(createTable|alterTable|table|createTableIfNotExists|dropTable|dropTableIfExists|renameTable)\s*\(/,
+  ],
   ['objection', /from\s+['"]objection['"]|require\(['"]objection['"]\)/],
 ];
 
@@ -497,6 +500,33 @@ function knexTable(
           ...extra,
         });
         let fs: OrmField[] = [];
+        const tableOp = (op: 'drop-column' | 'rename-column', column: string, to?: string) =>
+          (out.tableOps ??= []).push({
+            framework: 'knex',
+            op,
+            table: name,
+            column,
+            ...(to ? { to } : {}),
+            line: sl,
+          });
+        if (m === 'dropColumn' || m === 'dropColumns') {
+          for (const a of base.arguments) {
+            const c = strOf(a);
+            if (c) tableOp('drop-column', c);
+          }
+          return;
+        }
+        if (m === 'renameColumn') {
+          const to = strOf(base.arguments[1]);
+          if (a0 && to) tableOp('rename-column', a0, to);
+          return;
+        }
+        if (m === 'dropTimestamps') {
+          const camel = boolOf(base.arguments[0]) === true;
+          for (const c of camel ? ['createdAt', 'updatedAt'] : ['created_at', 'updated_at'])
+            tableOp('drop-column', c);
+          return;
+        }
         if (/^(increments|bigIncrements|bigincrements)$/.test(m))
           fs = [mk(a0 ?? 'id', m, { primaryKey: true, nullable: false })];
         else if (m === 'timestamps') {
@@ -576,7 +606,7 @@ function knexTable(
     ts.forEachChild(n, visit);
   };
   visit(fn.body);
-  out.tables.push(t);
+  if (!alter || t.fields.length) out.tables.push(t);
 }
 
 /** True inside `exports.down`, `down(...)` or `async down()`. */
@@ -740,6 +770,25 @@ export function readTs(path: string, source: string): OrmFile | null {
               line: lineOf(sf, n),
               fields: [...props(attrs)].map(([k, v]) => sequelizeAttr(k, v, sf, false)),
             });
+        } else if (/^(dropTable|renameTable|removeColumn|renameColumn)$/.test(name)) {
+          const [a, b, c] = [0, 1, 2].map((i) => strOf(n.arguments[i]));
+          const ln = lineOf(sf, n);
+          const ops = (out.tableOps ??= []);
+          if (name === 'dropTable' && a)
+            ops.push({ framework: 'sequelize', op: 'drop-table', table: a, line: ln });
+          else if (name === 'renameTable' && a && b)
+            ops.push({ framework: 'sequelize', op: 'rename-table', table: a, to: b, line: ln });
+          else if (name === 'removeColumn' && a && b)
+            ops.push({ framework: 'sequelize', op: 'drop-column', table: a, column: b, line: ln });
+          else if (name === 'renameColumn' && a && b && c)
+            ops.push({
+              framework: 'sequelize',
+              op: 'rename-column',
+              table: a,
+              column: b,
+              to: c,
+              line: ln,
+            });
         } else if (name === 'addColumn') {
           const tn = strOf(n.arguments[0]);
           const cn = strOf(n.arguments[1]);
@@ -764,6 +813,26 @@ export function readTs(path: string, source: string): OrmFile | null {
         const fn = n.arguments[1];
         if (tn && fn)
           knexTable(tn, fn, sf, name === 'alterTable' || name === 'table', lineOf(sf, n), out);
+      } else if (
+        fws.includes('knex') &&
+        /^(dropTable|dropTableIfExists|renameTable)$/.test(name) &&
+        ts.isPropertyAccessExpression(n.expression) &&
+        /\.schema$|^schema$/.test(recv) &&
+        !inDown(n)
+      ) {
+        const a = strOf(n.arguments[0]);
+        const b = strOf(n.arguments[1]);
+        const ln = lineOf(sf, n);
+        if (a && name !== 'renameTable')
+          (out.tableOps ??= []).push({ framework: 'knex', op: 'drop-table', table: a, line: ln });
+        else if (a && b)
+          (out.tableOps ??= []).push({
+            framework: 'knex',
+            op: 'rename-table',
+            table: a,
+            to: b,
+            line: ln,
+          });
       } else if (fws.includes('mongoose') && name === 'model' && n.arguments.length >= 2) {
         const mn = strOf(n.arguments[0]);
         const sch = n.arguments[1]!;

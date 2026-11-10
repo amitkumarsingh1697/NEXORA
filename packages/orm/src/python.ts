@@ -289,6 +289,20 @@ function djangoMigrations(root: N, path: string, out: OrmFile): void {
         scope: app,
         virtual: true,
       });
+    } else if (op === 'RenameField') {
+      const model = stringOf(c.kw.get('model_name') ?? c.pos[0]);
+      const from = stringOf(c.kw.get('old_name') ?? c.pos[1]);
+      const to = stringOf(c.kw.get('new_name') ?? c.pos[2]);
+      if (model && from && to)
+        (out.migrationOps ??= []).push({
+          framework: 'django',
+          op: 'rename-field',
+          model,
+          value: from,
+          to,
+          scope: app,
+          line: line(n),
+        });
     } else if (
       op === 'RenameModel' ||
       op === 'DeleteModel' ||
@@ -503,11 +517,29 @@ function sqlalchemy(root: N, out: OrmFile, alembicOnly: boolean): void {
   );
   const inDowngrade = (n: N) =>
     upgrade.some((d) => n.startIndex >= d.startIndex && n.endIndex <= d.endIndex);
+  // with op.batch_alter_table("t") as batch_op: batch_op.add_column(...)
+  const batches: { alias: string; table: string; start: number; end: number }[] = [];
+  for (const w of findAll(root, (x) => x.type === 'with_statement')) {
+    const m =
+      /op\.batch_alter_table\(\s*(?:table_name\s*=\s*)?["']([\w.]+)["'][^)]*\)\s+as\s+(\w+)/.exec(
+        w.text,
+      );
+    if (m) batches.push({ table: m[1]!, alias: m[2]!, start: w.startIndex, end: w.endIndex });
+  }
+  const top = (n: N) => n.startIndex;
   for (const n of findAll(root, (x) => x.type === 'call')) {
-    const c = callOf(n);
-    if (!c) continue;
+    const c0 = callOf(n);
+    if (!c0) continue;
+    const batch = batches.find(
+      (b) => top(n) >= b.start && top(n) <= b.end && c0.fn.startsWith(`${b.alias}.`),
+    );
+    // A batch call names no table: its arguments start one place earlier than op.<call>'s.
+    const c = batch ? { ...c0, fn: `op.${lastName(c0.fn)}` } : c0;
+    const off = batch ? -1 : 0;
+    const p = (i: number) => (i + off >= 0 ? c.pos[i + off] : undefined);
     const fn = lastName(c.fn);
     const isAlembic = /^op\./.test(c.fn);
+    const tableArg = () => batch?.table ?? stringOf(c.pos[0] ?? c.kw.get('table_name'));
     if (fn === 'Table' && !alembicOnly && !isAlembic) {
       const name = stringOf(c.pos[0]);
       if (!name) continue;
@@ -516,17 +548,61 @@ function sqlalchemy(root: N, out: OrmFile, alembicOnly: boolean): void {
       if (fn === 'create_table') {
         const name = stringOf(c.pos[0] ?? c.kw.get('table_name'));
         if (name) out.tables.push(tableFromArgs('alembic', name, c.pos.slice(1), line(n), out));
+      } else if (fn === 'drop_table') {
+        const name = tableArg();
+        if (name)
+          (out.tableOps ??= []).push({
+            framework: 'alembic',
+            op: 'drop-table',
+            table: name,
+            line: line(n),
+          });
+      } else if (fn === 'rename_table') {
+        const from = stringOf(c.pos[0] ?? c.kw.get('old_table_name'));
+        const to = stringOf(c.pos[1] ?? c.kw.get('new_table_name'));
+        if (from && to)
+          (out.tableOps ??= []).push({
+            framework: 'alembic',
+            op: 'rename-table',
+            table: from,
+            to,
+            line: line(n),
+          });
+      } else if (fn === 'drop_column') {
+        const name = tableArg();
+        const col = stringOf(p(1) ?? c.kw.get('column_name'));
+        if (name && col)
+          (out.tableOps ??= []).push({
+            framework: 'alembic',
+            op: 'drop-column',
+            table: name,
+            column: col,
+            line: line(n),
+          });
+      } else if (fn === 'alter_column') {
+        const name = tableArg();
+        const col = stringOf(p(1) ?? c.kw.get('column_name'));
+        const to = stringOf(c.kw.get('new_column_name'));
+        if (name && col && to)
+          (out.tableOps ??= []).push({
+            framework: 'alembic',
+            op: 'rename-column',
+            table: name,
+            column: col,
+            to,
+            line: line(n),
+          });
       } else if (fn === 'add_column') {
-        const name = stringOf(c.pos[0] ?? c.kw.get('table_name'));
-        const col = callOf(c.pos[1] ?? c.kw.get('column'));
+        const name = tableArg();
+        const col = callOf(p(1) ?? c.kw.get('column'));
         const f = name && col ? saColumn(undefined, col) : undefined;
         if (name && f)
           out.tables.push({ framework: 'alembic', name, line: line(n), fields: [f], alter: true });
       } else if (fn === 'create_foreign_key') {
-        const src = stringOf(c.pos[1] ?? c.kw.get('source_table'));
-        const ref = stringOf(c.pos[2] ?? c.kw.get('referent_table'));
-        const lc = c.pos[3] ?? c.kw.get('local_cols');
-        const rc = c.pos[4] ?? c.kw.get('remote_cols');
+        const src = batch?.table ?? stringOf(c.pos[1] ?? c.kw.get('source_table'));
+        const ref = stringOf((batch ? c.pos[1] : c.pos[2]) ?? c.kw.get('referent_table'));
+        const lc = (batch ? c.pos[2] : c.pos[3]) ?? c.kw.get('local_cols');
+        const rc = (batch ? c.pos[3] : c.pos[4]) ?? c.kw.get('remote_cols');
         const locals = named(lc)
           .map((x) => stringOf(x))
           .filter((x): x is string => !!x);
@@ -693,6 +769,12 @@ export function readPython(path: string, source: string): OrmFile | null {
     if (fws.includes('sqlalchemy') || fws.includes('alembic'))
       sqlalchemy(root, out, !fws.includes('sqlalchemy'));
     if (fws.includes('peewee')) peewee(root, out);
+    if (fws.includes('alembic')) {
+      const id = /^revision\s*(?::[^=\n]+)?=\s*["']([^"']+)["']/m.exec(source)?.[1];
+      const down = /^down_revision\s*(?::[^=\n]+)?=\s*([^\n]+)/m.exec(source)?.[1] ?? '';
+      if (id)
+        out.revision = { id, follows: [...down.matchAll(/["']([^"']+)["']/g)].map((m) => m[1]!) };
+    }
   } finally {
     tree.delete();
   }

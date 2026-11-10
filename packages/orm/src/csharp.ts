@@ -445,6 +445,33 @@ function migrations(root: N, out: OrmFile): void {
         fields: [f],
         alter: true,
       });
+    } else if (
+      /^(DropTable|RenameTable|DropColumn|RenameColumn)$/.test(m.name) &&
+      m.target?.text === 'migrationBuilder'
+    ) {
+      const name = str(arg(as, 'name', 0));
+      const ops = (out.tableOps ??= []);
+      const ln = line(inv);
+      if (m.name === 'DropTable' && name)
+        ops.push({ framework: 'ef-core', op: 'drop-table', table: name, line: ln });
+      else if (m.name === 'RenameTable' && name) {
+        const to = str(arg(as, 'newName'));
+        if (to) ops.push({ framework: 'ef-core', op: 'rename-table', table: name, to, line: ln });
+      } else {
+        const table = str(arg(as, 'table', 1));
+        const to = str(arg(as, 'newName'));
+        if (name && table && m.name === 'DropColumn')
+          ops.push({ framework: 'ef-core', op: 'drop-column', table, column: name, line: ln });
+        else if (name && table && to)
+          ops.push({
+            framework: 'ef-core',
+            op: 'rename-column',
+            table,
+            column: name,
+            to,
+            line: ln,
+          });
+      }
     } else if (m.name === 'AddForeignKey' && m.target?.text === 'migrationBuilder') {
       const table = str(arg(as, 'table'));
       const col = str(arg(as, 'column'));
@@ -464,30 +491,70 @@ function migrations(root: N, out: OrmFile): void {
 
 /** Model snapshots: `modelBuilder.Entity("Ns.Customer", b => { b.Property<int>("Id")…; b.ToTable("Customers"); })`. */
 function snapshot(root: N, out: OrmFile): void {
-  for (const inv of findAll(root, (n) => n.type === 'invocation_expression')) {
-    const m = methodOf(inv);
-    if (m.name !== 'Entity') continue;
-    const as = args(inv);
-    const entity = str(as[0]?.value);
-    const body = as[1]?.value;
-    if (!entity || body?.type !== 'lambda_expression') continue;
-    let table: string | undefined;
-    const fields: OrmField[] = [];
-    const keys: string[] = [];
-    for (const ci of findAll(body, (x) => x.type === 'invocation_expression')) {
+  interface Ent {
+    clr: string;
+    line: number;
+    table?: string;
+    keys: string[];
+    fields: OrmField[];
+    /** Owned type: its owner and navigation, whose table it shares unless it names its own. */
+    owner?: string;
+    nav?: string;
+    many?: boolean;
+  }
+  interface Rel {
+    dependent: string;
+    principal: string;
+    props: string[];
+    principalKeys: string[];
+    line: number;
+  }
+  const ents = new Map<string, Ent>();
+  const rels: Rel[] = [];
+  const paramOf = (lam: N) => /^\s*\(?\s*(\w+)/.exec(lam.text)?.[1];
+  /** The lambda that directly encloses a node. */
+  const lambdaOf = (n: N): N | undefined => {
+    for (let p = n.parent; p; p = p.parent) if (p.type === 'lambda_expression') return p;
+    return undefined;
+  };
+  /** The identifier at the root of a call chain (`b` in `b.HasOne(…).WithMany()`). */
+  const rootOf = (n: N | undefined): N | undefined => {
+    let cur = n;
+    while (cur && cur.type === 'invocation_expression') cur = methodOf(cur).target;
+    return cur;
+  };
+
+  const readBlock = (
+    clr: string,
+    lam: N,
+    line0: number,
+    owner?: { clr: string; nav: string; many: boolean },
+  ) => {
+    const param = paramOf(lam);
+    const e: Ent = ents.get(clr) ?? { clr, line: line0, keys: [], fields: [] };
+    if (owner) {
+      e.owner = owner.clr;
+      e.nav = owner.nav;
+      e.many = owner.many;
+    }
+    ents.set(clr, e);
+    for (const ci of findAll(lam, (x) => x.type === 'invocation_expression')) {
+      // tree-sitter hands out new node objects on each access: compare positions.
+      const enc = lambdaOf(ci);
+      if (!enc || enc.startIndex !== lam.startIndex || enc.endIndex !== lam.endIndex) continue;
       const cm = methodOf(ci);
       const ca = args(ci);
-      if (cm.name === 'ToTable') table = str(ca[0]?.value);
-      else if (cm.name === 'HasKey')
-        keys.push(...ca.map((a) => str(a.value)).filter((x): x is string => !!x));
-      else if (cm.name === 'Property' && cm.target && named(cm.target).length === 0) {
+      const onParam = cm.target?.type === 'identifier' && cm.target.text === param;
+      if (cm.name === 'ToTable' && onParam) e.table = str(ca[0]?.value);
+      else if (cm.name === 'HasKey' && onParam)
+        e.keys.push(...ca.map((a) => str(a.value)).filter((x): x is string => !!x));
+      else if (cm.name === 'Property' && onParam) {
         const prop = str(ca[0]?.value);
-        if (!prop) continue;
+        if (!prop || e.fields.some((x) => x.field === prop)) continue;
         // The chain above this call: .IsRequired() .HasMaxLength(n) .HasColumnType("…") .HasColumnName("…")
         let chain = ci.parent;
         const f: OrmField = {
           field: prop,
-          column: prop,
           type: cm.typeArg ?? 'unknown',
           nullable: !!cm.typeArg?.endsWith('?') || cm.typeArg === 'string',
           line: line(ci),
@@ -502,22 +569,112 @@ function snapshot(root: N, out: OrmFile): void {
             if (mm.name === 'IsRequired') f.nullable = false;
             else if (mm.name === 'HasMaxLength') f.length = int(ma[0]?.value);
             else if (mm.name === 'HasColumnType') f.type = str(ma[0]?.value) ?? f.type;
-            else if (mm.name === 'HasColumnName') f.column = str(ma[0]?.value) ?? f.column;
+            else if (mm.name === 'HasColumnName') f.column = str(ma[0]?.value);
           }
           chain = chain.parent;
         }
-        fields.push(f);
+        e.fields.push(f);
+      } else if ((cm.name === 'OwnsOne' || cm.name === 'OwnsMany') && onParam) {
+        const type = str(ca[0]?.value);
+        const nav = str(ca[1]?.value);
+        const inner = ca[ca.length - 1]?.value;
+        if (type && nav && inner?.type === 'lambda_expression')
+          readBlock(`${clr}.${nav}#${type}`, inner, line(ci), {
+            clr,
+            nav,
+            many: cm.name === 'OwnsMany',
+          });
+      } else if (cm.name === 'HasForeignKey' && rootOf(ci)?.text === param) {
+        // b.HasOne("Target", nav).WithMany(…).HasForeignKey("Prop"), or for one-to-one
+        // .WithOne(…).HasForeignKey("Dependent", "Prop"). WithOwner() keys are the owner's.
+        let cur = cm.target;
+        let target: string | undefined;
+        let owned = false;
+        while (cur?.type === 'invocation_expression') {
+          const mm = methodOf(cur);
+          if (mm.name === 'HasOne') target = str(args(cur)[0]?.value);
+          if (mm.name === 'WithOwner') owned = true;
+          cur = mm.target;
+        }
+        if (owned || !target) continue;
+        let names = ca.map((a) => str(a.value)).filter((x): x is string => !!x);
+        let dependent = clr;
+        let principal = target;
+        if (names.length > 1 && names[0]!.includes('.')) {
+          dependent = names[0]!;
+          principal = dependent === clr ? target : clr;
+          names = names.slice(1);
+        }
+        let pk: string[] = [];
+        for (let up = ci.parent; up; up = up.parent) {
+          if (up.type === 'invocation_expression' && methodOf(up).name === 'HasPrincipalKey')
+            pk = args(up)
+              .map((a) => str(a.value))
+              .filter((x): x is string => !!x);
+          if (up.type === 'expression_statement') break;
+        }
+        rels.push({ dependent, principal, props: names, principalKeys: pk, line: line(ci) });
       }
     }
+  };
+
+  for (const inv of findAll(root, (n) => n.type === 'invocation_expression')) {
+    const m = methodOf(inv);
+    if (m.name !== 'Entity' || m.target?.text !== 'modelBuilder') continue;
+    const as = args(inv);
+    const entity = str(as[0]?.value);
+    const body = as[as.length - 1]?.value;
+    if (!entity || body?.type !== 'lambda_expression') continue;
+    readBlock(entity, body, line(inv));
+  }
+
+  const tableOf = (e: Ent | undefined): string | undefined =>
+    e ? (e.table ?? (e.owner && !e.many ? tableOf(ents.get(e.owner)) : undefined)) : undefined;
+  /** Column names: written, or the property name; an owned type in its owner's table gets Nav_Prop. */
+  const sharesOwner = (e: Ent) => !!e.owner && !e.many && tableOf(e) === tableOf(ents.get(e.owner));
+  const columnOf = (e: Ent, prop: string) => {
+    const f = e.fields.find((x) => x.field === prop);
+    return f?.column ?? (sharesOwner(e) ? `${e.nav}_${prop}` : prop);
+  };
+  const byTable = new Map<string, OrmTable>();
+  for (const e of ents.values()) {
+    const table = tableOf(e);
     if (!table) continue;
-    for (const k of keys) {
-      const f = fields.find((x) => x.field === k);
-      if (f) {
+    let t = byTable.get(table.toLowerCase());
+    if (!t) {
+      t = { framework: 'ef-core', name: table, line: e.line, fields: [] };
+      byTable.set(table.toLowerCase(), t);
+      out.tables.push(t);
+    }
+    const shared = sharesOwner(e);
+    for (const f0 of e.fields) {
+      // An owned type's key in its owner's table is the owner's own key.
+      if (shared && e.keys.includes(f0.field!)) continue;
+      const f = { ...f0, column: columnOf(e, f0.field!) };
+      if (e.keys.includes(f0.field!)) {
         f.primaryKey = true;
         f.nullable = false;
       }
+      if (!t.fields.some((x) => x.column === f.column)) t.fields.push(f);
     }
-    out.tables.push({ framework: 'ef-core', name: table, line: line(inv), fields });
+  }
+  for (const r of rels) {
+    const d = ents.get(r.dependent);
+    const p = ents.get(r.principal);
+    const dt = tableOf(d);
+    const pt = tableOf(p);
+    if (!d || !p || !dt || !pt) continue;
+    r.props.forEach((prop, i) => {
+      const pk = r.principalKeys[i] ?? p.keys[i];
+      out.foreignKeys.push({
+        framework: 'ef-core',
+        table: dt,
+        column: columnOf(d, prop),
+        refTable: pt,
+        refColumn: pk ? columnOf(p, pk) : undefined,
+        line: r.line,
+      });
+    });
   }
 }
 
@@ -584,8 +741,10 @@ export function readCsharp(path: string, source: string, ctx: CsharpContext): Or
       /\bMigrationBuilder\b/.test(source) && /\bclass\s+\w+\s*:\s*Migration\b/.test(source);
     const isSnapshot = /:\s*ModelSnapshot\b/.test(source);
     if (isMigration) migrations(root, out);
-    else if (isSnapshot) snapshot(root, out);
-    else {
+    else if (isSnapshot) {
+      snapshot(root, out);
+      if (out.tables.length) out.snapshot = {};
+    } else {
       contexts(root, out);
       const nrt = /#nullable\s+enable/.test(source) || /\bstring\?\s/.test(source);
       for (const c of findAll(

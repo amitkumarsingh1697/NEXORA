@@ -229,15 +229,32 @@ export interface OrmProblem {
 
 /**
  * A migration step that changes models created by earlier migrations (Django `RenameModel`,
- * `DeleteModel`, `AlterModelTable`, `RemoveField`). Applied in file order within the scope.
+ * `DeleteModel`, `AlterModelTable`, `RemoveField`, `RenameField`). Applied in file order within the scope.
  */
 export interface OrmMigrationOp {
   framework: OrmFramework;
-  op: 'rename' | 'delete' | 'table' | 'remove-field';
+  op: 'rename' | 'delete' | 'table' | 'remove-field' | 'rename-field';
   model: string;
-  /** New model name (rename), table name (table) or field name (remove-field). */
+  /** New model name (rename), table name (table) or field name (remove-field, rename-field). */
   value?: string;
+  /** New field name (rename-field). */
+  to?: string;
   scope?: string;
+  line: number;
+}
+
+/**
+ * A migration step that drops or renames a table or column created by an earlier migration
+ * (`drop_table`, `Schema::dropIfExists`, `op.rename_table`, `DropColumn`, `renameColumn`...).
+ * Applied in migration order to the tables earlier migrations wrote.
+ */
+export interface OrmTableOp {
+  framework: OrmFramework;
+  op: 'drop-table' | 'rename-table' | 'drop-column' | 'rename-column';
+  table: string;
+  column?: string;
+  /** New table or column name. */
+  to?: string;
   line: number;
 }
 
@@ -251,6 +268,16 @@ export interface OrmFile {
   uses: OrmUse[];
   registrations?: OrmRegistration[];
   migrationOps?: OrmMigrationOp[];
+  tableOps?: OrmTableOp[];
+  /**
+   * The file is a dump of the current schema that the framework keeps beside its migrations
+   * (Rails `db/schema.rb`, an EF Core model snapshot). It replaces the migrations under its
+   * directory up to its version (all of them when it has none), which may create tables later
+   * dropped by means no reader sees.
+   */
+  snapshot?: { version?: string };
+  /** Alembic: this revision and the ones it follows, to order migrations whose names are ids. */
+  revision?: { id: string; follows: string[] };
   /** The namespaces a C# file can name types from: its own, `using` and `global using`. */
   imports?: { namespace?: string; usings: string[]; global: string[] };
   problems: OrmProblem[];

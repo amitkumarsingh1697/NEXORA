@@ -202,6 +202,28 @@ function laravel(root: N, out: OrmFile): void {
     if (inDown(call)) continue;
     const scope = field(call, 'scope')?.text.split('\\').pop();
     const method = field(call, 'name')?.text;
+    if (
+      scope === 'Schema' &&
+      (method === 'drop' || method === 'dropIfExists' || method === 'rename')
+    ) {
+      const a = callArgs(call).map((x) => str(x));
+      if (a[0] && method !== 'rename')
+        (out.tableOps ??= []).push({
+          framework: 'laravel',
+          op: 'drop-table',
+          table: a[0],
+          line: line(call),
+        });
+      else if (a[0] && a[1])
+        (out.tableOps ??= []).push({
+          framework: 'laravel',
+          op: 'rename-table',
+          table: a[0],
+          to: a[1],
+          line: line(call),
+        });
+      continue;
+    }
     if (scope !== 'Schema' || (method !== 'create' && method !== 'table')) continue;
     const args = callArgs(call);
     const name = str(args[0]);
@@ -227,6 +249,7 @@ function laravel(root: N, out: OrmFile): void {
         ...{ name: string; args: N[]; node: N }[],
       ];
       if (mods.some((x) => x.name === 'change')) continue;
+      if (dropOrRename(base, name, line(st), out)) continue;
       if (base.name === 'primary' || base.name === 'unique') {
         const cols =
           base.args[0]?.type === 'array_creation_expression'
@@ -245,7 +268,66 @@ function laravel(root: N, out: OrmFile): void {
       }
       if (f.column && uniques.includes(f.column)) f.unique = true;
     }
-    out.tables.push(t);
+    if (method === 'create' || t.fields.length) out.tables.push(t);
+  }
+}
+
+/** Blueprint calls that drop or rename columns: dropColumn, renameColumn, dropTimestamps… */
+function dropOrRename(
+  c: { name: string; args: N[] },
+  table: string,
+  ln: number,
+  out: OrmFile,
+): boolean {
+  const names = (n: N | undefined) =>
+    n?.type === 'array_creation_expression'
+      ? findAll(n, (x) => x.type === 'string').map((x) => stringOf(x)!)
+      : [str(n)].filter((x): x is string => !!x);
+  const drop = (cols: string[]) => {
+    for (const column of cols)
+      (out.tableOps ??= []).push({
+        framework: 'laravel',
+        op: 'drop-column',
+        table,
+        column,
+        line: ln,
+      });
+    return true;
+  };
+  switch (c.name) {
+    case 'dropColumn':
+    case 'dropColumns':
+      return drop(c.args.flatMap((a) => names(a)));
+    case 'dropConstrainedForeignId':
+      return drop(names(c.args[0]));
+    case 'dropTimestamps':
+    case 'dropTimestampsTz':
+      return drop(['created_at', 'updated_at']);
+    case 'dropSoftDeletes':
+    case 'dropSoftDeletesTz':
+      return drop([str(c.args[0]) ?? 'deleted_at']);
+    case 'dropRememberToken':
+      return drop(['remember_token']);
+    case 'dropMorphs':
+    case 'dropNullableMorphs': {
+      const m = str(c.args[0]);
+      return m ? drop([`${m}_type`, `${m}_id`]) : true;
+    }
+    case 'renameColumn': {
+      const [from, to] = [str(c.args[0]), str(c.args[1])];
+      if (from && to)
+        (out.tableOps ??= []).push({
+          framework: 'laravel',
+          op: 'rename-column',
+          table,
+          column: from,
+          to,
+          line: ln,
+        });
+      return true;
+    }
+    default:
+      return false;
   }
 }
 
@@ -506,7 +588,7 @@ function doctrine(root: N, out: OrmFile): void {
 }
 
 export function readPhp(path: string, source: string): OrmFile | null {
-  const lara = /\bSchema::(create|table)\s*\(/.test(source);
+  const lara = /\bSchema::(create|table|drop|dropIfExists|rename)\s*\(/.test(source);
   const elo =
     /\bextends\s+(Model|Authenticatable|Pivot|MorphPivot)\b/.test(source) &&
     /Illuminate\\/.test(source);

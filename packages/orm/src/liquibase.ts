@@ -1,6 +1,7 @@
 /**
  * Liquibase changelogs (XML, YAML and JSON): createTable, addColumn, addForeignKeyConstraint,
- * addPrimaryKey, addNotNullConstraint and addUniqueConstraint, outside rollback blocks. SQL in
+ * addPrimaryKey, addNotNullConstraint, addUniqueConstraint, dropTable, renameTable, dropColumn
+ * and renameColumn, outside rollback blocks. SQL in
  * `<sql>` and `sqlFile` changes is not read here.
  *
  * XML is parsed by the caller (CodeAtlas has a bounded, entity-free XML scanner) and passed in as
@@ -129,6 +130,42 @@ export function readLiquibaseTree(path: string, root: LbNode): OrmFile {
           line: c.line,
         }),
       );
+    } else if (n === 'dropTable' && a.tableName) {
+      (out.tableOps ??= []).push({
+        framework: 'liquibase',
+        op: 'drop-table',
+        table: a.tableName,
+        line: c.line,
+      });
+    } else if (n === 'renameTable' && a.oldTableName && a.newTableName) {
+      (out.tableOps ??= []).push({
+        framework: 'liquibase',
+        op: 'rename-table',
+        table: a.oldTableName,
+        to: a.newTableName,
+        line: c.line,
+      });
+    } else if (n === 'dropColumn' && a.tableName) {
+      const cols = [a.columnName, ...kids(c, 'column').map((x) => x.attrs.name)].filter(
+        (x): x is string => !!x,
+      );
+      for (const column of cols)
+        (out.tableOps ??= []).push({
+          framework: 'liquibase',
+          op: 'drop-column',
+          table: a.tableName,
+          column,
+          line: c.line,
+        });
+    } else if (n === 'renameColumn' && a.tableName && a.oldColumnName && a.newColumnName) {
+      (out.tableOps ??= []).push({
+        framework: 'liquibase',
+        op: 'rename-column',
+        table: a.tableName,
+        column: a.oldColumnName,
+        to: a.newColumnName,
+        line: c.line,
+      });
     } else if (
       (n === 'addPrimaryKey' || n === 'addNotNullConstraint' || n === 'addUniqueConstraint') &&
       a.tableName

@@ -187,8 +187,37 @@ function ectoMigration(root: N, out: OrmFile): void {
     downs.some((d) => n.startIndex >= d.startIndex && n.endIndex <= d.endIndex);
   for (const n of findAll(root, (x) => x.type === 'call')) {
     const c = exCall(n);
-    if (!c || inDown(n) || !['create', 'create_if_not_exists', 'alter'].includes(c.target))
+    if (!c || inDown(n)) continue;
+    if (c.target === 'drop' || c.target === 'drop_if_exists' || c.target === 'rename') {
+      const tc = c.args[0] && exCall(c.args[0]);
+      const tn = tc?.target === 'table' ? exStr(tc.args[0]) : undefined;
+      if (!tn) continue;
+      const ops = (out.tableOps ??= []);
+      const toNode = c.kw.get('to');
+      if (c.target !== 'rename')
+        ops.push({ framework: 'ecto', op: 'drop-table', table: tn, line: line(n) });
+      else if (c.args[1] && toNode) {
+        // rename table(:t), :old, to: :new
+        const from = exStr(c.args[1]);
+        const to = exStr(toNode);
+        if (from && to)
+          ops.push({
+            framework: 'ecto',
+            op: 'rename-column',
+            table: tn,
+            column: from,
+            to,
+            line: line(n),
+          });
+      } else if (toNode) {
+        // rename table(:old), to: table(:new)
+        const tt = exCall(toNode);
+        const to = tt?.target === 'table' ? exStr(tt.args[0]) : undefined;
+        if (to) ops.push({ framework: 'ecto', op: 'rename-table', table: tn, to, line: line(n) });
+      }
       continue;
+    }
+    if (!['create', 'create_if_not_exists', 'alter'].includes(c.target)) continue;
     const tcall = c.args[0] && exCall(c.args[0]);
     if (!tcall || tcall.target !== 'table') continue;
     const name = exStr(tcall.args[0]);
@@ -212,6 +241,16 @@ function ectoMigration(root: N, out: OrmFile): void {
     for (const a of children(c.block)) {
       const col = exStr(a.args[0]);
       const ln = line(a.node);
+      if ((a.target === 'remove' || a.target === 'remove_if_exists') && col) {
+        (out.tableOps ??= []).push({
+          framework: 'ecto',
+          op: 'drop-column',
+          table: name,
+          column: col,
+          line: ln,
+        });
+        continue;
+      }
       if ((a.target === 'add' || a.target === 'add_if_not_exists') && col) {
         const typeNode = a.args[1];
         const ref = typeNode && exCall(typeNode);
@@ -250,7 +289,7 @@ function ectoMigration(root: N, out: OrmFile): void {
           });
       }
     }
-    out.tables.push(t);
+    if (c.target !== 'alter' || t.fields.length) out.tables.push(t);
   }
 }
 

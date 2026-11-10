@@ -7,8 +7,10 @@ import { snake } from './naming';
 import type {
   OrmField,
   OrmFile,
+  OrmForeignKey,
   OrmFramework,
   OrmModel,
+  OrmTable,
   OrmSchema,
   ResolvedColumn,
   ResolvedTable,
@@ -40,9 +42,79 @@ export function resolveOrm(
   knownColumns: ReadonlyMap<string, ReadonlySet<string>> = new Map(),
 ): OrmSchema {
   const out: OrmSchema = { tables: [], foreignKeys: [], mappings: [], unresolved: [] };
+  // Migrations that drop or rename tables and columns earlier migrations created, in migration
+  // order: file paths (timestamped names), or Alembic's revision chain.
+  const seq = migrationOrder(files);
+  const key = (path: string) => seq.get(path) ?? path;
+  const earlier = (a: { path: string; line: number }, b: { path: string; line: number }) => {
+    const ka = key(a.path);
+    const kb = key(b.path);
+    return ka < kb || (ka === kb && a.line < b.line);
+  };
+  const direct = files.flatMap((f) => f.tables.map((t) => ({ t, path: f.path, line: t.line })));
+  const fileFks = files.flatMap((f) =>
+    f.foreignKeys.map((k) => ({ k, path: f.path, line: k.line })),
+  );
+  const droppedTables = new Set<OrmTable>();
+  const droppedFks = new Set<OrmForeignKey>();
+  const tops = files
+    .flatMap((f) => (f.tableOps ?? []).map((o) => ({ o, path: f.path, line: o.line })))
+    .sort((a, b) => (earlier(a, b) ? -1 : earlier(b, a) ? 1 : 0));
+  for (const op of tops) {
+    const { o } = op;
+    const same = (n: string) => tableKey(n) === tableKey(o.table);
+    for (const d of direct) {
+      if (droppedTables.has(d.t) || d.t.framework !== o.framework || !same(d.t.name)) continue;
+      if (!earlier(d, op)) continue;
+      if (o.op === 'drop-table') droppedTables.add(d.t);
+      else if (o.op === 'rename-table' && o.to) d.t.name = o.to;
+      else if (o.op === 'drop-column' && o.column) {
+        d.t.fields = d.t.fields.filter((fd) => fd.column !== o.column);
+        if (d.t.alter && !d.t.fields.length) droppedTables.add(d.t);
+      } else if (o.op === 'rename-column' && o.column && o.to)
+        for (const fd of d.t.fields) if (fd.column === o.column) fd.column = o.to;
+    }
+    for (const x of fileFks) {
+      if (droppedFks.has(x.k) || x.k.framework !== o.framework || !earlier(x, op)) continue;
+      const own = same(x.k.table);
+      const ref = same(x.k.refTable);
+      if (!own && !ref) continue;
+      if (o.op === 'drop-table') droppedFks.add(x.k);
+      else if (o.op === 'rename-table' && o.to) {
+        if (own) x.k.table = o.to;
+        if (ref) x.k.refTable = o.to;
+      } else if (o.op === 'drop-column' && own && x.k.column === o.column) droppedFks.add(x.k);
+      else if (o.op === 'rename-column' && o.to) {
+        if (own && x.k.column === o.column) x.k.column = o.to;
+        if (ref && x.k.refColumn === o.column) x.k.refColumn = o.to;
+      }
+    }
+  }
+
+  // A schema dump replaces the migrations of its framework in its directory and below.
+  const dumps = files.filter((f) => f.snapshot);
+  for (const f of files) {
+    if (f.snapshot) continue;
+    const stamp = /(?:^|\/)(\d{14})_[^/]*$/.exec(f.path)?.[1];
+    const covered = dumps.some(
+      (d) =>
+        d.frameworks.some((fw) => f.frameworks.includes(fw)) &&
+        f.path.startsWith(d.path.slice(0, d.path.lastIndexOf('/') + 1)) &&
+        (!d.snapshot!.version || (stamp !== undefined && stamp <= d.snapshot!.version)),
+    );
+    if (!covered) continue;
+    for (const t of f.tables) droppedTables.add(t);
+    for (const k of f.foreignKeys) droppedFks.add(k);
+  }
+
   // Tables written in migrations and changelogs count as known too (a JPA entity and the
   // Liquibase changelog that creates its table).
-  known = new Set([...known, ...files.flatMap((f) => f.tables.map((t) => tableKey(t.name)))]);
+  known = new Set([
+    ...known,
+    ...files.flatMap((f) =>
+      f.tables.filter((t) => !droppedTables.has(t)).map((t) => tableKey(t.name)),
+    ),
+  ]);
   // Migration steps that change earlier migrations' models, in file order within each app:
   // RenameModel, DeleteModel, AlterModelTable, RemoveField. A model class in the source still
   // wins over what migrations say; these only correct the migration-made models and patches.
@@ -77,6 +149,14 @@ export function resolveOrm(
       else if (o.op === 'table' && x.m.role !== 'patch') {
         if (o.value) x.m.table = o.value;
         else delete x.m.table;
+      } else if (o.op === 'rename-field' && o.value && o.to) {
+        // Django names the column after the field: rename both (a written db_column stays).
+        x.m.fields = x.m.fields.map((fd) => {
+          if (fd.field !== o.value) return fd;
+          const col =
+            fd.column === o.value ? o.to : fd.column === `${o.value}_id` ? `${o.to}_id` : fd.column;
+          return { ...fd, field: o.to, column: col };
+        });
       } else if (o.op === 'remove-field' && o.value) {
         x.m.fields = x.m.fields.filter((fd) => fd.field !== o.value);
         if (x.m.role === 'patch' && !x.m.fields.length) dropped.add(x.m);
@@ -667,6 +747,7 @@ export function resolveOrm(
   // Tables written directly (migrations, changelogs, Table(...)).
   for (const f of files)
     for (const t of f.tables) {
+      if (droppedTables.has(t)) continue;
       const rt: ResolvedTable = {
         name: t.name,
         framework: t.framework,
@@ -686,7 +767,8 @@ export function resolveOrm(
     }
   out.tables.unshift(...tables.values());
   for (const f of files)
-    for (const k of f.foreignKeys)
+    for (const k of f.foreignKeys) {
+      if (droppedFks.has(k)) continue;
       out.foreignKeys.push({
         path: f.path,
         line: k.line,
@@ -697,6 +779,7 @@ export function resolveOrm(
         framework: k.framework,
         confidence: 'observed',
       });
+    }
 
   // Code that uses a model's table: repositories, Active Record and Eloquent models.
   const allTables = new Set([...known, ...out.tables.map((t) => tableKey(t.name))]);
@@ -739,5 +822,35 @@ export function resolveOrm(
         detail: u.detail,
       });
     }
+  return out;
+}
+
+/**
+ * Sort keys for Alembic revisions: a revision sorts after the ones it follows (`down_revision`),
+ * so migrations named by ids replay in their real order. Other files keep their path order.
+ */
+function migrationOrder(files: OrmFile[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const byId = new Map<string, OrmFile>();
+  for (const f of files) if (f.revision) byId.set(f.revision.id, f);
+  const depth = new Map<string, number>();
+  const depthOf = (id: string, seen: Set<string>): number => {
+    const hit = depth.get(id);
+    if (hit !== undefined) return hit;
+    const f = byId.get(id);
+    if (!f || seen.has(id)) return 0;
+    seen.add(id);
+    const d = 1 + Math.max(0, ...f.revision!.follows.map((x) => depthOf(x, seen)));
+    seen.delete(id);
+    depth.set(id, d);
+    return d;
+  };
+  for (const [id, f] of byId) {
+    const dir = f.path.slice(0, f.path.lastIndexOf('/') + 1);
+    out.set(
+      f.path,
+      `${dir}\u0000${String(depthOf(id, new Set())).padStart(6, '0')}\u0000${f.path}`,
+    );
+  }
   return out;
 }

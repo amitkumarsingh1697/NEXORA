@@ -228,6 +228,13 @@ function readTableBlock(t: OrmTable, block: N | undefined, out: OrmFile): void {
   }
 }
 
+function dropColumn(out: OrmFile, table: string, column: string, line: number): void {
+  (out.tableOps ??= []).push({ framework: 'rails', op: 'drop-column', table, column, line });
+}
+function renameColumn(out: OrmFile, table: string, column: string, to: string, line: number): void {
+  (out.tableOps ??= []).push({ framework: 'rails', op: 'rename-column', table, column, to, line });
+}
+
 function migrationsAndSchema(root: N, out: OrmFile): void {
   // In a migration, only `change` and `up`: `down` undoes it.
   const downs = findAll(root, (n) => n.type === 'method' && field(n, 'name')?.text === 'down');
@@ -258,6 +265,52 @@ function migrationsAndSchema(root: N, out: OrmFile): void {
       const t: OrmTable = { framework: 'rails', name: a0, line: ln, fields: [], alter: true };
       readTableBlock(t, c.block, out);
       if (t.fields.length) out.tables.push(t);
+      // t.remove :a, :b / t.rename :a, :b / t.remove_references :user / t.remove_timestamps
+      for (const b of findAll(c.block ?? n, (x) => x.type === 'call')) {
+        if (!c.block) break;
+        const bc = callOf(b);
+        if (!bc?.receiver) continue;
+        const names = bc.pos.map((p) => stringOf(p)).filter((x): x is string => !!x);
+        if (bc.method === 'remove') for (const col of names) dropColumn(out, a0, col, line(b));
+        else if (bc.method === 'rename' && names[0] && names[1])
+          renameColumn(out, a0, names[0], names[1], line(b));
+        else if (bc.method === 'remove_references' || bc.method === 'remove_belongs_to')
+          for (const r of names) dropColumn(out, a0, `${r}_id`, line(b));
+        else if (bc.method === 'remove_timestamps')
+          for (const col of ['created_at', 'updated_at']) dropColumn(out, a0, col, line(b));
+      }
+    } else if (c.method === 'drop_table' && a0) {
+      (out.tableOps ??= []).push({ framework: 'rails', op: 'drop-table', table: a0, line: ln });
+    } else if (c.method === 'drop_join_table' && a0 && a1) {
+      const [x, y] = [a0, a1].sort() as [string, string];
+      const joined = `${x}\0${y}`.replace(/^(.*_)(.+)\0\1(.+)/, '$1$2_$3').replace('\0', '_');
+      (out.tableOps ??= []).push({
+        framework: 'rails',
+        op: 'drop-table',
+        table: val(c.opts.get('table_name')) ?? joined,
+        line: ln,
+      });
+    } else if (c.method === 'rename_table' && a0 && a1) {
+      (out.tableOps ??= []).push({
+        framework: 'rails',
+        op: 'rename-table',
+        table: a0,
+        to: a1,
+        line: ln,
+      });
+    } else if ((c.method === 'remove_column' || c.method === 'remove_columns') && a0) {
+      for (const col of c.pos.slice(1).map((p) => stringOf(p))) {
+        if (!col) continue;
+        dropColumn(out, a0, col, ln);
+        // remove_column takes an optional type after the name.
+        if (c.method === 'remove_column') break;
+      }
+    } else if (c.method === 'rename_column' && a0 && a1 && a2) {
+      renameColumn(out, a0, a1, a2, ln);
+    } else if ((c.method === 'remove_reference' || c.method === 'remove_belongs_to') && a0 && a1) {
+      dropColumn(out, a0, `${a1}_id`, ln);
+    } else if (c.method === 'remove_timestamps' && a0) {
+      for (const col of ['created_at', 'updated_at']) dropColumn(out, a0, col, ln);
     } else if (c.method === 'add_column' && a0 && a1) {
       out.tables.push({
         framework: 'rails',
@@ -383,6 +436,11 @@ export function readRuby(path: string, source: string): OrmFile | null {
   }
   try {
     if (schema) migrationsAndSchema(tree.rootNode, out);
+    if (/(^|\/)db\/(schema|[\w-]+_schema)\.rb$/.test(path) && out.tables.length) {
+      // define(version: 2024_01_01_000000): the newest migration the dump includes.
+      const v = /\bdefine\(\s*version:\s*([\d_]+)/.exec(source)?.[1]?.replace(/_/g, '');
+      out.snapshot = v && v.length === 14 ? { version: v } : {};
+    }
     if (model) models(tree.rootNode, out);
   } finally {
     tree.delete();

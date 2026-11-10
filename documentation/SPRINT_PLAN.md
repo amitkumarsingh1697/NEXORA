@@ -113,6 +113,19 @@ The founder asked for full analysis of every language, file, method, function an
 **Status:** done 2026-11-10 (evidence in IMPLEMENTATION_STATUS.md, research R29 and R30, ADR 0016).
 **Excluded from L2, planned next:** ORM and migration-tool schemas (L3); complete grammars for MySQL, SQL Server, Oracle and Db2 (L5, needs approval to build tree-sitter grammars from source); search-path-aware name resolution across schemas.
 
+## Sprint L3: ORM and migration-tool schemas
+
+| ID   | Item                       | Requirements | Acceptance criteria                                                                                                                |
+| ---- | -------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| L3-1 | Readers for 23 frameworks  | ORM-01       | One fixture per framework read with its language's parser; down migrations and rollbacks skipped.                                  |
+| L3-2 | Default names              | ORM-02       | Each framework's rule ported from its source and tested on its own examples; default names labelled inferred with the rule.        |
+| L3-3 | Cross-file resolution      | ORM-03       | Inheritance, join tables, registrations; shared class names told apart or left unresolved, never guessed.                          |
+| L3-4 | Migration replay and dumps | ORM-04       | Drops and renames applied in migration order; Alembic by revision chain; Rails `schema.rb` and EF Core snapshots preferred.        |
+| L3-5 | Graph, brain, real repos   | ORM-05       | Tables, keys and `maps_to` in the CodeAtlas graph and brain; spring-petclinic, eShop, bakerydemo and mastodon read (research R32). |
+
+**Status:** done 2026-11-10 (evidence in IMPLEMENTATION_STATUS.md, research R31 and R32, ADR 0017).
+**Excluded from L3, planned next:** Hibernate `hbm.xml`, JPA `orm.xml`, MyBatis mappers, Doctrine XML and YAML mappings, Flyway Java migrations and EF6 `DbMigration` (still named in the brain's unread-schema notice); raw SQL inside ORM migrations; L4 compiler-grade resolution.
+
 ---
 
 ## Blocked or external track (not sprint-scheduled)

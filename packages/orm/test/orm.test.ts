@@ -530,7 +530,7 @@ describe('cross-file resolution', () => {
     expect(col(resolveOrm(files), 'owners', 'firstName')).toBeDefined();
   });
 
-  it('replays Django RenameModel, DeleteModel, AlterModelTable and RemoveField in file order', () => {
+  it('replays Django RenameModel, DeleteModel, AlterModelTable, RemoveField and RenameField', () => {
     const m = (ops: string) =>
       `from django.db import migrations, models\n\nclass Migration(migrations.Migration):\n    operations = [\n${ops}\n    ]\n`;
     const r = resolveOrm(
@@ -542,12 +542,12 @@ describe('cross-file resolution', () => {
           "        migrations.CreateModel(name='Post', fields=[('id', models.AutoField(primary_key=True)), ('author', models.ForeignKey(on_delete=models.CASCADE, to='base.People'))]),",
         ),
         'base/migrations/0002_rename.py': m(
-          "        migrations.RenameModel(old_name='People', new_name='Person'),\n        migrations.RemoveField(model_name='person', name='nick'),\n        migrations.DeleteModel(name='Old'),\n        migrations.AlterModelTable(name='tag', table='tags'),",
+          "        migrations.RenameModel(old_name='People', new_name='Person'),\n        migrations.RemoveField(model_name='person', name='nick'),\n        migrations.RenameField(model_name='person', old_name='name', new_name='full_name'),\n        migrations.DeleteModel(name='Old'),\n        migrations.AlterModelTable(name='tag', table='tags'),",
         ),
       }),
     );
     expect(table(r, 'base_people')).toBeUndefined();
-    expect(table(r, 'base_person')?.columns.map((c) => c.name)).toEqual(['id', 'name']);
+    expect(table(r, 'base_person')?.columns.map((c) => c.name)).toEqual(['id', 'full_name']);
     expect(table(r, 'base_old')).toBeUndefined();
     expect(table(r, 'tags')).toBeDefined();
     expect(table(r, 'base_tag')).toBeUndefined();
@@ -572,6 +572,134 @@ describe('cross-file resolution', () => {
     expect(mapping(r, 'NotAModel')).toBeUndefined();
     // The parent table belongs to Wagtail, outside the repository: kept as unresolved.
     expect(r.unresolved.some((u) => u.text.includes('wagtailcore.page'))).toBe(true);
+  });
+});
+
+describe('migrations that drop and rename', () => {
+  const read = (files: Record<string, string>) =>
+    Object.entries(files)
+      .map(([path, text]) =>
+        path.endsWith('.yaml')
+          ? (() => {
+              const y = liquibaseFromYaml(text);
+              return y instanceof Error ? null : readLiquibaseTree(path, y);
+            })()
+          : readOrm(path, LANG[path.split('.').pop()!]!, text, { efCore: true, gorm: true }),
+      )
+      .filter((x): x is OrmFile => x !== null);
+  const names = (r: OrmSchema) => [...new Set(r.tables.map((t) => t.name))].sort();
+
+  it('Rails: drop_table, rename_table, remove_column, rename_column, change_table', () => {
+    const mig = (body: string) =>
+      `class M < ActiveRecord::Migration[7.1]\n  def change\n${body}\n  end\nend\n`;
+    const r = resolveOrm(
+      read({
+        'db/migrate/20240101000000_a.rb': mig(
+          '    create_table :posts do |t|\n      t.string :title\n      t.string :slug\n      t.string :body\n      t.references :user, foreign_key: true\n    end\n    create_table :users do |t|\n      t.string :name\n    end\n    create_table :old_logs do |t|\n      t.string :line\n    end',
+        ),
+        'db/migrate/20240102000000_b.rb': mig(
+          '    drop_table :old_logs\n    rename_table :posts, :articles\n    remove_column :articles, :slug, :string\n    rename_column :articles, :title, :headline\n    change_table :articles do |t|\n      t.remove :body\n    end',
+        ),
+      }),
+    );
+    expect(names(r)).toEqual(['articles', 'users']);
+    expect(table(r, 'articles')?.columns.map((c) => c.name)).toEqual(['id', 'headline', 'user_id']);
+    expect(fk(r, 'articles', 'user_id')).toMatchObject({ refTable: 'users' });
+  });
+
+  it('Rails: schema.rb replaces the migrations it includes, not newer ones', () => {
+    const r = resolveOrm(
+      read({
+        'db/schema.rb':
+          'ActiveRecord::Schema[7.1].define(version: 2024_01_02_000000) do\n  create_table "users" do |t|\n    t.string "name"\n  end\nend\n',
+        'db/migrate/20240101000000_a.rb':
+          'class A < ActiveRecord::Migration[7.1]\n  def change\n    create_table :gone_by_sql do |t|\n      t.string :x\n    end\n  end\nend\n',
+        'db/migrate/20240103000000_b.rb':
+          'class B < ActiveRecord::Migration[7.1]\n  def change\n    create_table :newer do |t|\n      t.string :x\n    end\n  end\nend\n',
+      }),
+    );
+    expect(names(r)).toEqual(['newer', 'users']);
+  });
+
+  it('Laravel: Schema::dropIfExists, Schema::rename, dropColumn, renameColumn, dropTimestamps', () => {
+    const mig = (body: string) =>
+      `<?php\nuse Illuminate\\Support\\Facades\\Schema;\nuse Illuminate\\Database\\Schema\\Blueprint;\nreturn new class extends Migration {\n  public function up(): void {\n${body}\n  }\n  public function down(): void { Schema::dropIfExists('flights'); }\n};\n`;
+    const r = resolveOrm(
+      read({
+        'database/migrations/2024_01_01_000000_a.php': mig(
+          "    Schema::create('flights', function (Blueprint $table) {\n      $table->id();\n      $table->string('name');\n      $table->string('code');\n      $table->timestamps();\n    });\n    Schema::create('tmp', function (Blueprint $table) { $table->id(); });",
+        ),
+        'database/migrations/2024_01_02_000000_b.php': mig(
+          "    Schema::dropIfExists('tmp');\n    Schema::rename('flights', 'trips');\n    Schema::table('trips', function (Blueprint $table) {\n      $table->dropColumn(['code']);\n      $table->renameColumn('name', 'title');\n      $table->dropTimestamps();\n    });",
+        ),
+      }),
+    );
+    expect(names(r)).toEqual(['trips']);
+    expect(table(r, 'trips')?.columns.map((c) => c.name)).toEqual(['id', 'title']);
+  });
+
+  it('Alembic: follows the revision chain, not file names, and reads batch_alter_table', () => {
+    const rev = (id: string, down: string, body: string) =>
+      `from alembic import op\nimport sqlalchemy as sa\n\nrevision = '${id}'\ndown_revision = ${down}\n\ndef upgrade():\n${body}\n\ndef downgrade():\n    op.drop_table('accounts')\n`;
+    const r = resolveOrm(
+      read({
+        // "f0" sorts before "a1" in no order but the chain says a1 comes first.
+        'migrations/versions/f0_second.py': rev(
+          'f0',
+          "'a1'",
+          "    op.rename_table('accounts', 'members')\n    with op.batch_alter_table('members') as batch_op:\n        batch_op.drop_column('legacy')\n        batch_op.alter_column('nick', new_column_name='handle')\n    op.drop_table('scratch')",
+        ),
+        'migrations/versions/a1_first.py': rev(
+          'a1',
+          'None',
+          "    op.create_table('accounts', sa.Column('id', sa.Integer, primary_key=True), sa.Column('nick', sa.String(20)), sa.Column('legacy', sa.String(5)))\n    op.create_table('scratch', sa.Column('id', sa.Integer, primary_key=True))",
+        ),
+      }),
+    );
+    expect(names(r)).toEqual(['members']);
+    expect(table(r, 'members')?.columns.map((c) => c.name)).toEqual(['id', 'handle']);
+  });
+
+  it('EF Core: a model snapshot replaces its migrations; owned types share the owner table', () => {
+    const r = resolveOrm(
+      read({
+        'Data/Migrations/20240101000000_Initial.cs':
+          'using Microsoft.EntityFrameworkCore.Migrations;\npublic partial class Initial : Migration\n{\n    protected override void Up(MigrationBuilder migrationBuilder)\n    {\n        migrationBuilder.CreateTable(name: "Legacy", columns: table => new { Id = table.Column<int>(nullable: false) });\n        migrationBuilder.DropTable(name: "Legacy");\n    }\n}\n',
+        'Data/Migrations/ShopContextModelSnapshot.cs':
+          'using Microsoft.EntityFrameworkCore;\npartial class ShopContextModelSnapshot : ModelSnapshot\n{\n    protected override void BuildModel(ModelBuilder modelBuilder)\n    {\n        modelBuilder.Entity("Shop.Customer", b =>\n            {\n                b.Property<int>("Id");\n                b.HasKey("Id");\n                b.ToTable("customers");\n            });\n        modelBuilder.Entity("Shop.Order", b =>\n            {\n                b.Property<int>("Id");\n                b.Property<int>("_customerId").HasColumnName("CustomerId");\n                b.HasKey("Id");\n                b.ToTable("orders");\n            });\n        modelBuilder.Entity("Shop.Order", b =>\n            {\n                b.HasOne("Shop.Customer", null)\n                    .WithMany()\n                    .HasForeignKey("_customerId");\n                b.OwnsOne("Shop.Address", "Address", b1 =>\n                    {\n                        b1.Property<int>("OrderId");\n                        b1.Property<string>("City");\n                        b1.HasKey("OrderId");\n                        b1.ToTable("orders");\n                        b1.WithOwner().HasForeignKey("OrderId");\n                    });\n            });\n    }\n}\n',
+      }),
+    );
+    expect(names(r)).toEqual(['customers', 'orders']);
+    expect(table(r, 'orders')?.columns.map((c) => c.name)).toEqual([
+      'Id',
+      'CustomerId',
+      'Address_City',
+    ]);
+    expect(fk(r, 'orders', 'CustomerId')).toMatchObject({ refTable: 'customers', refColumn: 'Id' });
+  });
+
+  it('Knex, Sequelize, Ecto and Liquibase drops and renames', () => {
+    const r = resolveOrm(
+      read({
+        'db/migrations/20240101_a.js':
+          "exports.up = (knex) => knex.schema.createTable('pets', (t) => { t.increments('id'); t.string('nm'); t.string('tmp'); }).createTable('junk', (t) => { t.increments('id'); });\n",
+        'db/migrations/20240102_b.js':
+          "exports.up = async (knex) => {\n  await knex.schema.dropTable('junk');\n  await knex.schema.alterTable('pets', (t) => { t.dropColumn('tmp'); t.renameColumn('nm', 'name'); });\n};\n",
+        'seq/20240101-a.js':
+          "module.exports = { up: async (queryInterface, Sequelize) => {\n  await queryInterface.createTable('Books', { id: { type: Sequelize.INTEGER, primaryKey: true }, isbn: { type: Sequelize.STRING } });\n  await queryInterface.renameTable('Books', 'Volumes');\n  await queryInterface.removeColumn('Volumes', 'isbn');\n} };\n",
+        'priv/repo/migrations/20240101_a.exs':
+          'defmodule M1 do\n  use Ecto.Migration\n  def change do\n    create table(:tags) do\n      add :label, :string\n      add :old, :string\n    end\n    create table(:drafts) do\n      add :x, :string\n    end\n  end\nend\n',
+        'priv/repo/migrations/20240102_b.exs':
+          'defmodule M2 do\n  use Ecto.Migration\n  def change do\n    alter table(:tags) do\n      remove :old\n    end\n    rename table(:tags), :label, to: :name\n    drop table(:drafts)\n  end\nend\n',
+        'changelog.yaml':
+          'databaseChangeLog:\n  - changeSet:\n      id: 1\n      author: a\n      changes:\n        - createTable:\n            tableName: notes\n            columns:\n              - column:\n                  name: id\n                  type: int\n              - column:\n                  name: txt\n                  type: text\n        - renameColumn:\n            tableName: notes\n            oldColumnName: txt\n            newColumnName: body\n        - createTable:\n            tableName: scratch\n        - dropTable:\n            tableName: scratch\n',
+      }),
+    );
+    expect(names(r)).toEqual(['Volumes', 'notes', 'pets', 'tags']);
+    expect(table(r, 'pets')?.columns.map((c) => c.name)).toEqual(['id', 'name']);
+    expect(table(r, 'Volumes')?.columns.map((c) => c.name)).toEqual(['id']);
+    expect(table(r, 'tags')?.columns.map((c) => c.name)).toEqual(['id', 'name']);
+    expect(table(r, 'notes')?.columns.map((c) => c.name)).toEqual(['id', 'body']);
   });
 });
 

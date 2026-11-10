@@ -64,7 +64,10 @@ export function readOrmFiles(
         r.foreignKeys.length ||
         r.uses.length ||
         r.registrations?.length ||
-        r.imports?.global.length)
+        r.imports?.global.length ||
+        r.tableOps?.length ||
+        r.migrationOps?.length ||
+        r.revision)
     )
       out.push(r);
   }

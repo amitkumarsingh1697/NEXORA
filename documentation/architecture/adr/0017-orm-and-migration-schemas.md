@@ -13,11 +13,12 @@ An ORM often names a table or column by a default rule instead of writing it, fo
 ## Decisions
 
 1. **New shared package `packages/orm` (`@nexora/orm`).** It is pure: no file, network or database access. CodeAtlas uses it now, and ArchLens bundles it in sprint L6. Products still never import each other. It adds no new third-party runtime dependency. It reuses `@nexora/syntax` (tree-sitter, ADR 0015), `typescript` 5.9.3 (already the TypeScript parser) and `yaml` 2.9.1 (already used in the monorepo), at the same pinned versions.
-2. **Each language is read by its parser, never by regular expressions over code:**
+2. **Each language is read by its own parser:**
    - Python, Java, Kotlin, C#, Ruby, PHP, Go and Elixir use tree-sitter through the new `parseTree` export of `@nexora/syntax`.
    - TypeScript and JavaScript use the TypeScript compiler's parser.
    - Liquibase XML uses CodeAtlas's bounded, entity-free XML scanner. YAML and JSON changelogs use `yaml` with line numbers.
    - Rust's `table!` macro and SeaORM attributes are token text inside macros, so they are read as text.
+   - A few single-line declarations are read by patterns: C# `using` and `namespace` lines, Alembic's `revision` and `down_revision`, Rails' schema `version:`, and Alembic's `batch_alter_table(...) as alias` header.
 3. **Frameworks read (23):**
    - Python: Django (models and migrations), SQLAlchemy (declarative, `Mapped[]`, `Table()`), Flask-SQLAlchemy, SQLModel, Alembic, Peewee.
    - JVM: JPA and Hibernate annotations (entities, mapped superclasses, embeddables, inheritance, join columns, join tables), Spring Data repositories, Exposed.
@@ -37,7 +38,20 @@ An ORM often names a table or column by a default rule instead of writing it, fo
    - A JPA default name is matched to an existing snake_case table, because Spring Boot's naming strategy writes names that way. That match is labelled `matched`. A default column name is written in snake_case only when the matched table, or a table already read from SQL, spells it that way.
    - When several classes share a name, the reader picks one in this order: the scope (Django app label), then the C# namespaces the referring file can see (its own namespace, `using`, and `global using` in its directory or above), then the nearest path. If none of these decides, the reference stays unresolved. It is never guessed.
    - A model whose base class comes from outside the repository (for example Wagtail's `Page`) counts as a model only when a migration in the same app creates it.
-6. **The CodeAtlas graph:**
+6. **Migrations are replayed, in migration order.** Steps that drop or rename are applied to the tables earlier migrations created:
+   - Rails `drop_table`, `rename_table`, `remove_column(s)`, `rename_column`, `remove_reference`, `remove_timestamps` and the same inside `change_table`.
+   - Laravel `Schema::drop`, `dropIfExists`, `rename`, and `dropColumn`, `renameColumn`, `dropTimestamps`, `dropSoftDeletes`, `dropMorphs`, `dropConstrainedForeignId`.
+   - Alembic `drop_table`, `rename_table`, `drop_column`, `alter_column(new_column_name=)`, including `batch_alter_table`.
+   - EF Core `DropTable`, `RenameTable`, `DropColumn`, `RenameColumn`.
+   - Knex `dropTable`, `renameTable`, `dropColumn(s)`, `renameColumn`, `dropTimestamps`.
+   - Sequelize `dropTable`, `renameTable`, `removeColumn`, `renameColumn`.
+   - Ecto `drop`, `rename` and `remove`.
+   - Liquibase `dropTable`, `renameTable`, `dropColumn`, `renameColumn`.
+   - Django `RenameModel`, `DeleteModel`, `AlterModelTable`, `RemoveField` and `RenameField`. A reference written before a rename follows it.
+   - Order is the file path (Rails, Laravel, Knex, Sequelize, Ecto and EF Core name migrations by timestamp) and the line. Alembic's revision ids are not ordered, so Alembic follows the `down_revision` chain.
+   - A schema dump that the framework keeps beside its migrations is the current schema, and replaces the migrations it includes. This covers Rails `db/schema.rb` up to its `version:`, and an EF Core model snapshot. Migrations can drop a table by raw SQL that no reader sees: mastodon's `deprecated_preview_cards` is one.
+   - EF Core snapshots are read with their relationships (`HasOne(…).HasForeignKey(…)`, mapped through `HasColumnName`) and owned types. An `OwnsOne` type in its owner's table gets `Navigation_Property` columns.
+7. **The CodeAtlas graph:**
    - Tables join the existing table nodes. The `definedBy` list records each framework, file, line, model and naming rule.
    - Foreign keys are `references` edges, each carrying its own label.
    - A new edge and synapse kind, `maps_to`, links a model class to its table.
@@ -46,7 +60,12 @@ An ORM often names a table or column by a default rule instead of writing it, fo
 
 ## Consequences
 
-- On spring-petclinic, eShop, bakerydemo and mastodon, every table those repositories define in code is drawn, with its model (research R32). The remaining unresolved references point at tables of packages outside the repository (Wagtail's tables in bakerydemo).
+- Measured on spring-petclinic, eShop, bakerydemo and mastodon (research R32):
+  - mastodon's tables and foreign keys match its `db/schema.rb` exactly (122 tables, 162 keys).
+  - eShop's Ordering tables match the latest EF Core snapshot, including owned `Address_*` columns and the foreign key a later migration removed.
+  - bakerydemo has 71 unresolved references, and each one points at a model outside the repository: Wagtail, taggit, or `settings.AUTH_USER_MODEL`.
+- Raw SQL inside ORM migrations (`execute`, `RunSQL`, `op.execute`, `queryRunner.query`) is not replayed.
+- Liquibase changesets in several files are ordered by path, not by `include` order.
 - Still not read, so the brain names these in its unread-schema notice:
   - Hibernate `hbm.xml` and JPA `orm.xml` mappings.
   - MyBatis mappers.
