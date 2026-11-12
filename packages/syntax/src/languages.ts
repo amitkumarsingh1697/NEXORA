@@ -64,6 +64,9 @@ export const SPEC_BY_LANGUAGE: Record<string, LangSpec> = {
   Nim: l5.nim,
   Elm: l5.elm,
   Gleam: l5.gleam,
+  PureScript: l5.purescript,
+  MATLAB: l5.matlab,
+  Pascal: l5.pascal,
 };
 
 export function specFor(language: string): LangSpec | undefined {

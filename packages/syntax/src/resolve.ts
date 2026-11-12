@@ -66,6 +66,17 @@ const IMPLICIT_MEMBER = new Set([
   'Julia',
   'OCaml',
   'Haskell',
+  // Sprint L5: a bare call inside a class body may name a member of that class.
+  'Dart',
+  'Swift',
+  'D',
+  'Vala',
+  'Haxe',
+  'ActionScript',
+  'Apex',
+  'Pascal',
+  'Crystal',
+  'GDScript',
 ]);
 const SELF = new Set(['self', 'this', '$this', 'Self', 'base', 'super']);
 const CALLABLE = new Set(['function', 'method', 'constructor', 'property']);

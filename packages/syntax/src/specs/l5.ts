@@ -1753,3 +1753,265 @@ export const gleam: LangSpec = {
     },
   },
 };
+
+// ---------------------------------------------------------------- PureScript
+
+/** `A -> B -> C` as written, split at its top-level arrows (the grammar nests them to the right). */
+function arrowParts(t: Node | null | undefined): string[] {
+  if (!t) return [];
+  if (t.type !== 'type_infix' || !named(t).some((c) => c.type === 'type_operator' && c.text === '->'))
+    return [t.text.replace(/\s+/g, ' ')];
+  const kids = named(t);
+  const op = kids.findIndex((c) => c.type === 'type_operator' && c.text === '->');
+  return [kids.slice(0, op).map((c) => c.text).join(' '), ...arrowParts(kids[op + 1])];
+}
+/** The type written in a signature or foreign import (the named child after the name). */
+const psType = (n: Node) => named(n).find((c) => c.type !== 'variable');
+const psSignature = (n: Node): string[] | undefined => {
+  const name = text(field(n, 'name'));
+  for (let s = n.previousNamedSibling; s; s = s.previousNamedSibling) {
+    if (s.type === 'signature' && text(field(s, 'name')) === name)
+      return arrowParts(psType(s));
+    if (s.type !== 'function' || text(field(s, 'name')) !== name) return undefined;
+  }
+  return undefined;
+};
+const psSameClause = (a: Node | null, b: Node) =>
+  a?.type === 'function' && text(field(a, 'name')) === text(field(b, 'name'));
+
+export const purescript: LangSpec = {
+  grammar: 'purescript',
+  namespace: { purescript: (n) => text(field(n, 'name'))?.replace(/\s+/g, '') },
+  decls: {
+    function: {
+      // Each further equation of the same function is part of the first one.
+      kind: (n) => (psSameClause(n.previousNamedSibling, n) ? null : 'function'),
+      trailing: (n) => (psSameClause(n.nextNamedSibling, n) ? n.nextNamedSibling : null),
+      paramList: (n) => {
+        const types = psSignature(n);
+        return named(field(n, 'patterns')).map((p, i) => ({
+          name: p.text,
+          ...(types && i < types.length - 1 ? { type: types[i]! } : {}),
+        }));
+      },
+      returns: (n) => {
+        const types = psSignature(n);
+        const arity = named(field(n, 'patterns')).length;
+        return types && types.length > arity ? types.slice(arity).join(' -> ') : undefined;
+      },
+      body: (n) => field(n, 'rhs'),
+    },
+    signature: {
+      // A signature inside a type class declares a method; elsewhere its function is the declaration.
+      kind: (n) => (n.parent?.type === 'class_body' ? 'method' : null),
+      returns: (n) => arrowParts(psType(n)).slice(-1)[0],
+      paramList: (n) =>
+        arrowParts(psType(n))
+          .slice(0, -1)
+          .map((type, i) => ({ name: `_${i + 1}`, type })),
+    },
+    foreign_import: {
+      kind: 'function',
+      returns: (n) => arrowParts(psType(n)).slice(-1)[0],
+      paramList: (n) =>
+        arrowParts(psType(n))
+          .slice(0, -1)
+          .map((type, i) => ({ name: `_${i + 1}`, type })),
+    },
+    class_declaration: {
+      kind: 'interface',
+      name: (n) => text(childOfType(childOfType(n, 'class_head'), 'class_name')),
+    },
+    class_instance: {
+      kind: 'impl',
+      name: (n) => text(childOfType(n, 'instance_name')) ?? text(childOfType(n, 'instance_head')),
+      bases: (n) => {
+        const c = text(childOfType(childOfType(n, 'instance_head'), 'class_name'));
+        return c ? [c] : [];
+      },
+      receiver: (n) => text(childOfType(childOfType(n, 'instance_head'), 'type_name')),
+    },
+    data: { kind: 'type' },
+    newtype: { kind: 'type' },
+    type_alias: { kind: 'type' },
+  },
+  calls: {
+    exp_apply: (n) => {
+      const h = named(n)[0];
+      const q = h?.type === 'exp_name' ? named(h)[0] : null;
+      if (!q) return null;
+      if (q.type === 'qualified_variable') {
+        const v = childOfType(q, 'variable');
+        const mods = childrenOfType(q, 'module').map((m) => m.text).join('.');
+        return v ? { nameString: v.text, ...(mods ? { receiverText: mods } : {}) } : null;
+      }
+      return q.type === 'variable' ? { name: q } : null;
+    },
+  },
+  imports: {
+    import: (n) => {
+      const m = text(field(n, 'module'))?.replace(/\s+/g, '');
+      if (!m) return [];
+      const alias = text(childrenWithField(n, 'import_rename').find((c) => c.isNamed));
+      const names = childrenOfType(field(n, 'imports'), 'import_item').flatMap((it) => {
+        const nm = named(named(it)[0] ?? it)[0];
+        return nm ? [{ name: nm.text }] : [];
+      });
+      return [imp(m, n, { ...(alias ? { alias } : {}), ...(names.length ? { names } : {}) })];
+    },
+  },
+};
+
+// ---------------------------------------------------------------- MATLAB
+
+export const matlab: LangSpec = {
+  grammar: 'matlab',
+  decls: {
+    class_definition: {
+      kind: 'class',
+      bases: (n) => named(childOfType(n, 'superclasses')).map((c) => c.text.trim()),
+    },
+    function_definition: {
+      kind: 'function',
+      paramList: (n) =>
+        childrenWithField(childOfType(n, 'function_arguments'), 'arguments')
+          .filter((c) => c.isNamed)
+          .map((c) => ({ name: c.text, ...(c.text === 'varargin' ? { variadic: true } : {}) })),
+      returns: (n) => text(childOfType(n, 'function_output'))?.replace(/\s*=\s*$/, ''),
+      body: (n) => childOfType(n, 'block'),
+    },
+    property: { kind: 'property' },
+  },
+  calls: {
+    // `x(1)` is indexing or a call; the grammar cannot tell, so both are recorded and only a
+    // matching declaration turns one into an edge.
+    function_call: (n) => {
+      const nm = field(n, 'name');
+      if (!nm) return null;
+      const p = n.parent;
+      if (p?.type === 'field_expression' && field(p, 'field')?.startIndex === n.startIndex) {
+        const o = field(p, 'object');
+        if (o) return { name: nm, receiver: o };
+      }
+      return { name: nm };
+    },
+  },
+  imports: {
+    command: (n) =>
+      text(childOfType(n, 'command_name')) === 'import'
+        ? childrenOfType(n, 'command_argument').map((a) => imp(a.text, n))
+        : [],
+  },
+  vars: {
+    assignment: (n) => {
+      const l = field(n, 'left');
+      return l?.type === 'identifier' ? [{ name: l.text, value: field(n, 'right') }] : [];
+    },
+  },
+};
+
+// ---------------------------------------------------------------- Pascal (Delphi, Free Pascal)
+
+const pasHead = (n: Node) => (n.type === 'defProc' ? field(n, 'header') : n);
+const pasProcName = (n: Node) => {
+  const nm = field(pasHead(n), 'name');
+  return nm?.type === 'genericDot' ? text(field(nm, 'rhs')) : text(nm);
+};
+const pasProcKind = (n: Node): DeclKind | null => {
+  const h = pasHead(n);
+  if (!h) return null;
+  if (childOfType(h, 'kConstructor')) return 'constructor';
+  return childOfType(h, 'kDestructor') ? 'method' : 'function';
+};
+const pasProc: DeclRule = {
+  kind: pasProcKind,
+  name: pasProcName,
+  paramList: (n) =>
+    childrenOfType(field(pasHead(n), 'args'), 'declArg').flatMap((a) => {
+      const type = text(field(a, 'type'));
+      const optional = !!field(a, 'defaultValue');
+      // `a, b: Integer` declares two parameters in one declArg.
+      return childrenWithField(a, 'name').map((nm) => ({
+        name: nm.text,
+        ...(type ? { type } : {}),
+        ...(optional ? { optional } : {}),
+      }));
+    }),
+  returns: (n) => text(field(pasHead(n), 'type')),
+  receiver: (n) => {
+    const nm = field(pasHead(n), 'name');
+    return nm?.type === 'genericDot' ? text(field(nm, 'lhs')) : undefined;
+  },
+  body: (n) => field(n, 'body'),
+};
+
+export const pascal: LangSpec = {
+  grammar: 'pascal',
+  namespace: {
+    unit: (n) => text(childOfType(n, 'moduleName'))?.replace(/\s+/g, ''),
+    program: (n) => text(childOfType(n, 'moduleName'))?.replace(/\s+/g, ''),
+    library: (n) => text(childOfType(n, 'moduleName'))?.replace(/\s+/g, ''),
+  },
+  decls: {
+    declType: {
+      kind: (n) => {
+        const t = field(n, 'type');
+        if (t?.type === 'declClass') {
+          if (childOfType(t, 'kRecord')) return 'record';
+          if (childOfType(t, 'kInterface')) return 'interface';
+          return 'class';
+        }
+        if (t?.type === 'declIntf') return 'interface';
+        if (t?.type === 'declEnum') return 'enum';
+        return 'type';
+      },
+      bases: (n) =>
+        childrenWithField(field(n, 'type'), 'parent')
+          .filter((p) => p.isNamed)
+          .map((p) => p.text),
+    },
+    // A routine's header inside its definition is part of the definition.
+    declProc: { ...pasProc, kind: (n) => (n.parent?.type === 'defProc' ? null : pasProcKind(n)) },
+    defProc: pasProc,
+    declProp: { kind: 'property', returns: (n) => text(field(n, 'type')) },
+    declField: { kind: 'property', returns: (n) => text(field(n, 'type')) },
+  },
+  calls: {
+    exprCall: (n) => {
+      const e = field(n, 'entity');
+      if (!e) return null;
+      if (e.type === 'exprDot') {
+        const r = field(e, 'rhs');
+        const l = field(e, 'lhs');
+        return r && l ? { name: r, receiver: l } : { callee: e };
+      }
+      return { callee: e };
+    },
+    // `TStore.Create` with no parentheses is still a constructor call.
+    exprDot: (n) => {
+      const r = field(n, 'rhs');
+      const l = field(n, 'lhs');
+      if (n.parent?.type === 'exprCall' || !r || !l || !/^Create$/i.test(r.text)) return null;
+      return { nameString: l.text, isNew: true };
+    },
+    // A routine called with no arguments: `Clear;`.
+    statement: (n) => {
+      const only = named(n);
+      return only.length === 1 && only[0]!.type === 'identifier' ? { name: only[0]! } : null;
+    },
+    inherited: (n) => {
+      const id = childOfType(n, 'identifier');
+      // The parent class's routine: left to resolve as an unknown receiver, never as this class's own.
+      return id ? { nameString: id.text, receiverText: 'inherited' } : null;
+    },
+  },
+  imports: {
+    declUses: (n) => childrenOfType(n, 'moduleName').map((m) => imp(m.text.replace(/\s+/g, ''), n)),
+  },
+  vars: {
+    declVar: (n) => {
+      const type = text(field(n, 'type'));
+      return childrenWithField(n, 'name').map((nm) => ({ name: nm.text, type, value: field(n, 'defaultValue') }));
+    },
+  },
+};
