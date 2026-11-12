@@ -19,6 +19,12 @@ const own = <T>(m: Record<string, T> | undefined, k: string): T | undefined =>
   m && Object.hasOwn(m, k) ? m[k] : undefined;
 const CONSTRUCTOR_NAMES = new Set(['__init__', 'initialize', '__construct', 'constructor']);
 
+/** The last line a node covers; a node that ends at a line's first column ends on the line before. */
+function endLineOf(n: Node): number {
+  const e = n.endPosition;
+  return e.column === 0 && e.row > n.startPosition.row ? e.row : e.row + 1;
+}
+
 function signatureOf(n: Node, body: Node | null | undefined): string {
   const end = body && body.startIndex > n.startIndex ? body.startIndex : n.endIndex;
   const raw = n.tree.rootNode.text.slice(n.startIndex, end);
@@ -164,7 +170,7 @@ export function extractTree(tree: Tree, spec: LangSpec, language: string): Synta
           name: name.replace(/\s+/g, ''),
           kind,
           line: line(n),
-          endLine: n.endPosition.row + 1,
+          endLine: endLineOf(n),
           signature: signatureOf(n, rule.body ? rule.body(n) : field(n, 'body')),
           ...(container >= 0 ? { parent: container } : {}),
           ...(params ? { params } : {}),
@@ -197,7 +203,7 @@ export function extractTree(tree: Tree, spec: LangSpec, language: string): Synta
         const body = trailing(cur);
         const next = kids[i + 1];
         if (!body || !next || body.startIndex !== next.startIndex) break;
-        declarations[d]!.endLine = next.endPosition.row + 1;
+        declarations[d]!.endLine = endLineOf(next);
         walk(next, asOwner ? d : nextOwner, d);
         i++;
         cur = next;

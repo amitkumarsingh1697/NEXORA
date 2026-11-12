@@ -69,7 +69,8 @@ const dartParam = (n: Node): SyntaxParam | SyntaxParam[] | null => {
 };
 
 /** The body after a Dart signature: `function_body` as the next sibling. */
-const dartBody = (n: Node) => (n.nextNamedSibling?.type === 'function_body' ? n.nextNamedSibling : null);
+const dartBody = (n: Node) =>
+  n.nextNamedSibling?.type === 'function_body' ? n.nextNamedSibling : null;
 
 /** A Dart call is a `selector` holding an `argument_part`, after the expression it calls. */
 function dartCall(n: Node): CallParts | null {
@@ -78,10 +79,15 @@ function dartCall(n: Node): CallParts | null {
   if (!prev) return null;
   // The start of the chain: the first sibling before the run of selectors.
   let start: Node = prev;
-  while (start.type === 'selector' && start.previousNamedSibling) start = start.previousNamedSibling;
+  while (start.type === 'selector' && start.previousNamedSibling)
+    start = start.previousNamedSibling;
   const src = n.tree.rootNode.text;
   if (prev.type === 'selector') {
-    const sel = childOfType(prev, 'unconditional_assignable_selector', 'conditional_assignable_selector');
+    const sel = childOfType(
+      prev,
+      'unconditional_assignable_selector',
+      'conditional_assignable_selector',
+    );
     const name = text(childOfType(sel, 'identifier'));
     if (!name) return null;
     return { nameString: name, receiverText: src.slice(start.startIndex, prev.startIndex) };
@@ -129,10 +135,16 @@ export const dart: LangSpec = {
         const s = named(n)[0];
         if (!s) return undefined;
         if (s.type === 'constructor_signature' || s.type === 'factory_constructor_signature')
-          return childrenWithField(s, 'name').filter((x) => x.isNamed).map((x) => x.text).join('.') || undefined;
+          return (
+            childrenWithField(s, 'name')
+              .filter((x) => x.isNamed)
+              .map((x) => x.text)
+              .join('.') || undefined
+          );
         return text(field(s, 'name')) ?? text(childOfType(s, 'identifier'));
       },
-      params: (n) => childOfType(named(n)[0], 'formal_parameter_list') ?? field(named(n)[0], 'parameters'),
+      params: (n) =>
+        childOfType(named(n)[0], 'formal_parameter_list') ?? field(named(n)[0], 'parameters'),
       returns: (n) => {
         const s = named(n)[0];
         return s && /^(function|getter)_signature$/.test(s.type) ? dartReturns(s) : undefined;
@@ -142,7 +154,11 @@ export const dart: LangSpec = {
     },
     constructor_signature: {
       kind: (n) => (n.parent?.type === 'method_signature' ? null : 'constructor'),
-      name: (n) => childrenWithField(n, 'name').filter((x) => x.isNamed).map((x) => x.text).join('.') || undefined,
+      name: (n) =>
+        childrenWithField(n, 'name')
+          .filter((x) => x.isNamed)
+          .map((x) => x.text)
+          .join('.') || undefined,
       trailing: dartBody,
     },
     getter_signature: {
@@ -218,12 +234,22 @@ export const swift: LangSpec = {
   decls: {
     class_declaration: {
       kind: (n): DeclKind => {
-        const k = n.children.find((c) => c && !c.isNamed && /^(class|struct|enum|extension|actor)$/.test(c.type))?.type;
-        return k === 'struct' ? 'struct' : k === 'enum' ? 'enum' : k === 'extension' ? 'impl' : 'class';
+        const k = n.children.find(
+          (c) => c && !c.isNamed && /^(class|struct|enum|extension|actor)$/.test(c.type),
+        )?.type;
+        return k === 'struct'
+          ? 'struct'
+          : k === 'enum'
+            ? 'enum'
+            : k === 'extension'
+              ? 'impl'
+              : 'class';
       },
       name: (n) => text(field(n, 'name')),
       receiver: (n) =>
-        n.children.some((c) => c && !c.isNamed && c.type === 'extension') ? text(field(n, 'name')) : undefined,
+        n.children.some((c) => c && !c.isNamed && c.type === 'extension')
+          ? text(field(n, 'name'))
+          : undefined,
       bases: (n) =>
         childrenOfType(n, 'inheritance_specifier')
           .map((s) => text(field(s, 'inherits_from')))
@@ -231,7 +257,11 @@ export const swift: LangSpec = {
     },
     protocol_declaration: { kind: 'interface' },
     function_declaration: { kind: 'function', paramList: swiftParams, returns: swiftReturns },
-    protocol_function_declaration: { kind: 'method', paramList: swiftParams, returns: swiftReturns },
+    protocol_function_declaration: {
+      kind: 'method',
+      paramList: swiftParams,
+      returns: swiftReturns,
+    },
     init_declaration: { kind: 'constructor', name: () => 'init', paramList: swiftParams },
     typealias_declaration: { kind: 'type' },
   },
@@ -258,8 +288,25 @@ export const swift: LangSpec = {
 // ---------------------------------------------------------------- Perl
 
 const PERL_PRAGMAS = new Set([
-  'strict', 'warnings', 'utf8', 'feature', 'lib', 'constant', 'vars', 'integer', 'overload',
-  'parent', 'base', 'version', 'bytes', 'open', 'locale', 'diagnostics', 'subs', 'mro', 'bigint',
+  'strict',
+  'warnings',
+  'utf8',
+  'feature',
+  'lib',
+  'constant',
+  'vars',
+  'integer',
+  'overload',
+  'parent',
+  'base',
+  'version',
+  'bytes',
+  'open',
+  'locale',
+  'diagnostics',
+  'subs',
+  'mro',
+  'bigint',
 ]);
 
 /** The package a top-level Perl statement belongs to: the last `package` before it. */
@@ -278,7 +325,10 @@ function perlParams(n: Node): SyntaxParam[] | undefined {
   if (!a || !/^@_$/.test(field(a, 'right')?.text ?? '')) {
     const sig = childOfType(n, 'signature');
     return sig
-      ? named(sig).map((p) => ({ name: p.text.replace(/\s*=.*$/s, ''), ...(/=/.test(p.text) ? { optional: true } : {}) }))
+      ? named(sig).map((p) => ({
+          name: p.text.replace(/\s*=.*$/s, ''),
+          ...(/=/.test(p.text) ? { optional: true } : {}),
+        }))
       : undefined;
   }
   return named(field(a, 'left'))
@@ -295,13 +345,28 @@ export const perl: LangSpec = {
       kind: 'class',
       bases: (n) => {
         const out: string[] = [];
-        for (let s = n.nextNamedSibling; s && s.type !== 'package_statement'; s = s.nextNamedSibling) {
+        for (
+          let s = n.nextNamedSibling;
+          s && s.type !== 'package_statement';
+          s = s.nextNamedSibling
+        ) {
           const mod = text(field(s, 'module'));
           if (s.type === 'use_statement' && (mod === 'parent' || mod === 'base'))
             for (const w of named(s).slice(1))
-              out.push(...w.text.replace(/^qw\s*[([{/]|[)\]}/]$/g, '').split(/[\s,'"]+/).filter((x) => x && x !== '-norequire'));
+              out.push(
+                ...w.text
+                  .replace(/^qw\s*[([{/]|[)\]}/]$/g, '')
+                  .split(/[\s,'"]+/)
+                  .filter((x) => x && x !== '-norequire'),
+              );
           if (/^our\s+@ISA\s*=/.test(s.text) || /^@ISA\s*=/.test(s.text))
-            out.push(...(s.text.split('=')[1] ?? '').split(/[\s,'"()]+|qw/).filter(Boolean).map((x) => x.replace(/;$/, '')).filter(Boolean));
+            out.push(
+              ...(s.text.split('=')[1] ?? '')
+                .split(/[\s,'"()]+|qw/)
+                .filter(Boolean)
+                .map((x) => x.replace(/;$/, ''))
+                .filter(Boolean),
+            );
         }
         return out;
       },
@@ -405,11 +470,15 @@ export const r: LangSpec = {
       const name = f.type === 'identifier' ? f.text : undefined;
       if (
         name &&
-        /^(library|require|requireNamespace|source|function|setClass|setRefClass|R6Class|setGeneric|setMethod|setValidity|standardGeneric|representation)$/.test(name)
+        /^(library|require|requireNamespace|source|function|setClass|setRefClass|R6Class|setGeneric|setMethod|setValidity|standardGeneric|representation)$/.test(
+          name,
+        )
       )
         return null;
-      if (f.type === 'namespace_operator') return { callee: f, receiver: field(f, 'lhs'), name: field(f, 'rhs') };
-      if (f.type === 'extract_operator') return { callee: f, receiver: field(f, 'lhs'), name: field(f, 'rhs') };
+      if (f.type === 'namespace_operator')
+        return { callee: f, receiver: field(f, 'lhs'), name: field(f, 'rhs') };
+      if (f.type === 'extract_operator')
+        return { callee: f, receiver: field(f, 'lhs'), name: field(f, 'rhs') };
       return f.type === 'identifier' ? { callee: f } : null;
     },
   },
@@ -439,17 +508,24 @@ export const erlang: LangSpec = {
   grammar: 'erlang',
   namespace: { module_attribute: (n) => text(field(n, 'name')) },
   decls: {
-    module_attribute: { kind: 'module', bases: (n) => {
-      const out: string[] = [];
-      for (let s = n.nextNamedSibling; s; s = s.nextNamedSibling)
-        if (s.type === 'behaviour_attribute') out.push(text(field(s, 'name')) ?? '');
-      return out.filter(Boolean);
-    } },
+    module_attribute: {
+      kind: 'module',
+      bases: (n) => {
+        const out: string[] = [];
+        for (let s = n.nextNamedSibling; s; s = s.nextNamedSibling)
+          if (s.type === 'behaviour_attribute') out.push(text(field(s, 'name')) ?? '');
+        return out.filter(Boolean);
+      },
+    },
     record_decl: { kind: 'record' },
-    type_alias: { kind: 'type', name: (n) => text(firstIdentifier(field(n, 'name'))) ?? text(field(n, 'name')) },
+    type_alias: {
+      kind: 'type',
+      name: (n) => text(firstIdentifier(field(n, 'name'))) ?? text(field(n, 'name')),
+    },
     fun_decl: {
       // `f(…) -> …; f(…) -> ….`: a later clause of the same function continues it.
-      kind: (n) => (erlangName(n.previousNamedSibling) === erlangName(n) && erlangName(n) ? null : 'function'),
+      kind: (n) =>
+        erlangName(n.previousNamedSibling) === erlangName(n) && erlangName(n) ? null : 'function',
       trailing: (n) =>
         n.nextNamedSibling?.type === 'fun_decl' && erlangName(n.nextNamedSibling) === erlangName(n)
           ? n.nextNamedSibling
@@ -465,7 +541,11 @@ export const erlang: LangSpec = {
   calls: {
     call: (n) => {
       if (n.parent?.type === 'remote' || n.parent?.type === 'type_sig') return null;
-      if (n.parent?.parent?.type === 'type_sig' || /spec|type_alias/.test(n.parent?.parent?.type ?? '')) return null;
+      if (
+        n.parent?.parent?.type === 'type_sig' ||
+        /spec|type_alias/.test(n.parent?.parent?.type ?? '')
+      )
+        return null;
       const e = field(n, 'expr');
       return e?.type === 'atom' ? { callee: e } : null;
     },
@@ -482,7 +562,9 @@ export const erlang: LangSpec = {
     import_attribute: (n) => {
       const m = text(field(n, 'module'));
       if (!m) return [];
-      const names = childrenWithField(n, 'funs').map((f) => ({ name: text(field(f, 'fun')) ?? '' }));
+      const names = childrenWithField(n, 'funs').map((f) => ({
+        name: text(field(f, 'fun')) ?? '',
+      }));
       return [imp(m, n, { names: names.filter((x) => x.name) })];
     },
     pp_include: (n) => {
@@ -550,7 +632,9 @@ function lispSpec(s: LispShape): LangSpec {
     const p = x?.parent;
     if (!x || !p) return false;
     if (!s.list.includes(p.type))
-      return [field(p, 'parameters'), field(p, 'lambda_list')].some((f) => f?.startIndex === x.startIndex);
+      return [field(p, 'parameters'), field(p, 'lambda_list')].some(
+        (f) => f?.startIndex === x.startIndex,
+      );
     return !!declOf(p) && lispItems(p)[1]?.startIndex === x.startIndex;
   };
   const notCall = (n: Node): boolean => {
@@ -562,10 +646,20 @@ function lispSpec(s: LispShape): LangSpec {
     const items = lispItems(p);
     const at = items.findIndex((c) => c.startIndex === n.startIndex);
     // `(defclass c (base) …)`, `(defgeneric f (x))`: the list after a symbol name is data.
-    if (pk && pk !== 'module' && pk !== 'property' && at === 2 && items[1] && !s.list.includes(items[1].type))
+    if (
+      pk &&
+      pk !== 'module' &&
+      pk !== 'property' &&
+      at === 2 &&
+      items[1] &&
+      !s.list.includes(items[1].type)
+    )
       return true;
     for (let a: Node | null = p; a; a = a.parent)
-      if (s.list.includes(a.type) && /^(import|require|use-modules|provide|export)$/.test(head(a) ?? ''))
+      if (
+        s.list.includes(a.type) &&
+        /^(import|require|use-modules|provide|export)$/.test(head(a) ?? '')
+      )
         return true;
     if (pk && /^(struct|record)$/.test(pk)) return true;
     const ph = head(p);
@@ -573,11 +667,21 @@ function lispSpec(s: LispShape): LangSpec {
     const g = p.parent;
     if (g && s.list.includes(g.type)) {
       const gk = declOf(g);
-      if (gk && /^(class|struct|record|type)$/.test(gk) && head(g) !== 'defrecord' && head(g) !== 'deftype')
+      if (
+        gk &&
+        /^(class|struct|record|type)$/.test(gk) &&
+        head(g) !== 'defrecord' &&
+        head(g) !== 'deftype'
+      )
         return true;
       const gh = head(g);
       // `(let ((x (f))) …)`: the binding pairs are not calls (their values are).
-      if (gh && BINDERS.test(gh) && lispItems(g)[1]?.startIndex === p.startIndex && !/^(cond|case|match)$/.test(gh))
+      if (
+        gh &&
+        BINDERS.test(gh) &&
+        lispItems(g)[1]?.startIndex === p.startIndex &&
+        !/^(cond|case|match)$/.test(gh)
+      )
         return true;
     }
     return false;
@@ -585,7 +689,11 @@ function lispSpec(s: LispShape): LangSpec {
   /** Inside a namespace or module form: its clauses are not calls. */
   const inModuleForm = (n: Node) => {
     for (let p = n.parent; p; p = p.parent)
-      if (s.list.includes(p.type) && Object.hasOwn(s.defs, head(p) ?? '') && s.defs[head(p)!] === 'module')
+      if (
+        s.list.includes(p.type) &&
+        Object.hasOwn(s.defs, head(p) ?? '') &&
+        s.defs[head(p)!] === 'module'
+      )
         return true;
     return false;
   };
@@ -618,7 +726,9 @@ function lispSpec(s: LispShape): LangSpec {
       },
       bases: (n) => {
         const k = declOf(n);
-        return k && /^(class|record|struct|interface)$/.test(k) ? (s.bases?.(lispItems(n).slice(2), head(n) ?? '') ?? []) : [];
+        return k && /^(class|record|struct|interface)$/.test(k)
+          ? (s.bases?.(lispItems(n).slice(2), head(n) ?? '') ?? [])
+          : [];
       },
       body: () => null,
     };
@@ -668,22 +778,37 @@ export const clojure: LangSpec = lispSpec({
   list: ['list_lit'],
   sym: (n) => (n?.type === 'sym_lit' ? n.text : undefined),
   defs: {
-    defn: 'function', 'defn-': 'function', defmacro: 'function', defmulti: 'function',
-    def: 'property', defonce: 'property', defprotocol: 'interface', defrecord: 'record',
-    deftype: 'class', definterface: 'interface', ns: 'module', defstruct: 'struct',
+    defn: 'function',
+    'defn-': 'function',
+    defmacro: 'function',
+    defmulti: 'function',
+    def: 'property',
+    defonce: 'property',
+    defprotocol: 'interface',
+    defrecord: 'record',
+    deftype: 'class',
+    definterface: 'interface',
+    ns: 'module',
+    defstruct: 'struct',
   },
-  special: /^(fn|let|if|do|when|when-not|cond|case|loop|recur|quote|try|catch|finally|throw|and|or|not|->|->>|doto|binding|for|doseq|dotimes|if-let|when-let|letfn|new|set!|var|defmethod|extend-type|extend-protocol|reify|proxy|comment)$/,
+  special:
+    /^(fn|let|if|do|when|when-not|cond|case|loop|recur|quote|try|catch|finally|throw|and|or|not|->|->>|doto|binding|for|doseq|dotimes|if-let|when-let|letfn|new|set!|var|defmethod|extend-type|extend-protocol|reify|proxy|comment)$/,
   params: (items) => {
     const direct = vecParams(items);
     if (direct) return direct;
     // Multi-arity: ([x] …) ([x y] …): the longest parameter vector.
-    const arities = items.filter((c) => c.type === 'list_lit').map((c) => vecParams(lispItems(c)) ?? []);
+    const arities = items
+      .filter((c) => c.type === 'list_lit')
+      .map((c) => vecParams(lispItems(c)) ?? []);
     return arities.length ? arities.reduce((a, b) => (b.length > a.length ? b : a)) : undefined;
   },
   bases: (items, h) => {
     if (h !== 'defrecord' && h !== 'deftype') return [];
     const v = items.findIndex((c) => c.type === 'vec_lit');
-    return items.slice(v + 1).filter((c) => c.type === 'sym_lit').map((c) => c.text);
+    return items
+      .slice(v + 1)
+      .filter((c) => c.type === 'sym_lit')
+      .map((c) => c.text);
   },
   imports: (h, n, items) => {
     if (h !== 'ns') return [];
@@ -738,7 +863,11 @@ const schemeImports = (h: string, n: Node, items: Node[]): SyntaxImport[] => {
     if (c.type === 'symbol') return [imp(c.text, c)];
     if (c.type === 'list') {
       const parts = lispItems(c).map((x) => x.text);
-      if (/^(only|except|prefix|rename|for-syntax|for-label|only-in|except-in|prefix-in|rename-in)$/.test(parts[0] ?? ''))
+      if (
+        /^(only|except|prefix|rename|for-syntax|for-label|only-in|except-in|prefix-in|rename-in)$/.test(
+          parts[0] ?? '',
+        )
+      )
         return parts[1] ? [imp(parts[1].replace(/^"|"$/g, ''), c)] : [];
       return [imp(parts.join(' '), c)];
     }
@@ -754,8 +883,12 @@ export const scheme: LangSpec = lispSpec({
   list: ['list'],
   sym: (n) => (n?.type === 'symbol' ? n.text : undefined),
   defs: {
-    define: 'function', 'define-syntax': 'function', 'define-record-type': 'record',
-    'define-library': 'module', 'define-module': 'module', 'define-values': 'property',
+    define: 'function',
+    'define-syntax': 'function',
+    'define-record-type': 'record',
+    'define-library': 'module',
+    'define-module': 'module',
+    'define-values': 'property',
   },
   special: SCHEME_SPECIAL,
   params: () => undefined,
@@ -768,10 +901,17 @@ export const racket: LangSpec = lispSpec({
   list: ['list'],
   sym: (n) => (n?.type === 'symbol' ? n.text : undefined),
   defs: {
-    define: 'function', 'define-syntax': 'function', 'define-syntax-rule': 'function',
-    struct: 'struct', 'define-struct': 'struct', 'define/public': 'method',
-    'define/override': 'method', 'define/private': 'method', 'define/augment': 'method',
-    module: 'module', 'define-values': 'property',
+    define: 'function',
+    'define-syntax': 'function',
+    'define-syntax-rule': 'function',
+    struct: 'struct',
+    'define-struct': 'struct',
+    'define/public': 'method',
+    'define/override': 'method',
+    'define/private': 'method',
+    'define/augment': 'method',
+    module: 'module',
+    'define-values': 'property',
   },
   special: SCHEME_SPECIAL,
   params: () => undefined,
@@ -783,8 +923,14 @@ const commonLispBase = lispSpec({
   list: ['list_lit'],
   sym: (n) => (n?.type === 'sym_lit' ? n.text : undefined),
   defs: {
-    defclass: 'class', defstruct: 'struct', defvar: 'property', defparameter: 'property',
-    defconstant: 'property', defpackage: 'module', defgeneric: 'function', 'define-condition': 'class',
+    defclass: 'class',
+    defstruct: 'struct',
+    defvar: 'property',
+    defparameter: 'property',
+    defconstant: 'property',
+    defpackage: 'module',
+    defgeneric: 'function',
+    'define-condition': 'class',
     deftype: 'type',
   },
   special:
@@ -801,7 +947,8 @@ const commonLispBase = lispSpec({
   imports: (h, n, items) => {
     if (h === 'require' || h === 'ql:quickload' || h === 'asdf:load-system')
       return items.slice(1).map((c) => imp(c.text.replace(/^[':#]+|"/g, ''), c));
-    if (h === 'load') return items.slice(1, 2).map((c) => imp(strip(c.text)!, c, { style: 'path' }));
+    if (h === 'load')
+      return items.slice(1, 2).map((c) => imp(strip(c.text)!, c, { style: 'path' }));
     return [];
   },
 });
@@ -811,7 +958,8 @@ export const commonlisp: LangSpec = {
   decls: {
     ...commonLispBase.decls,
     defun: {
-      kind: (n) => (/defmethod/.test(childOfType(n, 'defun_header')?.text ?? '') ? 'function' : 'function'),
+      kind: (n) =>
+        /defmethod/.test(childOfType(n, 'defun_header')?.text ?? '') ? 'function' : 'function',
       name: (n) => text(field(childOfType(n, 'defun_header'), 'function_name')),
       paramList: (n) => lambdaList(named(field(childOfType(n, 'defun_header'), 'lambda_list'))),
       body: () => null,
@@ -824,10 +972,18 @@ const elispBase = lispSpec({
   list: ['list'],
   sym: (n) => (n?.type === 'symbol' ? n.text : undefined),
   defs: {
-    defcustom: 'property', defconst: 'property', defgroup: 'module', 'cl-defstruct': 'struct',
-    'cl-defun': 'function', 'cl-defmethod': 'function', 'cl-defgeneric': 'function',
-    'define-minor-mode': 'function', 'define-derived-mode': 'function', defface: 'property',
-    defsubst: 'function', defalias: 'function',
+    defcustom: 'property',
+    defconst: 'property',
+    defgroup: 'module',
+    'cl-defstruct': 'struct',
+    'cl-defun': 'function',
+    'cl-defmethod': 'function',
+    'cl-defgeneric': 'function',
+    'define-minor-mode': 'function',
+    'define-derived-mode': 'function',
+    defface: 'property',
+    defsubst: 'function',
+    defalias: 'function',
   },
   special:
     /^(let|let\*|if|cond|when|unless|progn|prog1|while|dolist|dotimes|quote|function|lambda|setq|setf|and|or|interactive|save-excursion|with-current-buffer|condition-case|unwind-protect|catch|throw|pcase|declare|provide|require)$/,
@@ -837,7 +993,9 @@ const elispBase = lispSpec({
   },
   imports: (h, n, items) =>
     h === 'require' || h === 'load' || h === 'load-file'
-      ? items.slice(1, 2).map((c) => imp(c.text.replace(/^'|"/g, ''), c, h === 'require' ? {} : { style: 'path' }))
+      ? items
+          .slice(1, 2)
+          .map((c) => imp(c.text.replace(/^'|"/g, ''), c, h === 'require' ? {} : { style: 'path' }))
       : [],
 });
 
@@ -885,7 +1043,10 @@ export const luau: LangSpec = {
         const params = field(n, 'parameters');
         const body = field(n, 'body');
         const t = named(n).find(
-          (c) => params && c.startIndex > params.endIndex - 1 && (!body || c.startIndex < body.startIndex),
+          (c) =>
+            params &&
+            c.startIndex > params.endIndex - 1 &&
+            (!body || c.startIndex < body.startIndex),
         );
         return text(t);
       },
@@ -903,12 +1064,14 @@ const namedField = (n: Node | null | undefined, f: string): Node | null =>
 const crystalParams = (n: Node): SyntaxParam[] | undefined => {
   const list = field(n, 'params');
   if (!list) return n.type === 'method_def' ? [] : undefined;
-  return childrenOfType(list, 'param', 'splat_param', 'double_splat_param', 'block_param').map((p) => ({
-    name: (text(field(p, 'name')) ?? p.text).replace(/^@/, ''),
-    ...(namedField(p, 'type') ? { type: namedField(p, 'type')!.text } : {}),
-    ...(namedField(p, 'default') ? { optional: true } : {}),
-    ...(p.type !== 'param' ? { variadic: true } : {}),
-  }));
+  return childrenOfType(list, 'param', 'splat_param', 'double_splat_param', 'block_param').map(
+    (p) => ({
+      name: (text(field(p, 'name')) ?? p.text).replace(/^@/, ''),
+      ...(namedField(p, 'type') ? { type: namedField(p, 'type')!.text } : {}),
+      ...(namedField(p, 'default') ? { optional: true } : {}),
+      ...(p.type !== 'param' ? { variadic: true } : {}),
+    }),
+  );
 };
 
 export const crystal: LangSpec = {
@@ -940,7 +1103,11 @@ export const crystal: LangSpec = {
         return cls ? text(cls) : undefined;
       },
     },
-    abstract_method_def: { kind: 'method', paramList: crystalParams, returns: (n) => text(field(n, 'type')) },
+    abstract_method_def: {
+      kind: 'method',
+      paramList: crystalParams,
+      returns: (n) => text(field(n, 'type')),
+    },
     fun_def: { kind: 'function', paramList: crystalParams, returns: (n) => text(field(n, 'type')) },
     macro_def: { kind: 'function', paramList: crystalParams },
   },
@@ -1045,14 +1212,28 @@ export const hack: LangSpec = {
   decls: {
     class_declaration: {
       kind: 'class',
-      bases: (n) => [...hackTypes(childOfType(n, 'extends_clause')), ...hackTypes(childOfType(n, 'implements_clause'))],
+      bases: (n) => [
+        ...hackTypes(childOfType(n, 'extends_clause')),
+        ...hackTypes(childOfType(n, 'implements_clause')),
+      ],
     },
-    interface_declaration: { kind: 'interface', bases: (n) => hackTypes(childOfType(n, 'extends_clause')) },
+    interface_declaration: {
+      kind: 'interface',
+      bases: (n) => hackTypes(childOfType(n, 'extends_clause')),
+    },
     trait_declaration: { kind: 'trait' },
     enum_declaration: { kind: 'enum' },
     alias_declaration: { kind: 'type' },
-    method_declaration: { kind: 'method', paramList: hackParams, returns: (n) => text(field(n, 'return_type')) },
-    function_declaration: { kind: 'function', paramList: hackParams, returns: (n) => text(field(n, 'return_type')) },
+    method_declaration: {
+      kind: 'method',
+      paramList: hackParams,
+      returns: (n) => text(field(n, 'return_type')),
+    },
+    function_declaration: {
+      kind: 'function',
+      paramList: hackParams,
+      returns: (n) => text(field(n, 'return_type')),
+    },
   },
   calls: {
     call_expression: (n) => {
@@ -1073,7 +1254,9 @@ export const hack: LangSpec = {
   },
   imports: {
     use_statement: (n) =>
-      childrenOfType(n, 'use_clause').map((c) => imp((text(named(c)[0]) ?? c.text).replace(/^\\/, ''), c)),
+      childrenOfType(n, 'use_clause').map((c) =>
+        imp((text(named(c)[0]) ?? c.text).replace(/^\\/, ''), c),
+      ),
     require_once_expression: (n) => {
       const s = strip(text(childOfType(n, 'string')));
       return s ? [imp(s, n, { style: 'path' })] : [];
@@ -1127,15 +1310,17 @@ const odinParams = (n: Node): SyntaxParam[] | undefined => {
   const proc = childOfType(n, 'procedure');
   const list = childOfType(proc, 'parameters');
   if (!list) return undefined;
-  return childrenOfType(list, 'parameter', 'default_parameter', 'variadic_parameter').flatMap((p) => {
-    const type = childOfType(p, 'type');
-    return childrenOfType(p, 'identifier').map((id) => ({
-      name: id.text,
-      ...(type ? { type: type.text } : {}),
-      ...(p.type === 'default_parameter' ? { optional: true } : {}),
-      ...(p.type === 'variadic_parameter' ? { variadic: true } : {}),
-    }));
-  });
+  return childrenOfType(list, 'parameter', 'default_parameter', 'variadic_parameter').flatMap(
+    (p) => {
+      const type = childOfType(p, 'type');
+      return childrenOfType(p, 'identifier').map((id) => ({
+        name: id.text,
+        ...(type ? { type: type.text } : {}),
+        ...(p.type === 'default_parameter' ? { optional: true } : {}),
+        ...(p.type === 'variadic_parameter' ? { variadic: true } : {}),
+      }));
+    },
+  );
 };
 
 export const odin: LangSpec = {
@@ -1148,7 +1333,13 @@ export const odin: LangSpec = {
       paramList: odinParams,
       returns: (n) => {
         const proc = childOfType(n, 'procedure');
-        return text(named(proc).find((c) => c.type === 'type' && c.startIndex > (childOfType(proc, 'parameters')?.endIndex ?? 0) - 1));
+        return text(
+          named(proc).find(
+            (c) =>
+              c.type === 'type' &&
+              c.startIndex > (childOfType(proc, 'parameters')?.endIndex ?? 0) - 1,
+          ),
+        );
       },
       body: (n) => childOfType(childOfType(n, 'procedure'), 'block'),
     },
@@ -1172,7 +1363,13 @@ export const odin: LangSpec = {
       const s = strip(text(childOfType(n, 'string')));
       if (!s) return [];
       const alias = text(field(n, 'alias'));
-      return [imp(s.replace(/^core:|^vendor:|^base:/, (x) => x), n, alias ? { alias } : {})];
+      return [
+        imp(
+          s.replace(/^core:|^vendor:|^base:/, (x) => x),
+          n,
+          alias ? { alias } : {},
+        ),
+      ];
     },
   },
 };
@@ -1236,10 +1433,28 @@ export const d: LangSpec = {
   grammar: 'd',
   namespace: { module_declaration: (n) => text(childOfType(n, 'module_fqn'))?.replace(/\s+/g, '') },
   decls: {
-    class_declaration: { kind: 'class', name: dName, bases: dBases, body: (n) => childOfType(n, 'aggregate_body') },
-    interface_declaration: { kind: 'interface', name: dName, bases: dBases, body: (n) => childOfType(n, 'aggregate_body') },
-    struct_declaration: { kind: 'struct', name: dName, body: (n) => childOfType(n, 'aggregate_body') },
-    union_declaration: { kind: 'struct', name: dName, body: (n) => childOfType(n, 'aggregate_body') },
+    class_declaration: {
+      kind: 'class',
+      name: dName,
+      bases: dBases,
+      body: (n) => childOfType(n, 'aggregate_body'),
+    },
+    interface_declaration: {
+      kind: 'interface',
+      name: dName,
+      bases: dBases,
+      body: (n) => childOfType(n, 'aggregate_body'),
+    },
+    struct_declaration: {
+      kind: 'struct',
+      name: dName,
+      body: (n) => childOfType(n, 'aggregate_body'),
+    },
+    union_declaration: {
+      kind: 'struct',
+      name: dName,
+      body: (n) => childOfType(n, 'aggregate_body'),
+    },
     enum_declaration: { kind: 'enum', name: dName },
     template_declaration: { kind: 'namespace', name: dName },
     function_declaration: {
@@ -1259,7 +1474,11 @@ export const d: LangSpec = {
         const names = childrenOfType(im, 'import_bind').map((b) => ({ name: b.text.trim() }));
         const binds = childrenOfType(n, 'import_bind').map((b) => ({ name: b.text.trim() }));
         const all = [...names, ...binds];
-        return imp(text(childOfType(im, 'module_fqn'))!.replace(/\s+/g, ''), n, all.length ? { names: all } : {});
+        return imp(
+          text(childOfType(im, 'module_fqn'))!.replace(/\s+/g, ''),
+          n,
+          all.length ? { names: all } : {},
+        );
       }),
   },
   vars: {
@@ -1344,11 +1563,19 @@ export const vala: LangSpec = {
       const parts = named(f);
       const nameNode = parts[parts.length - 1];
       if (!nameNode || nameNode.type !== 'identifier') return { callee: f };
-      return parts.length > 1 ? { nameString: nameNode.text, receiverText: parts[0]!.text } : { name: nameNode };
+      return parts.length > 1
+        ? { nameString: nameNode.text, receiverText: parts[0]!.text }
+        : { name: nameNode };
     },
     object_creation_expression: (n) => {
       const t = text(childOfType(n, 'type'));
-      return t ? { nameString: t.split('.').pop()!, ...(t.includes('.') ? { receiverText: t.replace(/\.[^.]*$/, '') } : {}), isNew: true } : null;
+      return t
+        ? {
+            nameString: t.split('.').pop()!,
+            ...(t.includes('.') ? { receiverText: t.replace(/\.[^.]*$/, '') } : {}),
+            isNew: true,
+          }
+        : null;
     },
   },
   imports: {
@@ -1359,7 +1586,9 @@ export const vala: LangSpec = {
       const type = text(childOfType(n, 'type'));
       return childrenOfType(n, 'assignment').flatMap((a) => {
         const name = text(childOfType(a, 'identifier'));
-        return name ? [{ name, ...(type && type !== 'var' ? { type } : {}), value: named(a)[1] }] : [];
+        return name
+          ? [{ name, ...(type && type !== 'var' ? { type } : {}), value: named(a)[1] }]
+          : [];
       });
     },
   },
@@ -1381,7 +1610,9 @@ const haxeParams = (n: Node): SyntaxParam[] =>
     ];
   });
 const haxeBases = (n: Node) =>
-  [...childrenWithField(n, 'super_class_name'), ...childrenWithField(n, 'interface_name')].map((c) => c.text);
+  [...childrenWithField(n, 'super_class_name'), ...childrenWithField(n, 'interface_name')].map(
+    (c) => c.text,
+  );
 
 export const haxe: LangSpec = {
   grammar: 'haxe',
@@ -1398,7 +1629,10 @@ export const haxe: LangSpec = {
       returns: (n) => text(field(n, 'return_type')),
     },
     variable_declaration: {
-      kind: (n) => (n.parent?.parent && /class_declaration|interface_declaration/.test(n.parent.parent.type) ? 'property' : null),
+      kind: (n) =>
+        n.parent?.parent && /class_declaration|interface_declaration/.test(n.parent.parent.type)
+          ? 'property'
+          : null,
       returns: (n) => text(field(n, 'type')),
     },
   },
@@ -1424,7 +1658,9 @@ export const haxe: LangSpec = {
       const spec = [...pk, ...(types[0] ? [types[0]] : [])].join('.');
       return [
         imp(spec + (wildcard ? '.*' : ''), n, {
-          ...(types[0] ? { names: [{ name: types[0], ...(types[1] ? { alias: types[1] } : {}) }] } : {}),
+          ...(types[0]
+            ? { names: [{ name: types[0], ...(types[1] ? { alias: types[1] } : {}) }] }
+            : {}),
         }),
       ];
     },
@@ -1442,7 +1678,8 @@ export const haxe: LangSpec = {
 /** `function_parameters` lists name, `type:` and `default:` flat, and `...rest` as a `rest` node. */
 function asParams(n: Node): SyntaxParam[] | undefined {
   const pl = field(n, 'parameters');
-  if (!pl) return n.type === 'method_declaration' || n.type === 'function_declaration' ? [] : undefined;
+  if (!pl)
+    return n.type === 'method_declaration' || n.type === 'function_declaration' ? [] : undefined;
   const out: SyntaxParam[] = [];
   for (let i = 0; i < pl.namedChildCount; i++) {
     const c = pl.namedChild(i)!;
@@ -1450,7 +1687,8 @@ function asParams(n: Node): SyntaxParam[] | undefined {
     if (c.type === 'rest') {
       const name = text(childOfType(c, 'identifier'));
       if (name) out.push({ name, variadic: true });
-    } else if (f === 'type' && out.length) out[out.length - 1]!.type = text(field(c, 'type')) ?? c.text;
+    } else if (f === 'type' && out.length)
+      out[out.length - 1]!.type = text(field(c, 'type')) ?? c.text;
     else if (f === 'default' && out.length) out[out.length - 1]!.optional = true;
     else if (!f && c.type === 'identifier') out.push({ name: c.text });
   }
@@ -1514,13 +1752,17 @@ export const actionscript: LangSpec = {
       const t = childOfType(n, 'scoped_data_type');
       if (!t) return [];
       const spec = t.text.replace(/\s+/g, '');
-      return [imp(spec, n, spec.endsWith('*') ? {} : { names: [{ name: spec.split('.').pop()! }] })];
+      return [
+        imp(spec, n, spec.endsWith('*') ? {} : { names: [{ name: spec.split('.').pop()! }] }),
+      ];
     },
   },
   vars: {
     variable_declaration: (n) => {
       const name = text(field(n, 'name'));
-      return name ? [{ name, type: text(field(field(n, 'type'), 'type')), value: field(n, 'value') }] : [];
+      return name
+        ? [{ name, type: text(field(field(n, 'type'), 'type')), value: field(n, 'value') }]
+        : [];
     },
   },
 };
@@ -1538,10 +1780,21 @@ const nimParams = (n: Node): SyntaxParam[] | undefined => {
     const type = text(field(p, 'type'));
     const optional = !!field(p, 'value');
     const variadic = !!type && /^varargs\[/.test(type);
-    return childrenOfType(childOfType(p, 'symbol_declaration_list'), 'symbol_declaration').flatMap((s) => {
-      const name = text(field(s, 'name'));
-      return name ? [{ name, ...(type ? { type } : {}), ...(optional ? { optional } : {}), ...(variadic ? { variadic } : {}) }] : [];
-    });
+    return childrenOfType(childOfType(p, 'symbol_declaration_list'), 'symbol_declaration').flatMap(
+      (s) => {
+        const name = text(field(s, 'name'));
+        return name
+          ? [
+              {
+                name,
+                ...(type ? { type } : {}),
+                ...(optional ? { optional } : {}),
+                ...(variadic ? { variadic } : {}),
+              },
+            ]
+          : [];
+      },
+    );
   });
 };
 /** The type definition under `type X = …`, through `ref` and `ptr`. */
@@ -1609,17 +1862,26 @@ export const nim: LangSpec = {
     import_from_statement: (n) => {
       const m = field(n, 'module');
       return m
-        ? [imp(m.text.replace(/\s+/g, ''), n, { names: named(childOfType(n, 'expression_list')).map((e) => ({ name: e.text })) })]
+        ? [
+            imp(m.text.replace(/\s+/g, ''), n, {
+              names: named(childOfType(n, 'expression_list')).map((e) => ({ name: e.text })),
+            }),
+          ]
         : [];
     },
     include_statement: (n) =>
-      named(childOfType(n, 'expression_list')).map((e) => imp(e.text.replace(/\s+/g, ''), n, { style: 'include' })),
+      named(childOfType(n, 'expression_list')).map((e) =>
+        imp(e.text.replace(/\s+/g, ''), n, { style: 'include' }),
+      ),
   },
   vars: {
     variable_declaration: (n) => {
       const type = text(field(n, 'type'));
       const value = field(n, 'value');
-      return childrenOfType(childOfType(n, 'symbol_declaration_list'), 'symbol_declaration').flatMap((s) => {
+      return childrenOfType(
+        childOfType(n, 'symbol_declaration_list'),
+        'symbol_declaration',
+      ).flatMap((s) => {
         const name = text(field(s, 'name'));
         return name ? [{ name, type, value }] : [];
       });
@@ -1635,7 +1897,9 @@ const elmName = (n: Node) => text(childOfType(elmLeft(n), 'lower_case_identifier
 const elmAnnotation = (n: Node): string[] | undefined => {
   const a = n.previousNamedSibling;
   if (a?.type !== 'type_annotation' || text(field(a, 'name')) !== elmName(n)) return undefined;
-  return childrenWithField(field(a, 'typeExpression'), 'part').map((p) => p.text.replace(/\s+/g, ' '));
+  return childrenWithField(field(a, 'typeExpression'), 'part').map((p) =>
+    p.text.replace(/\s+/g, ' '),
+  );
 };
 
 export const elm: LangSpec = {
@@ -1661,7 +1925,8 @@ export const elm: LangSpec = {
     port_annotation: { kind: 'function', returns: (n) => text(field(n, 'typeExpression')) },
     type_declaration: { kind: 'type' },
     type_alias_declaration: {
-      kind: (n) => (field(field(n, 'typeExpression'), 'part')?.type === 'record_type' ? 'record' : 'type'),
+      kind: (n) =>
+        field(field(n, 'typeExpression'), 'part')?.type === 'record_type' ? 'record' : 'type',
     },
   },
   calls: {
@@ -1673,7 +1938,13 @@ export const elm: LangSpec = {
       const last = ids[ids.length - 1];
       if (!last) return null;
       return ids.length > 1
-        ? { nameString: last.text, receiverText: ids.slice(0, -1).map((c) => c.text).join('.') }
+        ? {
+            nameString: last.text,
+            receiverText: ids
+              .slice(0, -1)
+              .map((c) => c.text)
+              .join('.'),
+          }
         : { name: last };
     },
   },
@@ -1749,7 +2020,9 @@ export const gleam: LangSpec = {
   vars: {
     let: (n) => {
       const p = field(n, 'pattern');
-      return p?.type === 'identifier' ? [{ name: p.text, type: text(field(n, 'type')), value: field(n, 'value') }] : [];
+      return p?.type === 'identifier'
+        ? [{ name: p.text, type: text(field(n, 'type')), value: field(n, 'value') }]
+        : [];
     },
   },
 };
@@ -1759,19 +2032,27 @@ export const gleam: LangSpec = {
 /** `A -> B -> C` as written, split at its top-level arrows (the grammar nests them to the right). */
 function arrowParts(t: Node | null | undefined): string[] {
   if (!t) return [];
-  if (t.type !== 'type_infix' || !named(t).some((c) => c.type === 'type_operator' && c.text === '->'))
+  if (
+    t.type !== 'type_infix' ||
+    !named(t).some((c) => c.type === 'type_operator' && c.text === '->')
+  )
     return [t.text.replace(/\s+/g, ' ')];
   const kids = named(t);
   const op = kids.findIndex((c) => c.type === 'type_operator' && c.text === '->');
-  return [kids.slice(0, op).map((c) => c.text).join(' '), ...arrowParts(kids[op + 1])];
+  return [
+    kids
+      .slice(0, op)
+      .map((c) => c.text)
+      .join(' '),
+    ...arrowParts(kids[op + 1]),
+  ];
 }
 /** The type written in a signature or foreign import (the named child after the name). */
 const psType = (n: Node) => named(n).find((c) => c.type !== 'variable');
 const psSignature = (n: Node): string[] | undefined => {
   const name = text(field(n, 'name'));
   for (let s = n.previousNamedSibling; s; s = s.previousNamedSibling) {
-    if (s.type === 'signature' && text(field(s, 'name')) === name)
-      return arrowParts(psType(s));
+    if (s.type === 'signature' && text(field(s, 'name')) === name) return arrowParts(psType(s));
     if (s.type !== 'function' || text(field(s, 'name')) !== name) return undefined;
   }
   return undefined;
@@ -1842,7 +2123,9 @@ export const purescript: LangSpec = {
       if (!q) return null;
       if (q.type === 'qualified_variable') {
         const v = childOfType(q, 'variable');
-        const mods = childrenOfType(q, 'module').map((m) => m.text).join('.');
+        const mods = childrenOfType(q, 'module')
+          .map((m) => m.text)
+          .join('.');
         return v ? { nameString: v.text, ...(mods ? { receiverText: mods } : {}) } : null;
       }
       return q.type === 'variable' ? { name: q } : null;
@@ -2011,7 +2294,214 @@ export const pascal: LangSpec = {
   vars: {
     declVar: (n) => {
       const type = text(field(n, 'type'));
-      return childrenWithField(n, 'name').map((nm) => ({ name: nm.text, type, value: field(n, 'defaultValue') }));
+      return childrenWithField(n, 'name').map((nm) => ({
+        name: nm.text,
+        type,
+        value: field(n, 'defaultValue'),
+      }));
+    },
+  },
+};
+
+// ---------------------------------------------------------------- Fortran
+
+const fortranStmt = (n: Node) =>
+  childOfType(
+    n,
+    'function_statement',
+    'subroutine_statement',
+    'module_statement',
+    'program_statement',
+    'submodule_statement',
+  );
+const fortranName = (n: Node) => {
+  const s = fortranStmt(n);
+  return text(field(s, 'name')) ?? text(childOfType(s, 'name'));
+};
+/** Fortran declares argument types in the body: `integer, intent(in) :: x`. */
+function fortranDecls(n: Node): Map<string, { type: string; optional: boolean }> {
+  const out = new Map<string, { type: string; optional: boolean }>();
+  for (const v of childrenOfType(n, 'variable_declaration')) {
+    const type = text(field(v, 'type'));
+    const optional = childrenWithField(v, 'attribute').some((a) =>
+      /^optional$/i.test(a.text.trim()),
+    );
+    for (const d of childrenWithField(v, 'declarator')) {
+      const name = (
+        d.type === 'identifier' ? d.text : text(childOfType(d, 'identifier'))
+      )?.toLowerCase();
+      if (name && type) out.set(name, { type, optional });
+    }
+  }
+  return out;
+}
+const fortranRoutine = (kind: DeclKind): DeclRule => ({
+  kind,
+  name: fortranName,
+  paramList: (n) => {
+    const types = fortranDecls(n);
+    return named(field(fortranStmt(n), 'parameters')).map((p) => {
+      const t = types.get(p.text.toLowerCase());
+      return {
+        name: p.text,
+        ...(t ? { type: t.type } : {}),
+        ...(t?.optional ? { optional: true } : {}),
+      };
+    });
+  },
+  returns: (n) => {
+    const s = fortranStmt(n);
+    const prefix = named(s).find((c) => /intrinsic_type|derived_type/.test(c.type));
+    if (prefix) return prefix.text;
+    const r =
+      text(childOfType(childOfType(s, 'function_result'), 'identifier')) ??
+      (kind === 'function' ? fortranName(n) : undefined);
+    return r ? fortranDecls(n).get(r.toLowerCase())?.type : undefined;
+  },
+});
+
+export const fortran: LangSpec = {
+  grammar: 'fortran',
+  decls: {
+    module: { kind: 'module', name: fortranName },
+    submodule: { kind: 'module', name: fortranName },
+    program: { kind: 'function', name: fortranName },
+    function: fortranRoutine('function'),
+    subroutine: fortranRoutine('function'),
+    derived_type_definition: {
+      kind: 'class',
+      name: (n) => text(childOfType(childOfType(n, 'derived_type_statement'), 'type_name')),
+      bases: (n) => {
+        const b = field(childOfType(n, 'derived_type_statement'), 'base');
+        return b ? [text(childOfType(b, 'identifier')) ?? b.text] : [];
+      },
+    },
+    // A type-bound procedure: `procedure :: add => cart_add`.
+    procedure_statement: {
+      kind: (n) => (n.parent?.type === 'derived_type_procedures' ? 'method' : null),
+      name: (n) => {
+        const b = field(n, 'declarator');
+        return b?.type === 'binding'
+          ? text(childOfType(childOfType(b, 'binding_name'), 'identifier'))
+          : text(b);
+      },
+    },
+    interface: {
+      kind: 'interface',
+      name: (n) => text(childOfType(childOfType(n, 'interface_statement'), 'name')),
+    },
+  },
+  calls: {
+    subroutine_call: (n) => {
+      const s = field(n, 'subroutine');
+      if (!s) return null;
+      if (s.type === 'derived_type_member_expression') {
+        const m = childOfType(s, 'type_member');
+        const o = named(s)[0];
+        return m && o ? { name: m, receiver: o } : { callee: s };
+      }
+      return { callee: s };
+    },
+    // `f(x)` is a function call or an array element; only a matching declaration links it.
+    call_expression: (n) => {
+      const f = named(n)[0];
+      if (!f) return null;
+      if (f.type === 'identifier') return { name: f };
+      if (f.type === 'derived_type_member_expression') {
+        const m = childOfType(f, 'type_member');
+        const o = named(f)[0];
+        return m && o ? { name: m, receiver: o } : null;
+      }
+      return null;
+    },
+  },
+  imports: {
+    use_statement: (n) => {
+      const m = text(childOfType(n, 'module_name'));
+      if (!m) return [];
+      const names = named(childOfType(n, 'included_items')).map((c) => ({ name: c.text }));
+      return [imp(m, n, names.length ? { names } : {})];
+    },
+  },
+};
+
+// ---------------------------------------------------------------- Ada
+
+const adaSpec = (n: Node) => childOfType(n, 'function_specification', 'procedure_specification');
+const adaRoutine: DeclRule = {
+  kind: (n) => (adaSpec(n) ? 'function' : null),
+  name: (n) => text(field(adaSpec(n)!, 'name'))?.replace(/\s+/g, ''),
+  paramList: (n) =>
+    childrenOfType(childOfType(adaSpec(n)!, 'formal_part'), 'parameter_specification').flatMap(
+      (p) => {
+        const type = text(field(p, 'subtype_mark')) ?? text(childOfType(p, 'access_definition'));
+        const optional = !!childOfType(p, 'expression');
+        // `A, B : Integer` declares two parameters.
+        const mark = field(p, 'subtype_mark')?.startIndex;
+        return childrenOfType(p, 'identifier')
+          .filter((id) => id.startIndex !== mark)
+          .map((id) => ({
+            name: id.text,
+            ...(type ? { type } : {}),
+            ...(optional ? { optional } : {}),
+          }));
+      },
+    ),
+  returns: (n) => text(field(childOfType(adaSpec(n)!, 'result_profile'), 'subtype_mark')),
+};
+const adaCall = (n: Node): CallParts | null => {
+  const nm = field(n, 'name');
+  if (!nm) return null;
+  if (nm.type === 'selected_component') {
+    const s = field(nm, 'selector_name');
+    const p = field(nm, 'prefix');
+    return s && p ? { name: s, receiver: p } : { callee: nm };
+  }
+  return nm.type === 'identifier' ? { name: nm } : null;
+};
+
+export const ada: LangSpec = {
+  grammar: 'ada',
+  decls: {
+    package_declaration: {
+      kind: 'module',
+      name: (n) => text(field(n, 'name'))?.replace(/\s+/g, ''),
+    },
+    package_body: { kind: 'module', name: (n) => text(field(n, 'name'))?.replace(/\s+/g, '') },
+    subprogram_body: adaRoutine,
+    subprogram_declaration: adaRoutine,
+    expression_function_declaration: adaRoutine,
+    full_type_declaration: {
+      kind: (n) => {
+        const def = named(n)[1];
+        if (!def) return 'type';
+        if (def.type === 'record_type_definition')
+          return /\btagged\b/i.test(n.text.split(/\bis\b/i)[1] ?? '') ? 'class' : 'record';
+        if (def.type === 'derived_type_definition')
+          return childOfType(def, 'record_extension_part') ? 'class' : 'type';
+        if (def.type === 'enumeration_type_definition') return 'enum';
+        if (def.type === 'interface_type_definition') return 'interface';
+        return 'type';
+      },
+      name: (n) => text(childOfType(n, 'identifier')),
+      bases: (n) => {
+        const def = named(n)[1];
+        return def?.type === 'derived_type_definition'
+          ? childrenWithField(def, 'subtype_mark').map((c) => c.text)
+          : [];
+      },
+    },
+    task_body: { kind: 'object', name: (n) => text(field(n, 'name')) },
+    protected_body: { kind: 'object', name: (n) => text(field(n, 'name')) },
+  },
+  calls: { procedure_call_statement: adaCall, function_call: adaCall },
+  imports: {
+    with_clause: (n) => named(n).map((c) => imp(c.text.replace(/\s+/g, ''), n)),
+  },
+  vars: {
+    object_declaration: (n) => {
+      const type = text(field(n, 'subtype_mark'));
+      return childrenWithField(n, 'name').map((id) => ({ name: id.text, type }));
     },
   },
 };

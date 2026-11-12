@@ -67,6 +67,9 @@ export const SPEC_BY_LANGUAGE: Record<string, LangSpec> = {
   PureScript: l5.purescript,
   MATLAB: l5.matlab,
   Pascal: l5.pascal,
+  Fortran: l5.fortran,
+  'Fortran Free Form': l5.fortran,
+  Ada: l5.ada,
 };
 
 export function specFor(language: string): LangSpec | undefined {
