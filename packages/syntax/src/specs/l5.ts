@@ -960,3 +960,218 @@ export const crystal: LangSpec = {
   },
   selfNames: ['self'],
 };
+
+// ---------------------------------------------------------------- GDScript
+
+const gdParam = (n: Node): SyntaxParam | null => {
+  if (!/parameter|identifier/.test(n.type)) return null;
+  const id = n.type === 'identifier' ? n : childOfType(n, 'identifier');
+  if (!id) return null;
+  const type = field(n, 'type');
+  return {
+    name: id.text,
+    ...(type && type.type !== 'inferred_type' ? { type: type.text } : {}),
+    ...(/default/.test(n.type) ? { optional: true } : {}),
+  };
+};
+
+const gdExtends = (n: Node | null) => text(childOfType(n, 'type')) ?? text(named(n)[0]);
+
+export const gdscript: LangSpec = {
+  grammar: 'gdscript',
+  param: gdParam,
+  decls: {
+    // A script is a class; `class_name` names it and `extends` gives its base.
+    class_name_statement: {
+      kind: 'class',
+      bases: (n) => {
+        for (const c of named(n.parent))
+          if (c.type === 'extends_statement') return [gdExtends(c)].filter((x): x is string => !!x);
+        return [];
+      },
+    },
+    class_definition: {
+      kind: 'class',
+      bases: (n) => [gdExtends(field(n, 'extends'))].filter((x): x is string => !!x),
+    },
+    function_definition: { kind: 'function', returns: (n) => text(field(n, 'return_type')) },
+    constructor_definition: { kind: 'constructor', name: () => '_init' },
+    enum_definition: { kind: 'enum' },
+    signal_statement: { kind: 'property' },
+  },
+  calls: {
+    call: (n) => {
+      const f = named(n)[0];
+      if (!f || f.type !== 'identifier' || /^(preload|load)$/.test(f.text)) return null;
+      return { callee: f };
+    },
+    attribute_call: (n) => {
+      const name = childOfType(n, 'identifier');
+      const recv = n.previousNamedSibling;
+      return name ? { nameString: name.text, ...(recv ? { receiverText: recv.text } : {}) } : null;
+    },
+  },
+  imports: {
+    call: (n) => {
+      const f = named(n)[0];
+      if (f?.type !== 'identifier' || !/^(preload|load)$/.test(f.text)) return [];
+      const s = strip(text(childOfType(field(n, 'arguments'), 'string')));
+      return s ? [imp(s, n, { style: 'path' })] : [];
+    },
+    extends_statement: (n) => {
+      const s = childOfType(n, 'string');
+      return s ? [imp(strip(s.text)!, n, { style: 'path' })] : [];
+    },
+  },
+  selfNames: ['self'],
+};
+
+// ---------------------------------------------------------------- Hack
+
+const hackParams = (n: Node): SyntaxParam[] =>
+  childrenOfType(childOfType(n, 'parameters'), 'parameter').map((p) => ({
+    name: text(field(p, 'name')) ?? p.text,
+    ...(field(p, 'type') ? { type: field(p, 'type')!.text } : {}),
+    ...(field(p, 'default_value') || hasToken(p, '=') ? { optional: true } : {}),
+    ...(childOfType(p, 'variadic_modifier') ? { variadic: true } : {}),
+  }));
+const hackTypes = (n: Node | null) =>
+  childrenOfType(n, 'type_specifier').map((t) => t.text.replace(/<.*$/s, ''));
+
+export const hack: LangSpec = {
+  grammar: 'hack',
+  namespace: { namespace_declaration: (n) => text(field(n, 'name')) },
+  decls: {
+    class_declaration: {
+      kind: 'class',
+      bases: (n) => [...hackTypes(childOfType(n, 'extends_clause')), ...hackTypes(childOfType(n, 'implements_clause'))],
+    },
+    interface_declaration: { kind: 'interface', bases: (n) => hackTypes(childOfType(n, 'extends_clause')) },
+    trait_declaration: { kind: 'trait' },
+    enum_declaration: { kind: 'enum' },
+    alias_declaration: { kind: 'type' },
+    method_declaration: { kind: 'method', paramList: hackParams, returns: (n) => text(field(n, 'return_type')) },
+    function_declaration: { kind: 'function', paramList: hackParams, returns: (n) => text(field(n, 'return_type')) },
+  },
+  calls: {
+    call_expression: (n) => {
+      const f = field(n, 'function');
+      if (!f) return null;
+      if (f.type === 'selection_expression' || f.type === 'scoped_identifier') {
+        const parts = named(f);
+        const name = parts[parts.length - 1];
+        return name ? { callee: f, receiver: parts.length > 1 ? parts[0]! : null, name } : null;
+      }
+      const ids = childrenOfType(f, 'identifier');
+      return { callee: f, name: ids[ids.length - 1] ?? f };
+    },
+    new_expression: (n) => {
+      const t = childOfType(n, 'qualified_identifier', 'identifier');
+      return t ? { callee: t, isNew: true } : null;
+    },
+  },
+  imports: {
+    use_statement: (n) =>
+      childrenOfType(n, 'use_clause').map((c) => imp((text(named(c)[0]) ?? c.text).replace(/^\\/, ''), c)),
+    require_once_expression: (n) => {
+      const s = strip(text(childOfType(n, 'string')));
+      return s ? [imp(s, n, { style: 'path' })] : [];
+    },
+  },
+  selfNames: ['$this', 'this'],
+};
+
+// ---------------------------------------------------------------- V
+
+export const v: LangSpec = {
+  grammar: 'v',
+  namespace: { module_clause: (n) => text(childOfType(n, 'identifier')) },
+  decls: {
+    struct_declaration: { kind: 'struct' },
+    interface_declaration: { kind: 'interface' },
+    enum_declaration: { kind: 'enum' },
+    type_declaration: { kind: 'type' },
+    function_declaration: {
+      kind: 'function',
+      params: (n) => field(field(n, 'signature'), 'parameters'),
+      returns: (n) => text(field(field(n, 'signature'), 'result')),
+      receiver: (n) => text(field(field(n, 'receiver'), 'type'))?.replace(/^[&]?(mut\s+)?/, ''),
+      receiverName: (n) => text(field(field(n, 'receiver'), 'name')),
+      body: (n) => field(n, 'body'),
+    },
+  },
+  calls: {
+    call_expression: (n) => {
+      const f = field(n, 'name');
+      if (!f) return null;
+      if (f.type === 'selector_expression')
+        return { callee: f, receiver: field(f, 'operand'), name: field(f, 'field') };
+      return { callee: f };
+    },
+  },
+  imports: {
+    import_declaration: (n) => {
+      const spec = childOfType(n, 'import_spec');
+      const path = text(childOfType(spec, 'import_path'));
+      if (!path) return [];
+      const alias = text(childOfType(spec, 'import_alias'));
+      return [imp(path, n, alias ? { alias } : {})];
+    },
+  },
+};
+
+// ---------------------------------------------------------------- Odin
+
+const odinParams = (n: Node): SyntaxParam[] | undefined => {
+  const proc = childOfType(n, 'procedure');
+  const list = childOfType(proc, 'parameters');
+  if (!list) return undefined;
+  return childrenOfType(list, 'parameter', 'default_parameter', 'variadic_parameter').flatMap((p) => {
+    const type = childOfType(p, 'type');
+    return childrenOfType(p, 'identifier').map((id) => ({
+      name: id.text,
+      ...(type ? { type: type.text } : {}),
+      ...(p.type === 'default_parameter' ? { optional: true } : {}),
+      ...(p.type === 'variadic_parameter' ? { variadic: true } : {}),
+    }));
+  });
+};
+
+export const odin: LangSpec = {
+  grammar: 'odin',
+  namespace: { package_declaration: (n) => text(childOfType(n, 'identifier')) },
+  decls: {
+    procedure_declaration: {
+      kind: 'function',
+      name: (n) => text(childOfType(n, 'identifier')),
+      paramList: odinParams,
+      returns: (n) => {
+        const proc = childOfType(n, 'procedure');
+        return text(named(proc).find((c) => c.type === 'type' && c.startIndex > (childOfType(proc, 'parameters')?.endIndex ?? 0) - 1));
+      },
+      body: (n) => childOfType(childOfType(n, 'procedure'), 'block'),
+    },
+    struct_declaration: { kind: 'struct', name: (n) => text(childOfType(n, 'identifier')) },
+    enum_declaration: { kind: 'enum', name: (n) => text(childOfType(n, 'identifier')) },
+    union_declaration: { kind: 'type', name: (n) => text(childOfType(n, 'identifier')) },
+  },
+  calls: {
+    call_expression: (n) => {
+      const f = field(n, 'function');
+      if (!f) return null;
+      // `pkg.f(…)` parses as member_expression(pkg, call_expression(f, …)).
+      const p = n.parent;
+      if (p?.type === 'member_expression' && named(p)[1]?.startIndex === n.startIndex)
+        return { nameString: f.text, receiverText: named(p)[0]!.text };
+      return { callee: f };
+    },
+  },
+  imports: {
+    import_declaration: (n) => {
+      const s = strip(text(childOfType(n, 'string')));
+      if (!s) return [];
+      const alias = text(field(n, 'alias'));
+      return [imp(s.replace(/^core:|^vendor:|^base:/, (x) => x), n, alias ? { alias } : {})];
+    },
+  },
+};

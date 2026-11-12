@@ -53,6 +53,10 @@ export const SPEC_BY_LANGUAGE: Record<string, LangSpec> = {
   GLSL: { ...m.c, grammar: 'glsl' },
   HLSL: { ...m.cpp, grammar: 'hlsl' },
   Apex: { ...m.java, grammar: 'apex' },
+  GDScript: l5.gdscript,
+  Hack: l5.hack,
+  V: l5.v,
+  Odin: l5.odin,
 };
 
 export function specFor(language: string): LangSpec | undefined {
