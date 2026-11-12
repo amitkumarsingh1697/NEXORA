@@ -33,6 +33,9 @@ function spdx(text) {
   if (/BSD 2-Clause|Redistributions in binary form/i.test(text)) return 'BSD-2-Clause';
   if (/ISC License|Permission to use, copy, modify, and\/or distribute/i.test(text)) return 'ISC';
   if (/The Unlicense|This is free and unencumbered software/i.test(text)) return 'Unlicense';
+  if (/Mozilla Public License,? Version 2\.0/i.test(text)) return 'MPL-2.0';
+  if (/GNU LESSER GENERAL PUBLIC LICENSE\s+Version 2\.1/i.test(text)) return 'LGPL-2.1-only';
+  if (/CC0 1\.0 Universal/i.test(text)) return 'CC0-1.0';
   return 'see LICENSE';
 }
 
@@ -45,13 +48,20 @@ for (const g of spec.grammars) {
     run('git', ['-C', work, 'fetch', '-q', '--depth', '1', g.repository, g.commit]);
     run('git', ['-C', work, '-c', 'advice.detachedHead=false', 'checkout', '-q', 'FETCH_HEAD']);
     const dir = g.path ? join(work, g.path) : work;
+    // Source changes the WebAssembly build needs, each with its reason, recorded in the manifest.
+    for (const p of g.patches ?? []) {
+      const f = join(dir, p.file);
+      const src = readFileSync(f, 'utf8');
+      if (!src.includes(p.from)) throw new Error(`patch for ${p.file} no longer applies`);
+      writeFileSync(f, src.replace(p.from, p.to));
+    }
     if (!existsSync(join(dir, 'src', 'parser.c'))) run('npx', ['-y', cli, 'generate'], dir);
     const wasmPath = join(work, `${g.id}.wasm`);
     run('npx', ['-y', cli, 'build', '--wasm', '-o', wasmPath, '.'], dir);
     const wasm = readFileSync(wasmPath);
     const licence = [dir, work]
       .flatMap((d) => readdirSync(d).map((f) => join(d, f)))
-      .find((f) => /\/licen[cs]e(\.(md|txt))?$/i.test(f));
+      .find((f) => /\/(licen[cs]e|copying|unlicense)(\.(md|txt))?$/i.test(f));
     const licenceText = licence ? readFileSync(licence, 'utf8') : '';
     writeFileSync(join(outDir, `${g.id}.wasm.gz`), gzipSync(wasm, { level: 9 }));
     if (licence) writeFileSync(join(outDir, `${g.id}.LICENSE`), licenceText);
@@ -65,6 +75,7 @@ for (const g of spec.grammars) {
       license: licence ? spdx(licenceText) : 'unknown',
       repository: g.repository + (g.path ? `/tree/${g.commit}/${g.path}` : ''),
       builtWith: cli,
+      ...(g.patches?.length ? { patched: g.patches.map((p) => `${p.file}: ${p.reason}`) } : {}),
     };
     console.log(`${g.id}: ${g.repository}@${g.commit.slice(0, 12)} ${wasm.length} bytes`);
   } catch (e) {

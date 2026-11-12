@@ -12,7 +12,15 @@
     {
       "id": "swift",
       "repository": "https://github.com/alex-pinkus/tree-sitter-swift",
-      "commit": "9e3b87f66f1fd2f3b931376fd3723ab788e337c3"
+      "commit": "82bb3a533e0801fd2bbaa11dc49676e10bf41948",
+      "patches": [
+        {
+          "file": "src/scanner.c",
+          "reason": "The WebAssembly C library has no stderr or exit; trap instead on an allocation failure.",
+          "from": "        fprintf(stderr, \"tree-sitter-swift: out of memory allocating scanner state\\n\");\n        exit(1);",
+          "to": "        __builtin_trap();"
+        }
+      ]
     },
     {
       "id": "clojure",
