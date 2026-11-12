@@ -1,0 +1,10 @@
+import ./Store.psm1 @1 path
+import ./common.ps1 @2 path
+#0 class Cart @4-11
+#1 method Add(Sku: string, Qty: int) -> int @5-9 in #0
+#2 method Check(Sku: string) -> bool @10-10 in #0
+#3 function Get-Helper(N: int, Name?: string) @13-16
+call #1 $this . Check @6
+call #1 Get-Helper @7
+call #3 Write-Output @15
+call top Get-Helper @18

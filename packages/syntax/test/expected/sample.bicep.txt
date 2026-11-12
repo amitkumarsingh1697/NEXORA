@@ -1,0 +1,7 @@
+import ./network.bicep @4 path
+#0 property location -> string @1-1
+#1 property name -> string @2-2
+#2 module net @4-7
+#3 resource storage -> Microsoft.Storage/storageAccounts@2023-01-01 @9-13
+#4 property id -> string @15-15
+call #0 resourceGroup @1

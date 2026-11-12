@@ -1,0 +1,24 @@
+namespace app.cart
+import std.stdio @2 module
+import app.store @3 module {Store}
+import std.conv @14 module {to}
+#0 class Cart @4-7 extends Base, Shape
+#1 method total(x: string, ...xs: int[]) -> int @5-5 in #0
+#2 constructor Cart(a: int) @6-6 in #0
+#3 struct Point @8-8
+#4 function top(a: int) -> int @9-9
+#5 interface Shape @10-10
+#6 method area() -> double @10-10 in #5
+#7 enum Color @11-11
+#8 namespace Foo @12-12
+#9 function get(a: T) -> T @12-12 in #8
+#10 struct U @13-13
+#11 function main() -> void @14-14
+call #1 Store @5
+call #1 s . save @5
+call #1 helper @5
+call #4 writeln @9
+call #11 Cart @14
+call #11 c . total @14
+call #11 Cart . make @14
+call #11 x.y . z @14

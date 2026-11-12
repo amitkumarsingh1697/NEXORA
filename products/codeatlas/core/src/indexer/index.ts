@@ -1,18 +1,34 @@
 import { realpathSync, statSync } from 'node:fs';
+import { componentKindOf, type ComponentKind } from './sfc';
+
 import { basename, extname } from 'node:path';
 import type { Db } from '../store/db';
 import { tx } from '../store/db';
 import { indexMarkdown } from './docs';
 import { addSchema, parsePrismaSchema, parseSqlSchema } from './schema';
+import { addOrm, readOrmFiles, type OrmStats } from './extract/orm';
+import {
+  addSqlObjects,
+  analyseSql,
+  extraTables,
+  linkSqlObjects,
+  sqlStatus,
+  type SqlFileResult,
+  type SqlLinkStats,
+} from './extract/sql';
 import {
   IGNORED_DIRS as IGNORED_DIR_NAMES,
+  LIMITS,
   discoverFiles,
   sha1,
+  type DiscoveryLimits,
   type DiscoveredFile,
   type UnlistedPaths,
 } from './files';
 import { analyseNonTsFiles, type AnalyseStats } from './extract/analyse';
+import { loadScip, type ScipOptions, type ScipReport } from './scip';
 import {
+  analyserOf,
   checkInventory,
   coverageSentence,
   summarize,
@@ -31,6 +47,12 @@ import {
 } from './adapters';
 import type { IncrementalInfo } from './ts-cache';
 import { isTestPath, nearest, type PackageInfo, type TsIndexStats } from './ts-indexer';
+
+const COMPONENT_NAMES: Record<ComponentKind, string> = {
+  svelte: 'Svelte',
+  vue: 'Vue',
+  astro: 'Astro',
+};
 
 export interface CoverageReport {
   repoId: number;
@@ -95,6 +117,17 @@ export interface CoverageReport {
   };
   /** Declarations, imports and file links found by the non-TypeScript analysers. */
   otherAnalysis: AnalyseStats;
+  /** SCIP indexes read or produced for this run (absent when none was asked for). */
+  scip?: ScipReport;
+  /** Database objects read from SQL files, and how their references were linked. */
+  database: {
+    files: number;
+    filesFullyParsed: number;
+    objects: Record<string, number>;
+    links: SqlLinkStats;
+  };
+  /** Tables, keys and model-to-table links read from ORM models and migrations. */
+  orm: OrmStats;
 }
 
 export interface IndexOptions {
@@ -105,6 +138,10 @@ export interface IndexOptions {
   now?: () => Date;
   /** Analyse every file even if a previous index could be reused (S3-4). */
   full?: boolean;
+  /** SCIP indexes to read, and whether to run the source-only indexers (ADR 0018). */
+  scip?: ScipOptions;
+  /** File count and size limits; defaults to LIMITS. */
+  limits?: Partial<DiscoveryLimits>;
 }
 
 const CHUNK_MAX_LINES = 150;
@@ -225,6 +262,8 @@ export function indexRepository(
       started,
       opts.adapters ?? DEFAULT_ADAPTERS,
       !opts.full,
+      opts.scip,
+      { ...LIMITS, ...opts.limits },
     );
     db.prepare(
       "UPDATE index_runs SET status = 'succeeded', finished_at = ?, coverage = ?, duration_ms = ? WHERE id = ?",
@@ -251,9 +290,11 @@ function buildAndPersist(
   started: number,
   adapters: LanguageAdapter[],
   incremental: boolean,
+  scipOpts: ScipOptions | undefined,
+  limits: DiscoveryLimits,
 ): CoverageReport {
   progress('Discovering files');
-  const disc = discoverFiles(repo.root);
+  const disc = discoverFiles(repo.root, limits);
   const paths = new Set(disc.files.map((f) => f.path));
   const texts = disc.texts;
   const records = disc.records;
@@ -353,6 +394,10 @@ function buildAndPersist(
     if (!rec) continue;
     const adapter = adapters.find((a) => a.languages.includes(f.lang));
     rec.method = adapter?.name ?? 'language adapter';
+    const component = componentKindOf(f.path);
+    if (component)
+      rec.method = `${COMPONENT_NAMES[component]} component: ${component === 'astro' ? 'frontmatter, scripts' : 'scripts'}, template expressions and component tags compiled as TypeScript (TypeScript Compiler API); markup and styles are not code`;
+    rec.resolution = 'compiler';
     if (failedPass1.has(f.path)) {
       rec.status = 'failed';
       rec.reason = failedPass1.get(f.path);
@@ -362,22 +407,51 @@ function buildAndPersist(
     } else rec.status = 'full';
   }
 
+  const scip =
+    scipOpts && (scipOpts.files?.length || scipOpts.run)
+      ? loadScip(repo.root, [...paths], scipOpts, progress)
+      : undefined;
   progress('Analysing other languages and file formats');
   const otherAnalysis = analyseNonTsFiles(
-    { graph, records, allPaths: paths, moduleOf },
+    { graph, records, allPaths: paths, moduleOf, scip: scip?.resolver },
     disc.files,
     texts,
     adapterFiles,
   );
 
-  // Database schemas in SQL files (migrations, schema.sql) and Prisma schema files.
+  // Database schemas in SQL files (migrations, schema.sql) and Prisma schema files. A SQL
+  // file's other objects (views, routines, triggers, indexes…) are linked once every table is known.
+  progress('Reading database schemas and objects');
+  const sqlFiles: SqlFileResult[] = [];
   for (const f of disc.files) {
     const text = texts.get(f.path);
-    if (!text) continue;
+    if (text === undefined) continue;
+    const isSql =
+      analyserOf(f.language) === 'sql' ||
+      /\.(sql|ddl|pks|pkb|pls|plsql|psql|pgsql|tsql)$/i.test(f.path);
     try {
-      if (/\.(sql|ddl|pks|pkb|pls|plsql|psql|pgsql|tsql)$/i.test(f.path))
-        addSchema(graph, f.path, parseSqlSchema(text));
-      else if (/\.prisma$/i.test(f.path)) addSchema(graph, f.path, parsePrismaSchema(text));
+      if (isSql) {
+        const tables = parseSqlSchema(text);
+        const sql = analyseSql(text, f.language);
+        tables.tables.push(...extraTables(sql, tables.tables));
+        addSchema(graph, f.path, tables);
+        sqlFiles.push(addSqlObjects(graph, f.path, f.language, moduleOf(f.path), sql));
+        const rec = records.get(f.path);
+        if (rec) {
+          const st = text.trim()
+            ? sqlStatus(sql)
+            : {
+                status: 'full' as const,
+                method: 'Empty file (nothing to analyse)',
+                reason: undefined,
+                resolution: undefined,
+              };
+          rec.status = st.status;
+          rec.method = st.method;
+          rec.reason = st.reason;
+          rec.resolution = st.resolution;
+        }
+      } else if (/\.prisma$/i.test(f.path)) addSchema(graph, f.path, parsePrismaSchema(text));
     } catch (e) {
       const rec = records.get(f.path);
       if (rec) {
@@ -386,6 +460,13 @@ function buildAndPersist(
       }
     }
   }
+
+  const sqlLinks = linkSqlObjects(graph, sqlFiles);
+
+  // ORM models and migrations (Django, SQLAlchemy, JPA, EF Core, Rails, Laravel, GORM,
+  // TypeORM, Liquibase…), resolved across files once every SQL and Prisma table is known.
+  progress('Reading ORM models and migrations');
+  const orm = addOrm(graph, readOrmFiles(disc.files, texts)).stats;
 
   // Entry points declared in package.json (observed: they are declared).
   for (const p of packages) {
@@ -540,10 +621,17 @@ function buildAndPersist(
     limitations.push(
       `${inventory.counts.text.toLocaleString('en-US')} files are searchable as text only, with no structure extracted: ${textLangs}${inventory.languages.filter((l) => l.counts.text > 0).length > 12 ? ', …' : ''}.`,
     );
-  if (inventory.counts.partial)
+  if (inventory.counts.partial) {
+    const partialLangs = inventory.languages.filter((l) => l.counts.partial > 0);
     limitations.push(
-      `${inventory.counts.partial.toLocaleString('en-US')} files are partially analysed (declaration patterns, generic parsers or schema readers): their structure is shown, but not checked by a compiler, and calls between their functions are not extracted.`,
+      `${inventory.counts.partial.toLocaleString('en-US')} files are partially analysed: ${partialLangs
+        .slice(0, 12)
+        .map((l) => `${l.counts.partial.toLocaleString('en-US')} ${l.language}`)
+        .join(
+          ', ',
+        )}${partialLangs.length > 12 ? ', …' : ''}. Files read by declaration patterns or by format and schema readers show their structure, not checked by a compiler and without calls; code files with syntax errors were read except for the parts that did not parse. Languages & files gives each file's reason.`,
     );
+  }
   if (inventory.counts.failed)
     limitations.push(
       `${inventory.counts.failed.toLocaleString('en-US')} files could not be analysed (see the inventory for each reason), e.g. ${inventory.reasons
@@ -625,6 +713,18 @@ function buildAndPersist(
     },
     inventory: { ...inventory, unlisted: disc.unlisted, summary: coverageSentence(inventory) },
     otherAnalysis,
+    ...(scip ? { scip: scip.report } : {}),
+    database: {
+      files: sqlFiles.length,
+      filesFullyParsed: sqlFiles.filter(
+        (x) => x.result.mode === 'parser' && !x.result.problems.length,
+      ).length,
+      objects: sqlFiles
+        .flatMap((x) => x.result.objects)
+        .reduce<Record<string, number>>((m, o) => ((m[o.kind] = (m[o.kind] ?? 0) + 1), m), {}),
+      links: sqlLinks,
+    },
+    orm,
     manifests: findManifests([
       ...disc.files.map((f) => f.path),
       ...disc.skipped
@@ -669,7 +769,7 @@ function persistInventory(db: Db, repoId: number, records: Map<string, FileRecor
   tx(db, () => {
     db.prepare('DELETE FROM file_inventory WHERE repo_id = ?').run(repoId);
     const ins = db.prepare(
-      'INSERT INTO file_inventory (repo_id, path, language, category, role, status, method, reason, bytes, detected_by, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO file_inventory (repo_id, path, language, category, role, status, method, reason, bytes, detected_by, confidence, resolution) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
     for (const r of records.values())
       ins.run(
@@ -684,6 +784,7 @@ function persistInventory(db: Db, repoId: number, records: Map<string, FileRecor
         r.bytes ?? null,
         r.detectedBy ?? null,
         r.confidence ?? null,
+        r.resolution ?? null,
       );
   });
 }

@@ -47,8 +47,10 @@ describe('registry', () => {
   });
   it('maps languages to analysers, and everything else to text', () => {
     expect(analyserOf('TypeScript')).toBe('ts-compiler');
-    expect(analyserOf('Java')).toBe('declarations');
-    expect(analyserOf('COBOL')).toBe('declarations');
+    expect(analyserOf('Java')).toBe('syntax');
+    expect(analyserOf('HCL')).toBe('syntax');
+    expect(analyserOf('COBOL')).toBe('syntax');
+    expect(analyserOf('Smalltalk')).toBe('declarations');
     expect(analyserOf('YAML')).toBe('yaml');
     expect(analyserOf('Brainfuck')).toBe('text');
     expect(analyserOf('Not a language')).toBe('text');

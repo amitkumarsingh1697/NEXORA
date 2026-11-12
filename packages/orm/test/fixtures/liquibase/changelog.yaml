@@ -1,0 +1,21 @@
+databaseChangeLog:
+  - changeSet:
+      id: 3
+      author: a
+      changes:
+        - createTable:
+            tableName: audit
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  constraints:
+                    primaryKey: true
+              - column:
+                  name: account_id
+                  type: BIGINT
+        - addForeignKeyConstraint:
+            baseTableName: audit
+            baseColumnNames: account_id
+            referencedTableName: account
+            referencedColumnNames: id

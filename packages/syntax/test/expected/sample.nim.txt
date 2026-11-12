@@ -1,0 +1,17 @@
+import std/strutils @1 module
+import os @1 module
+import app/store @2 module {Store}
+#0 class Cart @4-5 extends Base
+#1 enum Color @6-6
+#2 function newCart(a: int, b?) -> Cart @7-9
+#3 function total(c: Cart, ...xs: varargs[int]) -> int @10-13
+#4 method area(s: Shape) -> float @14-14 recv Shape
+#5 function pure(x: int) -> int @15-15
+#6 function t(x: untyped) @16-16
+#7 function m(x: untyped) -> untyped @17-17
+#8 function items(c: Cart) -> int @18-18
+call #2 Cart @8
+call #2 echo @9
+call #3 newStore @11
+call #3 s . save @12
+call #3 helper @13

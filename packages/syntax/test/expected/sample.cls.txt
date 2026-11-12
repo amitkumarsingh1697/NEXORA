@@ -1,0 +1,6 @@
+#0 class Cart @1-5 extends Base, Shape
+#1 method total(x: String, xs: List<Integer>) -> Integer @3-3 in #0
+#2 constructor Cart() @4-4 in #0
+call #0 new Store @2
+call #1 store . save @3
+call #1 Helper . sum @3

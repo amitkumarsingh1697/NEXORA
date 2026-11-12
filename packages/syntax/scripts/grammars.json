@@ -1,0 +1,188 @@
+{
+  "runtime": {
+    "package": "web-tree-sitter",
+    "version": "0.27.1"
+  },
+  "grammars": [
+    {
+      "id": "python",
+      "package": "tree-sitter-python",
+      "version": "0.25.0",
+      "wasm": "tree-sitter-python.wasm"
+    },
+    {
+      "id": "go",
+      "package": "tree-sitter-go",
+      "version": "0.25.0",
+      "wasm": "tree-sitter-go.wasm"
+    },
+    {
+      "id": "java",
+      "package": "tree-sitter-java",
+      "version": "0.23.5",
+      "wasm": "tree-sitter-java.wasm"
+    },
+    {
+      "id": "kotlin",
+      "package": "@tree-sitter-grammars/tree-sitter-kotlin",
+      "version": "1.1.0",
+      "wasm": "tree-sitter-kotlin.wasm"
+    },
+    {
+      "id": "scala",
+      "package": "tree-sitter-scala",
+      "version": "0.24.0",
+      "wasm": "tree-sitter-scala.wasm"
+    },
+    {
+      "id": "c_sharp",
+      "package": "tree-sitter-c-sharp",
+      "version": "0.23.5",
+      "wasm": "tree-sitter-c_sharp.wasm"
+    },
+    {
+      "id": "c",
+      "package": "tree-sitter-c",
+      "version": "0.24.1",
+      "wasm": "tree-sitter-c.wasm"
+    },
+    {
+      "id": "cpp",
+      "package": "tree-sitter-cpp",
+      "version": "0.23.4",
+      "wasm": "tree-sitter-cpp.wasm"
+    },
+    {
+      "id": "objc",
+      "package": "tree-sitter-objc",
+      "version": "3.0.2",
+      "wasm": "tree-sitter-objc.wasm"
+    },
+    {
+      "id": "php",
+      "package": "tree-sitter-php",
+      "version": "0.24.2",
+      "wasm": "tree-sitter-php.wasm"
+    },
+    {
+      "id": "ruby",
+      "package": "tree-sitter-ruby",
+      "version": "0.23.1",
+      "wasm": "tree-sitter-ruby.wasm"
+    },
+    {
+      "id": "lua",
+      "package": "@tree-sitter-grammars/tree-sitter-lua",
+      "version": "0.4.1",
+      "wasm": "tree-sitter-lua.wasm"
+    },
+    {
+      "id": "elixir",
+      "package": "tree-sitter-elixir",
+      "version": "0.3.5",
+      "wasm": "tree-sitter-elixir.wasm"
+    },
+    {
+      "id": "haskell",
+      "package": "tree-sitter-haskell",
+      "version": "0.23.1",
+      "wasm": "tree-sitter-haskell.wasm"
+    },
+    {
+      "id": "julia",
+      "package": "tree-sitter-julia",
+      "version": "0.23.1",
+      "wasm": "tree-sitter-julia.wasm"
+    },
+    {
+      "id": "ocaml",
+      "package": "tree-sitter-ocaml",
+      "version": "0.24.2",
+      "wasm": "tree-sitter-ocaml.wasm"
+    },
+    {
+      "id": "fsharp",
+      "package": "tree-sitter-fsharp",
+      "version": "0.3.12",
+      "wasm": "tree-sitter-fsharp.wasm"
+    },
+    {
+      "id": "groovy",
+      "package": "tree-sitter-groovy",
+      "version": "0.1.2",
+      "wasm": "tree-sitter-groovy.wasm"
+    },
+    {
+      "id": "zig",
+      "package": "@tree-sitter-grammars/tree-sitter-zig",
+      "version": "1.1.2",
+      "wasm": "tree-sitter-zig.wasm"
+    },
+    {
+      "id": "solidity",
+      "package": "tree-sitter-solidity",
+      "version": "1.2.13",
+      "wasm": "tree-sitter-solidity.wasm"
+    },
+    {
+      "id": "bash",
+      "package": "tree-sitter-bash",
+      "version": "0.25.1",
+      "wasm": "tree-sitter-bash.wasm"
+    },
+    {
+      "id": "powershell",
+      "package": "tree-sitter-powershell",
+      "version": "0.26.6",
+      "wasm": "tree-sitter-powershell.wasm"
+    },
+    {
+      "id": "starlark",
+      "package": "tree-sitter-starlark",
+      "version": "1.3.0",
+      "wasm": "tree-sitter-starlark.wasm"
+    },
+    {
+      "id": "puppet",
+      "package": "tree-sitter-puppet",
+      "version": "1.3.0",
+      "wasm": "tree-sitter-puppet.wasm"
+    },
+    {
+      "id": "bicep",
+      "package": "tree-sitter-bicep",
+      "version": "1.1.0",
+      "wasm": "tree-sitter-bicep.wasm"
+    },
+    {
+      "id": "hcl",
+      "package": "@tree-sitter-grammars/tree-sitter-hcl",
+      "version": "1.2.0",
+      "wasm": "tree-sitter-hcl.wasm"
+    },
+    {
+      "id": "html",
+      "package": "tree-sitter-html",
+      "version": "0.23.2",
+      "wasm": "tree-sitter-html.wasm"
+    },
+    {
+      "id": "css",
+      "package": "tree-sitter-css",
+      "version": "0.25.0",
+      "wasm": "tree-sitter-css.wasm"
+    },
+    {
+      "id": "embedded_template",
+      "package": "tree-sitter-embedded-template",
+      "version": "0.25.0",
+      "wasm": "tree-sitter-embedded_template.wasm"
+    },
+    {
+      "id": "svelte",
+      "package": "@tree-sitter-grammars/tree-sitter-svelte",
+      "version": "1.0.2",
+      "wasm": "tree-sitter-svelte.wasm"
+    }
+  ]
+}

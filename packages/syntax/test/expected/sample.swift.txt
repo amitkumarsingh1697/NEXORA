@@ -1,0 +1,21 @@
+import Foundation @1 module
+import UIKit @2 module
+#0 interface Shape @3-3
+#1 method area() -> Double @3-3 in #0
+#2 class Circle @4-9 extends Base, Shape
+#3 constructor init(r: Double) @6-6 in #2
+#4 method area() -> Double @7-7 in #2
+#5 method make(x: Int, y?: String) -> Circle @8-8 in #2
+#6 struct Point @10-10
+#7 method moved(d: Int) -> Point @10-10 in #6
+#8 enum Color @11-11
+#9 impl Circle @12-12 recv Circle
+#10 method twice() -> Double @12-12 in #9
+#11 function top(a: Int, ...b: Int) -> Int @13-13
+call #5 Circle @8
+call #7 Point @10
+call #10 area @12
+call #11 Store @13
+call #11 s . save @13
+call #11 print @13
+call #11 helper @13

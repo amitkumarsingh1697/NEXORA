@@ -1,0 +1,17 @@
+namespace shop
+import vector @1 module
+import store.hpp @2 include
+#0 namespace shop @4-24
+#1 class Cart @6-13 in #0 extends Base
+#2 constructor Cart(store: Store&) @8-8 in #1
+#3 method add(sku: const std::string&, qty?: int) -> int @9-9 in #1
+#4 method check(sku: const std::string&) -> bool @10-10 in #1
+#5 method add(sku: const std::string&, qty: int) -> int @15-20 in #0 recv Cart
+#6 function helper(n: int) -> int @22-22 in #0
+call #4 sku . empty @10
+call #5 this . check @16
+call #5 helper @17
+call #5 store_ . save @18
+call #5 std . max @19
+call #6 Counter() . next @22
+call #6 Counter @22

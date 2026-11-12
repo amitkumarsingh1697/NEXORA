@@ -1,0 +1,18 @@
+namespace App.Cart
+import Prelude @2 module
+import Data.Maybe @3 module {Maybe, fromMaybe}
+import App.Store @4 module
+#0 type Cart @5-5
+#1 type Msg @6-6
+#2 type Id @7-7
+#3 interface Shape @8-9
+#4 method area(_1: a) -> Number @9-9 in #3
+#5 impl shapeCart @10-11 recv Cart extends Shape
+#6 method area(_) @11-11 in #5
+#7 function total(c: Cart, x: Int) -> Int @13-13
+#8 function helper(a, b) @14-14
+#9 function send(_1: String) -> Int @15-15
+#10 function fact(0) @16-17
+call #7 helper @13
+call #7 Store . save @13
+call #10 fact @17

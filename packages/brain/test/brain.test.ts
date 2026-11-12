@@ -130,8 +130,18 @@ describe('validateBrain', () => {
   });
 
   it('refuses oversized models', () => {
-    const neurons = Array.from({ length: 20_001 }, (_, i) => ({ id: `n${i}`, name: 'x' }));
+    // 100,000 parts and 400,000 connections: large monorepos (Twenty has 46,088 parts) fit.
+    const neurons = Array.from({ length: 100_001 }, (_, i) => ({ id: `n${i}`, name: 'x' }));
     expect(validateBrain({ format: 1, neurons, synapses: [] }).ok).toBe(false);
+    expect(validateBrain({ format: 1, neurons: neurons.slice(0, 50_000), synapses: [] }).ok).toBe(
+      true,
+    );
+    const two = [
+      { id: 'a', name: 'a' },
+      { id: 'b', name: 'b' },
+    ];
+    const synapses = Array.from({ length: 400_001 }, () => ({ source: 'a', target: 'b' }));
+    expect(validateBrain({ format: 1, neurons: two, synapses }).ok).toBe(false);
   });
 });
 

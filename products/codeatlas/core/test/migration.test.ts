@@ -43,7 +43,7 @@ describe('schema migration', () => {
 
     const db = openDb(file);
     expect(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({
-      value: '7',
+      value: '8',
     });
     expect(
       (db.prepare('PRAGMA table_info(repos)').all() as { name: string }[]).map((c) => c.name),
@@ -100,7 +100,7 @@ INSERT INTO edges (repo_id, src, dst, kind, confidence) VALUES (1, 10, 11, 'impo
 
     const db = openDb(file);
     expect(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({
-      value: '7',
+      value: '8',
     });
     expect(db.prepare('SELECT id, kind, key FROM nodes ORDER BY id').all()).toEqual([
       { id: 10, kind: 'file', key: 'a.ts' },
@@ -121,6 +121,35 @@ INSERT INTO edges (repo_id, src, dst, kind, confidence) VALUES (1, 10, 11, 'impo
     // The edge still references the rebuilt table: deleting a node cascades to it.
     db.prepare('DELETE FROM nodes WHERE id = 11').run();
     expect(db.prepare('SELECT COUNT(*) AS n FROM edges').get()).toEqual({ n: 0 });
+    db.close();
+    openDb(file).close();
+  });
+
+  it('v7 -> v8: adds the resolution column to an existing file inventory, keeping its rows', () => {
+    const file = join(dir, 'v7.db');
+    const d = new DatabaseSync(file);
+    d.exec(`
+CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+INSERT INTO meta VALUES ('schema_version', '7');
+CREATE TABLE repos (id INTEGER PRIMARY KEY, root TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at TEXT NOT NULL, last_indexed_at TEXT, head_commit TEXT, branch TEXT);
+INSERT INTO repos (id, root, name, created_at) VALUES (1, '/r', 'r', '2026-01-01');
+CREATE TABLE file_inventory (
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  path TEXT NOT NULL, language TEXT NOT NULL, category TEXT NOT NULL, role TEXT,
+  status TEXT NOT NULL CHECK (status IN ('full','partial','text','unsupported','failed','excluded','binary')),
+  method TEXT NOT NULL, reason TEXT, bytes INTEGER, detected_by TEXT, confidence TEXT,
+  PRIMARY KEY (repo_id, path)
+);
+INSERT INTO file_inventory (repo_id, path, language, category, status, method) VALUES (1, 'a.py', 'Python', 'programming', 'partial', 'patterns');
+`);
+    d.close();
+    const db = openDb(file);
+    expect(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get()).toEqual({
+      value: '8',
+    });
+    expect(db.prepare('SELECT path, status, resolution FROM file_inventory').all()).toEqual([
+      { path: 'a.py', status: 'partial', resolution: null },
+    ]);
     db.close();
     openDb(file).close();
   });

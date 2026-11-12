@@ -59,7 +59,9 @@ test('index a repository, explore it, ask a question, and take a bug through rev
     // Languages & files: counts per language and file type, and every file with its status.
     const lc = page.getByRole('region', { name: 'Languages & files' });
     await expect(
-      lc.getByRole('row', { name: /^Python programming 1 1 100% Partially analysed/ }),
+      lc.getByRole('row', {
+        name: /^Python programming 1 1 100% Fully analysed Full syntax parse \(tree-sitter tree-sitter-python@0\.25\.0\)/,
+      }),
     ).toBeVisible();
     await expect(lc.getByRole('row', { name: /^APL programming 1 0 0% Text only/ })).toBeVisible();
     await lc.getByRole('combobox', { name: 'Status' }).selectOption('text');

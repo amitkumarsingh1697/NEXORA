@@ -1,0 +1,9 @@
+import json @1 module
+import shop.store @2 module
+#0 method new(owner) @7-11 recv Cart
+#1 method add(sku, qty) @13-18 recv Cart
+#2 function helper(n, ......) @20-22
+call #0 setmetatable @8
+call #1 self . check @14
+call #1 helper @15
+call #1 store . save @16

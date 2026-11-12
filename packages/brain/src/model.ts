@@ -57,7 +57,39 @@ export const NEURON_KINDS = [
   'service',
   'config',
   'table',
+  // Database objects other than tables.
+  'view',
+  'procedure',
+  'trigger',
+  'index',
+  'sequence',
+  'datatype',
+  'package',
+  'policy',
+  'rule',
+  'event',
+  'synonym',
+  'schema',
+  'extension',
 ] as const;
+
+/** Neuron kinds that are database objects (placed in the database lobe). */
+export const DATABASE_KINDS: ReadonlySet<NeuronKind> = new Set<NeuronKind>([
+  'table',
+  'view',
+  'procedure',
+  'trigger',
+  'index',
+  'sequence',
+  'datatype',
+  'package',
+  'policy',
+  'rule',
+  'event',
+  'synonym',
+  'schema',
+  'extension',
+]);
 export type NeuronKind = (typeof NEURON_KINDS)[number];
 
 export const SYNAPSE_KINDS = [
@@ -79,16 +111,31 @@ export const SYNAPSE_KINDS = [
   'builds',
   'runs',
   'includes',
+  'fires_on',
+  'indexes',
+  'maps_to',
 ] as const;
 export type SynapseKind = (typeof SYNAPSE_KINDS)[number];
 
 export const CONFIDENCES = ['observed', 'inferred', 'unknown'] as const;
 export type Confidence = (typeof CONFIDENCES)[number];
 
+export const PARAM_MODES = ['in', 'out', 'inout', 'variadic'] as const;
+
 export interface BrainParam {
   name: string;
   type: string;
   optional?: boolean;
+  /** Direction, for database routines (IN, OUT, IN OUT, VARIADIC). Omitted means in. */
+  mode?: (typeof PARAM_MODES)[number];
+  /** Default as written. */
+  default?: string;
+}
+
+/** A labelled fact about a neuron, shown in its details (trigger timing, index columns…). */
+export interface BrainDetail {
+  label: string;
+  value: string;
 }
 
 /** A database column, as written in the schema. */
@@ -124,8 +171,10 @@ export interface BrainNeuron {
   /** True when the source wrote the return type; false when TypeScript worked it out. */
   returnsDeclared?: boolean;
   doc?: string;
-  /** Columns of a `table` neuron. */
+  /** Columns of a `table` or `view` neuron; attributes of a `datatype`. */
   columns?: BrainColumn[];
+  /** Other facts, as label and value. */
+  details?: BrainDetail[];
   /** Opaque reference back to the producer (for example a CodeAtlas node id). */
   ref?: number | string;
 }
@@ -253,8 +302,8 @@ export interface BrainModel {
 export type ValidationResult =
   { ok: true; model: BrainModel; warnings: string[] } | { ok: false; errors: string[] };
 
-const MAX_NEURONS = 20_000;
-const MAX_SYNAPSES = 100_000;
+const MAX_NEURONS = 100_000;
+const MAX_SYNAPSES = 400_000;
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -497,6 +546,10 @@ export function validateBrain(input: unknown): ValidationResult {
             name: str(p.name, 120) ?? '?',
             type: str(p.type, 300) ?? 'unknown',
             optional: p.optional === true,
+            ...((PARAM_MODES as readonly string[]).includes(p.mode as string) && p.mode !== 'in'
+              ? { mode: p.mode as BrainParam['mode'] }
+              : {}),
+            ...(typeof p.default === 'string' ? { default: p.default.slice(0, 200) } : {}),
           }))
       : undefined;
     ids.add(n.id);
@@ -515,6 +568,16 @@ export function validateBrain(input: unknown): ValidationResult {
       returnsDeclared: typeof n.returnsDeclared === 'boolean' ? n.returnsDeclared : undefined,
       doc: str(n.doc, 1000),
       columns: Array.isArray(n.columns) ? columnsOf(n.columns) : undefined,
+      details: Array.isArray(n.details)
+        ? n.details
+            .filter(isObj)
+            .filter((d) => typeof d.label === 'string' && typeof d.value === 'string')
+            .slice(0, 20)
+            .map((d) => ({
+              label: (d.label as string).slice(0, 60),
+              value: (d.value as string).slice(0, 400),
+            }))
+        : undefined,
       ref: typeof n.ref === 'number' || typeof n.ref === 'string' ? n.ref : undefined,
     });
   });

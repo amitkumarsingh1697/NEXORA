@@ -6669,6 +6669,83 @@ var DECLARATION_LANGUAGES = [
 	"Bicep",
 	"Jsonnet"
 ];
+/**
+* Languages the tree-sitter syntax layer parses (packages/syntax/src/languages.ts; a CodeAtlas
+* test checks the two lists are the same).
+*/
+var SYNTAX_LANGUAGES = [
+	"Python",
+	"Starlark",
+	"Go",
+	"Java",
+	"C#",
+	"C",
+	"C++",
+	"Objective-C",
+	"Cuda",
+	"Rust",
+	"PHP",
+	"Ruby",
+	"Scala",
+	"Kotlin",
+	"Gradle Kotlin DSL",
+	"Groovy",
+	"Gradle",
+	"Lua",
+	"Elixir",
+	"Haskell",
+	"Julia",
+	"OCaml",
+	"F#",
+	"Zig",
+	"Solidity",
+	"Shell",
+	"PowerShell",
+	"Puppet",
+	"Bicep",
+	"HCL",
+	"Dart",
+	"Swift",
+	"Perl",
+	"R",
+	"Erlang",
+	"Clojure",
+	"Scheme",
+	"Racket",
+	"Common Lisp",
+	"Emacs Lisp",
+	"Luau",
+	"Crystal",
+	"GLSL",
+	"HLSL",
+	"Apex",
+	"GDScript",
+	"Hack",
+	"V",
+	"Odin",
+	"D",
+	"Vala",
+	"Haxe",
+	"ActionScript",
+	"Nim",
+	"Elm",
+	"Gleam",
+	"PureScript",
+	"MATLAB",
+	"Pascal",
+	"Fortran",
+	"Fortran Free Form",
+	"Ada",
+	"COBOL",
+	"SystemVerilog",
+	"Verilog",
+	"VHDL",
+	"Assembly",
+	"Unix Assembly",
+	"WGSL",
+	"Nix",
+	"fish"
+];
 var ANALYSER_BY_LANGUAGE = {
 	TypeScript: "ts-compiler",
 	TSX: "ts-compiler",
@@ -6723,6 +6800,7 @@ var ANALYSER_BY_LANGUAGE = {
 	"Graphviz (DOT)": "dot",
 	"Gettext Catalog": "gettext"
 };
+for (const l of SYNTAX_LANGUAGES) ANALYSER_BY_LANGUAGE[l] = "syntax";
 for (const l of DECLARATION_LANGUAGES) ANALYSER_BY_LANGUAGE[l] ??= "declarations";
 /** Formats Linguist does not list that repositories commonly contain. */
 var EXTRA = [
@@ -7500,7 +7578,7 @@ var HEURISTICS = {
 	".sql": [
 		["PLpgSQL", /\$\$\s*LANGUAGE\s+'?plpgsql/i],
 		["TSQL", /^\s*GO\s*$|\bCREATE\s+PROC(EDURE)?\s+\[?dbo\]?\.|\bNVARCHAR\s*\(\s*MAX\s*\)|^\s*SET\s+NOCOUNT\b/im],
-		["PLSQL", /\bCREATE\s+(OR\s+REPLACE\s+)?(PACKAGE|TYPE\s+BODY|TRIGGER)\b|^\s*END\s+\w+\s*;\s*\n\s*\/\s*$|\bDBMS_\w+\./im],
+		["PLSQL", /\bCREATE\s+(OR\s+REPLACE\s+)?(EDITIONABLE\s+)?(PACKAGE|TYPE\s+BODY)\b|^\s*END\s+\w+\s*;\s*\n\s*\/\s*$|\bDBMS_\w+\.|\bVARCHAR2\b/im],
 		["SQLPL", /\bLANGUAGE\s+SQL\b.*\bBEGIN\s+ATOMIC\b/is]
 	],
 	".cls": [

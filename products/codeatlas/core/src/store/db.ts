@@ -8,7 +8,7 @@ import { DatabaseSync } from 'node:sqlite';
  */
 export type Db = DatabaseSync;
 
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -105,6 +105,8 @@ CREATE TABLE IF NOT EXISTS file_inventory (
   bytes INTEGER,
   detected_by TEXT,
   confidence TEXT,
+  -- v8: how references were linked ('compiler' or 'syntax'); NULL when none were.
+  resolution TEXT,
   PRIMARY KEY (repo_id, path)
 );
 CREATE INDEX IF NOT EXISTS file_inventory_status ON file_inventory(repo_id, status);
@@ -226,6 +228,11 @@ export function openDb(file: string): Db {
   } catch (e) {
     throw explainSchemaError(e);
   }
+  // v7 -> v8: file_inventory gains `resolution`. CREATE TABLE IF NOT EXISTS leaves an existing
+  // table as it was, so the column is added when it is missing.
+  const cols = db.prepare('PRAGMA table_info(file_inventory)').all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'resolution'))
+    db.exec('ALTER TABLE file_inventory ADD COLUMN resolution TEXT');
   db.prepare(
     "INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
   ).run(String(SCHEMA_VERSION));

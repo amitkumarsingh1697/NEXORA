@@ -1,0 +1,24 @@
+{
+  "name": "@nexora/orm",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "description": "ORM and migration schema readers for CodeAtlas and ArchLens: tables, columns, keys and model-to-table mappings from Django, SQLAlchemy, Alembic, Peewee, JPA/Hibernate, Spring Data, Exposed, Entity Framework Core, Rails, Laravel, Eloquent, Doctrine, GORM, Ecto, Diesel, SeaORM, TypeORM, MikroORM, Sequelize, Mongoose, Knex, Objection and Liquibase.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nexora/syntax": "workspace:*",
+    "typescript": "5.9.3",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@nexora/languages": "workspace:*",
+    "tsx": "4.23.15"
+  }
+}

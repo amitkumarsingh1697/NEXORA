@@ -1,0 +1,19 @@
+import std::collections::HashMap @1 module
+import util @2 path
+import crate::store @3 module {Store, load as load_store}
+#0 module util @2-2
+#1 struct Cart @5-7
+#2 trait Saver @9-11
+#3 method save(sku: &str) -> bool @10-10 in #2
+#4 impl Cart @13-26
+#5 method new(store: Store) -> Self @14-16 in #4
+#6 method add(sku: &str, qty: u32) -> Option<u32> @18-23 in #4
+#7 method check(sku: &str) -> bool @25-25 in #4
+#8 function helper(n: u32) -> u32 @28-31
+#9 enum Color @33-33
+call #6 self . check @19
+call #6 helper @20
+call #6 self.store . save @21
+call #6 Store . count @22
+call #7 sku . is_empty @25
+call #8 load_store @29

@@ -20,6 +20,9 @@ export const SYNAPSE_WORDS: Record<SynapseKind, { out: string; in: string }> = {
   builds: { out: 'Builds', in: 'Built by' },
   runs: { out: 'Runs', in: 'Run by' },
   includes: { out: 'Includes', in: 'Included by' },
+  fires_on: { out: 'Fires on', in: 'Triggers' },
+  indexes: { out: 'Indexes', in: 'Indexed by' },
+  maps_to: { out: 'Maps to table', in: 'Mapped by' },
 };
 
 export interface Relation {

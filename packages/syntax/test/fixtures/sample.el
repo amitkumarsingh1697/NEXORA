@@ -1,0 +1,6 @@
+(require 'cl-lib)
+(defun app-run (x &optional y) (app-helper x) (message "%s" x))
+(defmacro app-m (x) x)
+(defvar app-count 0)
+(defcustom app-name "a" "doc")
+(provide 'app)

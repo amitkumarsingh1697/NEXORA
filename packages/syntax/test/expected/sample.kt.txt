@@ -1,0 +1,22 @@
+namespace com.shop.cart
+import com.shop.store.Store @3 module
+import kotlin.math.max @4 module
+#0 class Cart @6-19 extends Base, Saver
+#1 method add(sku: String, qty?: Int) -> Int @7-12 in #0
+#2 method check(sku: String) @14-14 in #0
+#3 object Companion @16-18 in #0
+#4 method empty() -> Cart? @17-17 in #3
+#5 function helper(n: Int, ...rest: String) -> Int @21-21
+#6 interface Saver @23-25
+#7 method save(sku: String) @24-24 in #6
+#8 object Registry @27-29
+#9 method get() -> Cart? @28-28 in #8
+#10 enum Color @31-31
+#11 class Pair @33-33
+call #1 check @8
+call #1 helper @9
+call #1 store . save @10
+call #1 maximum @11
+call #2 sku . isNotEmpty @14
+call #5 Counter() . next @21
+call #5 Counter @21

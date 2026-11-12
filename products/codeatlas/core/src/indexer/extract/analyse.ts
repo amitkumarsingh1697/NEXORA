@@ -3,7 +3,16 @@
  * and records each file's real outcome in the inventory (full / partial / failed, or text with
  * a reason). The analyser for a file comes from the registry (@nexora/languages).
  */
-import { analyserOf, type FileRecord } from '@nexora/languages';
+import { analyserOf, DECLARATION_LANGUAGES, type FileRecord } from '@nexora/languages';
+import {
+  CONTAINER_KINDS,
+  resolveBases,
+  resolveCalls,
+  type DeclRef,
+  type ResolveFile,
+  type SyntaxResult,
+} from '@nexora/syntax';
+import type { ScipResolver } from '@nexora/scip';
 import { posix } from 'node:path';
 import type { DiscoveredFile } from '../files';
 import type { GraphBuilder, NodeRef } from '../model';
@@ -32,11 +41,11 @@ import {
   readToml,
   readXml,
   readYaml,
-  sqlObjects,
   type Link,
   type StructuredResult,
   type StructSymbol,
 } from './structured';
+import { analyseSyntax, grammarLabel, importRefOf, syntaxUnavailable } from './syntax';
 
 export interface AnalyseStats {
   filesAnalysed: number;
@@ -44,6 +53,41 @@ export interface AnalyseStats {
   imports: { internal: number; external: number; unresolved: number };
   links: { resolved: number; unresolved: number };
   byAnalyser: Record<string, number>;
+  /** Files parsed by tree-sitter and the links found between their declarations. */
+  syntax: {
+    files: number;
+    withErrors: number;
+    fallbacks: number;
+    calls: { observed: number; inferred: number; unresolved: number };
+    bases: { observed: number; inferred: number; unresolved: number };
+    receivers: number;
+  };
+  /** What SCIP indexes decided (ADR 0018). */
+  scip: ScipLinkStats;
+}
+
+export interface ScipLinkStats {
+  /** Files an index covers. */
+  files: number;
+  /** Calls and bases linked by the compiler's answer (observed). */
+  resolved: number;
+  /** ...of which the syntax layer had linked to the same target. */
+  agreed: number;
+  /** ...of which the syntax layer had linked to a different declaration. */
+  corrected: number;
+  /** ...of which the syntax layer had left unresolved. */
+  added: number;
+  /** Names the compiler resolved outside the repository: no link drawn, not counted unresolved. */
+  external: number;
+  /** Inferred syntax links the compiler said point outside the repository: removed. */
+  removed: number;
+  /** No answer, or several: the syntax result stands. */
+  undecided: number;
+  /**
+   * The compiler's target is in the repository but is not a declaration the syntax layer drew
+   * (a field, variable or parameter, for example): the syntax result stands.
+   */
+  notDrawn: number;
 }
 
 /** Brain-compatible symbol kinds for declarations (others are stored and searchable, not drawn). */
@@ -59,6 +103,9 @@ const BRAIN_KIND: Record<string, string> = {
   procedure: 'function',
   paragraph: 'function',
   method: 'method',
+  constructor: 'constructor',
+  object: 'class',
+  record: 'class',
   'proto-message': 'class',
   'proto-enum': 'class',
   'proto-service': 'interface',
@@ -73,11 +120,6 @@ const BRAIN_KIND: Record<string, string> = {
   'graphql-interface': 'interface',
   'graphql-input': 'class',
   'graphql-enum': 'class',
-  'sql-procedure': 'function',
-  'sql-function': 'function',
-  'sql-package': 'class',
-  'sql-package-body': 'class',
-  'sql-trigger': 'function',
 };
 
 const LINK_BASE_ROOT = new Set([
@@ -141,6 +183,8 @@ export interface AnalyseContext {
   records: Map<string, FileRecord>;
   allPaths: Set<string>;
   moduleOf: (p: string) => string;
+  /** Compiler-grade answers from SCIP indexes (ADR 0018), when any were given or produced. */
+  scip?: ScipResolver;
 }
 
 function setStatus(
@@ -337,6 +381,25 @@ export function analyseNonTsFiles(
     imports: { internal: 0, external: 0, unresolved: 0 },
     links: { resolved: 0, unresolved: 0 },
     byAnalyser: {},
+    syntax: {
+      files: 0,
+      withErrors: 0,
+      fallbacks: 0,
+      calls: { observed: 0, inferred: 0, unresolved: 0 },
+      bases: { observed: 0, inferred: 0, unresolved: 0 },
+      receivers: 0,
+    },
+    scip: {
+      files: 0,
+      resolved: 0,
+      agreed: 0,
+      corrected: 0,
+      added: 0,
+      external: 0,
+      removed: 0,
+      undecided: 0,
+      notDrawn: 0,
+    },
   };
   const { graph, records } = ctx;
   const extractions = new Map<string, { f: DiscoveredFile; x: Extraction; keys: string[] }>();
@@ -348,6 +411,19 @@ export function analyseNonTsFiles(
   };
   const fileRef = (p: string): NodeRef => ({ kind: 'file', key: p });
   const bump = (m: string) => (stats.byAnalyser[m] = (stats.byAnalyser[m] ?? 0) + 1);
+  /** Files parsed by the syntax layer, for call, base and receiver linking after pass 2. */
+  const parsed = new Map<
+    string,
+    {
+      f: DiscoveredFile;
+      r: SyntaxResult;
+      keys: (string | undefined)[];
+      /** For each syntax import, the index of its ImportRef (-1: not resolved by imports). */
+      refIndex: number[];
+      targets: (string | undefined)[];
+      receivers: (string | undefined)[];
+    }
+  >();
 
   const addSymbols = (f: DiscoveredFile, syms: StructSymbol[], declKindData = true) => {
     const keyOf = new Map<string, string>();
@@ -383,6 +459,161 @@ export function analyseNonTsFiles(
     }
   };
 
+  /** File facts and links between files from a structured reader. */
+  const addFactsAndLinks = (f: DiscoveredFile, r: StructuredResult) => {
+    const node = graph.get(fileRef(f.path));
+    if (node && Object.keys(r.facts).length)
+      node.data = {
+        ...node.data,
+        facts: Object.fromEntries(Object.entries(r.facts).filter(([, v]) => v !== undefined)),
+      };
+    for (const l of r.links) {
+      const hit = resolveLink(l, f, ctx.allPaths);
+      if (!hit || hit.path === f.path) {
+        stats.links.unresolved++;
+        continue;
+      }
+      stats.links.resolved++;
+      graph.addEdge({
+        kind: l.kind,
+        src: fileRef(f.path),
+        dst: fileRef(hit.path),
+        confidence: hit.inferred ? 'inferred' : 'observed',
+        evidencePath: f.path,
+        ...(l.line ? { evidenceLine: l.line } : {}),
+        detail:
+          [
+            l.detail,
+            hit.inferred
+              ? `${posix.basename(hit.path)} found by convention in ${l.target}`
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join('; ') || undefined,
+      });
+    }
+  };
+
+  /** Adds one parsed file's declarations to the graph and records its status. */
+  const addParsed = (f: DiscoveredFile, r: SyntaxResult, rec: FileRecord | undefined) => {
+    const decls = r.declarations;
+    // An `impl` block (Rust impl, Objective-C @implementation) is not a declaration of its own:
+    // its members belong to the type it names.
+    const isImpl = (i: number | undefined) => i !== undefined && decls[i]?.kind === 'impl';
+    const parentOf = (i: number): number | undefined => {
+      const p = decls[i]?.parent;
+      return isImpl(p) ? undefined : p;
+    };
+    const receivers = decls.map(
+      (d) => d.receiver ?? (isImpl(d.parent) ? decls[d.parent!]!.name : undefined),
+    );
+    const qn = (i: number): string => {
+      const d = decls[i]!;
+      const p = parentOf(i);
+      const recv = receivers[i];
+      return [p !== undefined ? qn(p) : undefined, recv, d.name].filter(Boolean).join('.');
+    };
+    const keys: (string | undefined)[] = [];
+    const seenKeys = new Set<string>();
+    const label = grammarLabel(r.grammar);
+    decls.forEach((d, i) => {
+      if (d.kind === 'impl') {
+        keys.push(undefined);
+        return;
+      }
+      const qname = qn(i);
+      let key = `${f.path}#${qname}`;
+      if (seenKeys.has(key)) key = `${key}@${d.line}`;
+      seenKeys.add(key);
+      keys.push(key);
+      const data: Record<string, unknown> = {
+        extraction: 'syntax',
+        language: f.language,
+        parser: label,
+        declKind: d.kind,
+        signature: d.signature,
+      };
+      if (d.params)
+        data.params = d.params.map((p) => ({
+          name: `${p.variadic && !p.name.startsWith('.') ? '...' : ''}${p.name}`,
+          type: p.type ?? '',
+          optional: !!p.optional,
+        }));
+      if (d.returns) {
+        data.returns = d.returns;
+        data.returnsDeclared = true;
+      }
+      if (d.bases?.length) data.bases = d.bases;
+      graph.addNode({
+        kind: 'symbol',
+        key,
+        name: qname,
+        filePath: f.path,
+        module: ctx.moduleOf(f.path),
+        symbolKind: BRAIN_KIND[d.kind] ?? d.kind,
+        exported: true,
+        startLine: d.line,
+        endLine: d.endLine,
+        data,
+      });
+      const p = parentOf(i);
+      const parentKey = p !== undefined ? keys[p] : undefined;
+      graph.addEdge({
+        kind: 'contains',
+        src: parentKey ? { kind: 'symbol', key: parentKey } : fileRef(f.path),
+        dst: { kind: 'symbol', key },
+        // Nesting comes from the parse tree, so it is what the source says.
+        confidence: 'observed',
+        evidencePath: f.path,
+        evidenceLine: d.line,
+      });
+      stats.declarations++;
+      if (
+        CONTAINER_KINDS.has(d.kind) ||
+        d.kind === 'module' ||
+        d.kind === 'namespace' ||
+        d.kind === 'type'
+      ) {
+        if (r.namespace) addName(`${r.namespace}.${d.name}`, f.path);
+        addName(d.name, f.path);
+      }
+    });
+    if (r.namespace) addName(r.namespace, f.path);
+
+    const refs: ImportRef[] = [];
+    const refIndex = r.imports.map((imp) => {
+      const ref = importRefOf(f.language, f.path, imp);
+      if (!ref) return -1;
+      refs.push(ref);
+      return refs.length - 1;
+    });
+    extractions.set(f.path, {
+      f,
+      x: { declarations: [], imports: refs, ...(r.namespace ? { namespace: r.namespace } : {}) },
+      keys: [],
+    });
+    parsed.set(f.path, { f, r, keys, refIndex, targets: refs.map(() => undefined), receivers });
+
+    stats.syntax.files++;
+    const scipTool = ctx.scip?.covers(f.path);
+    if (scipTool) stats.scip.files++;
+    if (rec) {
+      rec.method = scipTool
+        ? `Full syntax parse (${label}); references resolved by ${scipTool}`
+        : `Full syntax parse (${label})`;
+      rec.resolution = scipTool ? 'compiler' : 'syntax';
+      if (r.problems.length) {
+        stats.syntax.withErrors++;
+        const first = r.problems[0]!;
+        rec.status = 'partial';
+        rec.reason = `${r.problems.length}${r.problems.length >= 50 ? '+' : ''} syntax error${r.problems.length === 1 ? '' : 's'}; first at line ${first.line} (${first.kind === 'missing' ? first.text : `unexpected ${JSON.stringify(first.text.slice(0, 40))}`}); the rest of the file was still read`;
+      } else {
+        rec.status = 'full';
+        delete rec.reason;
+      }
+    }
+  };
+
   // Pass 1: read every file with an analyser.
   for (const f of files) {
     if (handledByAdapters.has(f.path)) continue;
@@ -391,11 +622,9 @@ export function analyseNonTsFiles(
     const rec = records.get(f.path);
     const analyser = analyserOf(f.language);
 
-    // SQL and Prisma are read by the schema readers in index.ts; procedural objects here.
+    // SQL files are read in index.ts (tables, then every other object, then their links),
+    // which also sets their status.
     if (analyser === 'sql') {
-      const objs = sqlObjects(text);
-      addSymbols(f, objs);
-      setStatus(rec, 'partial', 'SQL schema parser and object extractor');
       bump('sql');
       stats.filesAnalysed++;
       continue;
@@ -416,7 +645,43 @@ export function analyseNonTsFiles(
       continue;
     }
 
-    if (analyser === 'declarations' || (analyser === 'ts-compiler' && f.lang === 'text')) {
+    // Full parse with the language's tree-sitter grammar. When the grammar cannot be used, the
+    // file falls back to the declaration patterns (or the HCL reader) and the reason is kept.
+    let fallback: string | undefined;
+    if (analyser === 'syntax') {
+      const unavailable = syntaxUnavailable();
+      let r: SyntaxResult | Error | null;
+      try {
+        r = unavailable ? new Error(unavailable) : analyseSyntax(f.language, text);
+      } catch (e) {
+        r = new Error(`syntax layer error: ${(e as Error).message.slice(0, 160)}`);
+      }
+      if (r && !(r instanceof Error)) {
+        addParsed(f, r, rec);
+        if (f.language === 'HCL') {
+          // Terraform module sources are folders: the HCL reader links them.
+          try {
+            const h = readStructured(f, text);
+            if (h && !h.error) addFactsAndLinks(f, h);
+          } catch {
+            // The parse above already recorded the file; module links are an extra.
+            stats.links.unresolved++;
+          }
+        }
+        bump('syntax');
+        stats.filesAnalysed++;
+        continue;
+      }
+      fallback = r ? r.message : `no tree-sitter rules for ${f.language}`;
+      stats.syntax.fallbacks++;
+    }
+
+    if (
+      analyser === 'declarations' ||
+      (fallback !== undefined &&
+        (DECLARATION_LANGUAGES as readonly string[]).includes(f.language)) ||
+      (analyser === 'ts-compiler' && f.lang === 'text')
+    ) {
       let x: Extraction | null;
       try {
         x = extractDeclarations(f.language, text);
@@ -493,6 +758,8 @@ export function analyseNonTsFiles(
         delete rec.reason;
         if (!decls.length && !x.imports.length)
           rec.reason = 'no declarations or imports matched the patterns';
+        if (fallback)
+          rec.reason = `syntax parser not used (${fallback.slice(0, 160)})${rec.reason ? `; ${rec.reason}` : ''}`;
       }
       bump('declarations');
       stats.filesAnalysed++;
@@ -525,51 +792,25 @@ export function analyseNonTsFiles(
       continue;
     }
     setStatus(rec, r.level, r.method);
+    if (fallback && rec)
+      rec.reason = `syntax parser not used (${fallback.slice(0, 160)})${rec.reason ? `; ${rec.reason}` : ''}`;
     bump(r.method);
     stats.filesAnalysed++;
-    const node = graph.get(fileRef(f.path));
-    if (node && Object.keys(r.facts).length)
-      node.data = {
-        ...node.data,
-        facts: Object.fromEntries(Object.entries(r.facts).filter(([, v]) => v !== undefined)),
-      };
     addSymbols(f, r.symbols);
-    for (const l of r.links) {
-      const hit = resolveLink(l, f, ctx.allPaths);
-      if (!hit || hit.path === f.path) {
-        stats.links.unresolved++;
-        continue;
-      }
-      stats.links.resolved++;
-      graph.addEdge({
-        kind: l.kind,
-        src: fileRef(f.path),
-        dst: fileRef(hit.path),
-        confidence: hit.inferred ? 'inferred' : 'observed',
-        evidencePath: f.path,
-        ...(l.line ? { evidenceLine: l.line } : {}),
-        detail:
-          [
-            l.detail,
-            hit.inferred
-              ? `${posix.basename(hit.path)} found by convention in ${l.target}`
-              : undefined,
-          ]
-            .filter(Boolean)
-            .join('; ') || undefined,
-      });
-    }
+    addFactsAndLinks(f, r);
   }
 
   // Pass 2: resolve imports now that every file's declarations are known.
   const idx = new PathIndex(ctx.allPaths);
   const goModules = goModulesOf(texts);
   for (const { f, x } of extractions.values()) {
-    for (const imp of x.imports) {
+    const syntaxTargets = parsed.get(f.path)?.targets;
+    for (const [k, imp] of x.imports.entries()) {
       const target =
         imp.resolve === 'none'
           ? undefined
           : resolveImport(imp, f.path, f.language, idx, ctx.allPaths, declaredNames, goModules);
+      if (syntaxTargets && target && target !== f.path) syntaxTargets[k] = target;
       if (target && target !== f.path) {
         graph.addEdge({
           kind: 'imports',
@@ -644,5 +885,199 @@ export function analyseNonTsFiles(
         });
     });
   }
+  linkParsed();
   return stats;
+
+  /** Calls, base classes and receiver methods between parsed declarations. */
+  function linkParsed() {
+    if (!parsed.size) return;
+    const list = [...parsed.values()];
+    const files: ResolveFile[] = list.map((p) => ({
+      path: p.f.path,
+      language: p.f.language,
+      result: p.r,
+      importTargets: p.refIndex.map((k) => (k < 0 ? undefined : p.targets[k])),
+    }));
+    const keyOf = (file: string, decl: number) => parsed.get(file)?.keys[decl];
+
+    /** The declaration a SCIP definition names: same file, same name, its line inside. */
+    const declAt = (file: string, line: number, name: string): DeclRef | undefined => {
+      const p = parsed.get(file);
+      if (!p) return undefined;
+      let best: { decl: number; span: number } | undefined;
+      p.r.declarations.forEach((d, i) => {
+        if (d.name !== name || line < d.line || line > d.endLine) return;
+        const span = d.endLine - d.line;
+        if (!best || span < best.span) best = { decl: i, span };
+      });
+      return best ? { file, decl: best.decl } : undefined;
+    };
+
+    /**
+     * The compiler's answer for a name at a line, from SCIP: a target in the repository
+     * (observed), 'external' (no link, not unresolved), or undefined (the syntax result stands).
+     */
+    const compiler = (
+      file: string,
+      line: number,
+      name: string,
+      syntaxTarget: DeclRef | undefined,
+      syntaxConfidence: 'observed' | 'inferred' | 'unresolved',
+    ): 'external' | { target: DeclRef; confidence: 'observed'; detail: string } | undefined => {
+      const a = ctx.scip?.resolve(file, line, name);
+      if (!a || a.kind === 'ambiguous' || a.kind === 'undefined') {
+        if (ctx.scip?.covers(file)) stats.scip.undecided++;
+        return undefined;
+      }
+      if (a.kind === 'external') {
+        if (syntaxTarget && syntaxConfidence !== 'unresolved') {
+          if (syntaxConfidence === 'observed') {
+            // The syntax layer saw it declared in the repository: keep both views, the syntax one.
+            stats.scip.undecided++;
+            return undefined;
+          }
+          stats.scip.removed++;
+        } else stats.scip.external++;
+        return 'external';
+      }
+      // Every declaration of this symbol the syntax layer drew: the definition sites, and a
+      // same-named declaration whose name line the symbol occurs on (an overload stub or the
+      // implementation after it).
+      const sites: DeclRef[] = [];
+      const add = (t: DeclRef | undefined) => {
+        if (t && !sites.some((x) => x.file === t.file && x.decl === t.decl)) sites.push(t);
+      };
+      for (const x of a.definition.sites) add(declAt(x.path, x.line, a.definition.name));
+      for (const path of new Set(a.definition.sites.map((x) => x.path))) {
+        const lines = ctx.scip!.linesOf(a.definition.symbol, path);
+        parsed.get(path)?.r.declarations.forEach((d, i) => {
+          if (d.name === a.definition.name && lines.has(d.line)) add({ file: path, decl: i });
+        });
+      }
+      if (!sites.length) {
+        stats.scip.notDrawn++;
+        return undefined;
+      }
+      stats.scip.resolved++;
+      const lineOf = (t: DeclRef) => parsed.get(t.file)?.r.declarations[t.decl]?.line ?? 0;
+      const detail = (t: DeclRef) => `resolved by ${a.tool} to ${t.file}:${lineOf(t)}`;
+      if (!syntaxTarget || syntaxConfidence === 'unresolved') stats.scip.added++;
+      else if (sites.some((t) => t.file === syntaxTarget.file && t.decl === syntaxTarget.decl)) {
+        stats.scip.agreed++;
+        return { target: syntaxTarget, confidence: 'observed', detail: detail(syntaxTarget) };
+      } else stats.scip.corrected++;
+      // The site with the longest body: an implementation rather than an overload stub.
+      const span = (t: DeclRef) => {
+        const d = parsed.get(t.file)?.r.declarations[t.decl];
+        return d ? d.endLine - d.line : 0;
+      };
+      const target = sites.reduce((m, t) => (span(t) > span(m) ? t : m));
+      const corrected = syntaxTarget && syntaxConfidence !== 'unresolved';
+      return {
+        target,
+        confidence: 'observed',
+        detail: corrected
+          ? `${detail(target)} (name matching had chosen ${syntaxTarget.file}:${lineOf(syntaxTarget)})`
+          : detail(target),
+      };
+    };
+    const unresolvedBy = new Map<string, Set<string>>();
+
+    for (const l0 of resolveCalls(files)) {
+      const srcKey = l0.from >= 0 ? keyOf(l0.file, l0.from) : undefined;
+      const c = compiler(l0.file, l0.line, l0.name, l0.target, l0.confidence);
+      if (c === 'external') continue;
+      const l = c ? { ...l0, ...c } : l0;
+      const dstKey = l.target ? keyOf(l.target.file, l.target.decl) : undefined;
+      if (!dstKey || l.confidence === 'unresolved') {
+        stats.syntax.calls.unresolved++;
+        const k = srcKey ?? l.file;
+        const set = unresolvedBy.get(k) ?? new Set<string>();
+        if (set.size < 20) set.add(l.callee);
+        unresolvedBy.set(k, set);
+        continue;
+      }
+      stats.syntax.calls[l.confidence]++;
+      if (srcKey === dstKey) continue; // recursion: not a link between two neurons
+      graph.addEdge({
+        kind: l.kind,
+        src: srcKey ? { kind: 'symbol', key: srcKey } : fileRef(l.file),
+        dst: { kind: 'symbol', key: dstKey },
+        confidence: l.confidence,
+        evidencePath: l.file,
+        evidenceLine: l.line,
+        detail: `${l.callee}: ${l.detail}`,
+      });
+    }
+    for (const [k, names] of unresolvedBy) {
+      const node = graph.get(k.includes('#') ? { kind: 'symbol', key: k } : fileRef(k));
+      if (node) node.data = { ...node.data, unresolvedCalls: [...names] };
+    }
+
+    for (const b0 of resolveBases(files)) {
+      const bName =
+        b0.base
+          .replace(/<.*$/s, '')
+          .split(/\.|::|\\/)
+          .filter(Boolean)
+          .pop() ?? b0.base;
+      const c = compiler(b0.file, b0.line, bName, b0.target, b0.confidence);
+      if (c === 'external') continue;
+      const b = c ? { ...b0, ...c } : b0;
+      const srcKey = keyOf(b.file, b.from);
+      const dstKey = b.target ? keyOf(b.target.file, b.target.decl) : undefined;
+      if (!srcKey || !dstKey || b.confidence === 'unresolved') {
+        stats.syntax.bases.unresolved++;
+        continue;
+      }
+      stats.syntax.bases[b.confidence]++;
+      graph.addEdge({
+        kind: b.kind,
+        src: { kind: 'symbol', key: srcKey },
+        dst: { kind: 'symbol', key: dstKey },
+        confidence: b.confidence,
+        evidencePath: b.file,
+        evidenceLine: b.line,
+        detail: `${b.base}: ${b.detail}`,
+      });
+    }
+
+    // Methods declared outside their type (Go receivers, Rust impl blocks, C++ Type::method,
+    // Objective-C @implementation) belong to that type: same file, then folder, then a unique name.
+    const types = new Map<string, { file: string; key: string }[]>();
+    for (const p of list)
+      p.r.declarations.forEach((d, i) => {
+        const key = p.keys[i];
+        if (!key || !/^(class|struct|interface|enum|record|object|type|trait)$/.test(d.kind))
+          return;
+        const k = `${p.f.language}\0${d.name}`;
+        const l = types.get(k) ?? [];
+        l.push({ file: p.f.path, key });
+        types.set(k, l);
+      });
+    for (const p of list)
+      p.r.declarations.forEach((d, i) => {
+        const recv = p.receivers[i]?.split(/\.|::/).pop();
+        const key = p.keys[i];
+        if (!recv || !key) return;
+        const cands = types.get(`${p.f.language}\0${recv}`) ?? [];
+        const here = cands.filter((c) => c.file === p.f.path);
+        const dir = cands.filter((c) => posix.dirname(c.file) === posix.dirname(p.f.path));
+        const hit =
+          here[0] ??
+          (dir.length === 1 ? dir[0] : undefined) ??
+          (cands.length === 1 ? cands[0] : undefined);
+        if (!hit || hit.key === key) return;
+        stats.syntax.receivers++;
+        graph.addEdge({
+          kind: 'contains',
+          src: { kind: 'symbol', key: hit.key },
+          dst: { kind: 'symbol', key },
+          confidence: hit.file === p.f.path ? 'observed' : 'inferred',
+          evidencePath: p.f.path,
+          evidenceLine: d.line,
+          detail: `receiver ${recv}${hit.file === p.f.path ? '' : ` declared in ${hit.file}`}`,
+        });
+      });
+  }
 }

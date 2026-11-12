@@ -20,8 +20,9 @@ export const STATUS_LABEL: Record<FileStatus, string> = {
 };
 
 const STATUS_HELP: Record<FileStatus, string> = {
-  full: 'Parsed completely: by the TypeScript compiler for code, or by a parser for the file format.',
-  partial: 'Structure read by declaration patterns or a format reader; not checked by a compiler.',
+  full: "Parsed completely: by the TypeScript compiler, by the language's grammar (calls linked by name, scope and declared types), or by a parser for the file's format.",
+  partial:
+    'Structure read by declaration patterns or a format reader, or a grammar parse that found syntax errors; not checked by a compiler.',
   text: 'Searchable as text; no structure was extracted.',
   unsupported: 'Identified, but the content cannot be read (for example a Git LFS pointer).',
   failed: 'An analyser ran and could not read the file.',

@@ -70,6 +70,54 @@ importers:
         specifier: 10.4.0
         version: 10.4.0
 
+  packages/orm:
+    dependencies:
+      '@nexora/syntax':
+        specifier: workspace:*
+        version: link:../syntax
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
+    devDependencies:
+      '@nexora/languages':
+        specifier: workspace:*
+        version: link:../languages
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+
+  packages/scip:
+    devDependencies:
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+
+  packages/sql:
+    dependencies:
+      libpg-query:
+        specifier: 18.2.2
+        version: 18.2.2
+    devDependencies:
+      '@nexora/languages':
+        specifier: workspace:*
+        version: link:../languages
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+
+  packages/syntax:
+    dependencies:
+      web-tree-sitter:
+        specifier: 0.27.1
+        version: 0.27.1
+    devDependencies:
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+
   packages/validation:
     dependencies:
       zod:
@@ -90,6 +138,18 @@ importers:
       '@nexora/logging':
         specifier: workspace:*
         version: link:../../../packages/logging
+      '@nexora/orm':
+        specifier: workspace:*
+        version: link:../../../packages/orm
+      '@nexora/scip':
+        specifier: workspace:*
+        version: link:../../../packages/scip
+      '@nexora/sql':
+        specifier: workspace:*
+        version: link:../../../packages/sql
+      '@nexora/syntax':
+        specifier: workspace:*
+        version: link:../../../packages/syntax
       '@nexora/validation':
         specifier: workspace:*
         version: link:../../../packages/validation
@@ -124,6 +184,9 @@ importers:
       '@nexora/logging':
         specifier: workspace:*
         version: link:../../../packages/logging
+      '@nexora/syntax':
+        specifier: workspace:*
+        version: link:../../../packages/syntax
       '@nexora/validation':
         specifier: workspace:*
         version: link:../../../packages/validation
@@ -133,6 +196,10 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+    devDependencies:
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
 
   products/codeatlas/web:
     dependencies:
@@ -1259,6 +1326,9 @@ packages:
   '@oxc-project/types@0.156.0':
     resolution: {integrity: sha512-1Duyg48TdJNdyhEB8Xn1L36bT9Pv6GUtlKjHxOys8xkaF/rQq3XJE+bAurSK/AgIz5mGFsb77cn9Pb20+WCScw==}
 
+  '@pgsql/types@18.0.0':
+    resolution: {integrity: sha512-jtAY4JU7jdVYZ/Vv3zlZqVP+FRWZokyCLKPPCnAApiaJAElpyyiMC3HRiquBu29kSrVs+rkqZD50SUIb/zyEGw==}
+
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
 
@@ -2319,6 +2389,9 @@ packages:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
 
+  libpg-query@18.2.2:
+    resolution: {integrity: sha512-BOKY0X05vnxkFe+FD8JH71sSO560UKoSRv9Fsy67zapmryhqcew+4Hq0Phu8a6mcENklK7LiHJi0d0j8DbIb4A==}
+
   lie@3.3.0:
     resolution: {integrity: sha512-UaiMJzeWRlEujzAuw5LokY1L5ecNQYZKfmyZ9L7wDHb/p5etKaxXhohBcrw0EYby+G/NA52vRSN4N39dxHAIwQ==}
 
@@ -3161,6 +3234,9 @@ packages:
     resolution: {integrity: sha512-4Nsy8K5Tr6SPDH9jhKJOHf7ChDrc1zufZTVSF7x72hwuEXBqxqk9G6cK+K2NRUtB3iELRJqjXb4JPDMBjMTl2Q==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
 
+  web-tree-sitter@0.27.1:
+    resolution: {integrity: sha512-qtx0VyUyNRHtL3ze7+v0hCKB/sLcAmY7ZAVp/ZK/bCj0yED8ptvNrr7Vd7DwDyKDWN9baqcUx4uaD2r2ql+6IA==}
+
   webidl-conversions@8.0.1:
     resolution: {integrity: sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ==}
     engines: {node: '>=20'}
@@ -3858,6 +3934,8 @@ snapshots:
     optional: true
 
   '@oxc-project/types@0.156.0': {}
+
+  '@pgsql/types@18.0.0': {}
 
   '@pinojs/redact@0.4.0': {}
 
@@ -4843,6 +4921,10 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
 
+  libpg-query@18.2.2:
+    dependencies:
+      '@pgsql/types': 18.0.0
+
   lie@3.3.0:
     dependencies:
       immediate: 3.0.6
@@ -5594,6 +5676,8 @@ snapshots:
   w3c-xmlserializer@6.0.0:
     dependencies:
       xml-name-validator: 5.0.0
+
+  web-tree-sitter@0.27.1: {}
 
   webidl-conversions@8.0.1: {}
 

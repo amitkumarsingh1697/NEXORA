@@ -60,6 +60,9 @@ const SYNAPSE_COLORS: Record<SynapseKind, string> = {
   builds: '#fdba74',
   runs: '#f9a8d4',
   includes: '#c4b5fd',
+  fires_on: '#f87171',
+  indexes: '#a5b4fc',
+  maps_to: '#2dd4bf',
 };
 
 const KIND_SIZE: Record<NeuronKind, number> = {
@@ -74,6 +77,19 @@ const KIND_SIZE: Record<NeuronKind, number> = {
   interface: 0.9,
   config: 0.9,
   method: 0.8,
+  view: 1.1,
+  procedure: 1.0,
+  trigger: 0.9,
+  index: 0.6,
+  sequence: 0.6,
+  datatype: 0.8,
+  package: 1.5,
+  policy: 0.7,
+  rule: 0.7,
+  event: 0.8,
+  synonym: 0.6,
+  schema: 1.4,
+  extension: 0.8,
 };
 
 const KIND_LABEL: Record<NeuronKind, string> = {
@@ -88,12 +104,27 @@ const KIND_LABEL: Record<NeuronKind, string> = {
   service: 'External service',
   config: 'Configuration',
   table: 'Table',
+  view: 'View',
+  procedure: 'Procedure',
+  trigger: 'Trigger',
+  index: 'Index',
+  sequence: 'Sequence',
+  datatype: 'Type',
+  package: 'Package',
+  policy: 'Policy',
+  rule: 'Rule',
+  event: 'Scheduled event',
+  synonym: 'Synonym',
+  schema: 'Schema',
+  extension: 'Extension',
 };
 
 const OVERVIEW_CAMERA: Vec3 = [3.9, 1.5, 2.8];
 const OVERVIEW_TARGET: Vec3 = [0, 0.05, -0.1];
 const CURVE_SEGMENTS = 8;
 const MAX_PULSES = 360;
+/** Above this many parts the 3D view trades detail for speed. */
+const LARGE_BRAIN = 6000;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -336,7 +367,9 @@ export function mountBrain(
   let flying = false;
 
   if (has3d) {
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    // Large brains drop antialiasing and use simpler spheres, so each frame stays affordable.
+    const large = neurons.length > LARGE_BRAIN;
+    renderer = new THREE.WebGLRenderer({ antialias: !large, alpha: false });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     renderer.setClearColor(0x05060d, 1);
     renderer.domElement.setAttribute('aria-label', `3D brain of ${model.title}`);
@@ -409,7 +442,9 @@ export function mountBrain(
     scene.add(stem);
 
     // Neurons.
-    const sphere = new THREE.SphereGeometry(0.017, 12, 10);
+    const sphere = large
+      ? new THREE.SphereGeometry(0.017, 6, 4)
+      : new THREE.SphereGeometry(0.017, 12, 10);
     instanced = new THREE.InstancedMesh(
       sphere,
       new THREE.MeshBasicMaterial({ color: 0xffffff }),
@@ -777,15 +812,24 @@ export function mountBrain(
     const list = el('div', { class: 'nb-files' });
     for (const [file, items] of files) {
       const d = el('details');
-      if (files.length <= 6) d.open = true;
-      d.append(el('summary', {}, file));
-      const ul = el('ul');
-      for (const n of items.sort((x, y) => (x.line ?? 0) - (y.line ?? 0))) {
-        const li = el('li');
-        li.append(neuronButton(n, KIND_LABEL[n.kind].toLowerCase()));
-        ul.append(li);
+      d.append(el('summary', {}, `${file} (${items.length})`));
+      // A file's parts are listed when it is first opened, so a lobe with tens of thousands of
+      // parts opens without building a button for each one.
+      const fill = () => {
+        if (d.querySelector('ul')) return;
+        const ul = el('ul');
+        for (const n of items.sort((x, y) => (x.line ?? 0) - (y.line ?? 0))) {
+          const li = el('li');
+          li.append(neuronButton(n, KIND_LABEL[n.kind].toLowerCase()));
+          ul.append(li);
+        }
+        d.append(ul);
+      };
+      d.addEventListener('toggle', () => d.open && fill());
+      if (files.length <= 6) {
+        fill();
+        d.open = true;
       }
-      d.append(ul);
       list.append(d);
     }
     left.append(list);
@@ -872,6 +916,14 @@ export function mountBrain(
     if (n.doc) right.append(el('p', { class: 'nb-doc' }, n.doc));
     if (n.signature) right.append(el('pre', { class: 'nb-sig' }, n.signature));
     if (n.columns?.length) right.append(columnsTable(n));
+    if (n.details?.length) {
+      const sec = el('section', { class: 'nb-details' });
+      sec.append(el('h4', {}, 'Definition'));
+      const dl = el('dl');
+      for (const d of n.details) dl.append(el('dt', {}, d.label), el('dd', {}, d.value));
+      sec.append(dl);
+      right.append(sec);
+    }
 
     const rel = index.relations(n.id);
     if (n.params || n.returns) {
@@ -880,7 +932,13 @@ export function mountBrain(
       const ul = el('ul');
       if (n.params?.length)
         for (const p of n.params)
-          ul.append(el('li', {}, `in  ${p.name}${p.optional ? '?' : ''}: ${p.type}`));
+          ul.append(
+            el(
+              'li',
+              {},
+              `${(p.mode ?? 'in').padEnd(3)} ${p.name}${p.optional ? '?' : ''}: ${p.type}${p.default !== undefined ? ` = ${p.default}` : ''}`,
+            ),
+          );
       else if (n.params) ul.append(el('li', {}, 'in  (no parameters)'));
       if (n.returns) {
         const callers = rel.incoming.get('calls')?.length ?? 0;

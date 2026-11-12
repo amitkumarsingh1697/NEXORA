@@ -1,0 +1,10 @@
+import Printf @1 module
+#0 module M @2-2
+#1 type cart @4-4
+#2 function helper(n: int) -> int @6-6
+#3 function add(c: cart, sku: string, qty?) @8-12
+#4 module Registry @14-16
+#5 function get() @15-15 in #4
+call #3 check @9
+call #3 helper @10
+call #3 Store . save @11

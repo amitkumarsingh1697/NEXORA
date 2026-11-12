@@ -1,0 +1,20 @@
+import Foundation/Foundation.h @1 module
+import Store.h @2 include
+#0 interface Saver @4-6 extends NSObject
+#1 method save:(sku: NSString*) -> BOOL @5-5 in #0
+#2 class Cart @8-13 extends NSObject, Saver
+#3 property store -> Store @9-9 in #2
+#4 constructor initWithStore:(store: Store*) -> instancetype @10-10 in #2
+#5 method add:qty:(sku: NSString*, qty: NSInteger) -> NSInteger @11-11 in #2
+#6 method empty() -> Cart* @12-12 in #2
+#7 impl Cart @15-32
+#8 constructor initWithStore:(store: Store*) -> instancetype @16-20 in #7
+#9 method add:qty:(sku: NSString*, qty: NSInteger) -> NSInteger @22-27 in #7
+#10 method empty() -> Cart* @29-31 in #7
+#11 function helper(n: NSInteger) -> NSInteger @34-36
+call #8 super . init @17
+call #9 self . check: @23
+call #9 self.store . save: @24
+call #9 helper @25
+call #10 [Cart alloc] . initWithStore: @30
+call #10 new Cart @30

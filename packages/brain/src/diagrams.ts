@@ -15,7 +15,7 @@ import type { BrainColumn, BrainModel, BrainNeuron, RegionId } from './model';
  * one direction. Everything shown comes from the model; nothing is added.
  */
 
-export type DiagramKind = 'er' | 'schema' | 'class';
+export type DiagramKind = 'er' | 'schema' | 'class' | 'routines';
 
 export interface DiagramBox {
   id: string;
@@ -73,7 +73,7 @@ interface Item {
 interface Link {
   from: string;
   to: string;
-  style: 'fk' | 'extends' | 'implements';
+  style: 'fk' | 'extends' | 'implements' | 'reads' | 'writes' | 'calls' | 'fires';
   label?: string;
   /** Row of the `from` box the line leaves from (the foreign key column). */
   fromRow?: number;
@@ -201,7 +201,20 @@ function render(
     const a = boxes.get(l.from);
     const b = boxes.get(l.to);
     if (!a || !b) continue;
-    const dash = l.style === 'implements' ? ' stroke-dasharray="6 4"' : '';
+    const dash =
+      l.style === 'implements' || l.style === 'reads'
+        ? ' stroke-dasharray="6 4"'
+        : l.style === 'fires'
+          ? ' stroke-dasharray="2 3"'
+          : '';
+    const stroke =
+      l.style === 'writes'
+        ? '#ea580c'
+        : l.style === 'fires'
+          ? '#dc2626'
+          : l.style === 'reads'
+            ? '#059669'
+            : '#64748b';
     const markers =
       l.style === 'fk'
         ? ' marker-start="url(#many)" marker-end="url(#one)"'
@@ -236,7 +249,7 @@ function render(
       d = `M${x1.toFixed(1)},${y1.toFixed(1)} L${x2.toFixed(1)},${y2.toFixed(1)}`;
     }
     parts.push(
-      `<path d="${d}" fill="none" stroke="#64748b" stroke-width="1.3"${dash}${markers}><title>${esc(l.label ?? l.style)}</title></path>`,
+      `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="1.3"${dash}${markers}><title>${esc(l.label ?? l.style)}</title></path>`,
     );
   }
 
@@ -272,7 +285,7 @@ function render(
   }
   if (!items.length)
     parts.push(
-      `<text x="24" y="70" fill="#64748b" font-family="Inter,system-ui,sans-serif">Nothing to draw: ${kind === 'class' ? 'no classes or interfaces were found here' : 'no database tables were found in the schema formats this brain reads (SQL, Prisma, Drizzle)'}.</text>`,
+      `<text x="24" y="70" fill="#64748b" font-family="Inter,system-ui,sans-serif">Nothing to draw: ${kind === 'class' ? 'no classes or interfaces were found here' : kind === 'routines' ? 'no views, routines or triggers were found in the SQL this brain reads' : 'no database tables were found in the schema formats this brain reads (SQL, Prisma, Drizzle)'}.</text>`,
     );
   parts.push('</svg>');
   return {
@@ -433,6 +446,101 @@ export function classDiagram(model: BrainModel, opts: DiagramOptions = {}): Diag
     'down',
     all.length,
     `${model.title}: class diagram${scope}`,
+    notes,
+  );
+}
+
+const ROUTINE_KINDS = new Set([
+  'view',
+  'procedure',
+  'function',
+  'trigger',
+  'event',
+  'policy',
+  'rule',
+]);
+const DB_LINK: Partial<Record<string, Link['style']>> = {
+  reads_table: 'reads',
+  writes_table: 'writes',
+  calls: 'calls',
+  fires_on: 'fires',
+};
+
+/**
+ * Database objects diagram: views, functions, procedures, triggers, events, policies and rules
+ * in the database lobe, with the tables they read and write, the routines they call and the
+ * tables triggers fire on.
+ */
+export function routineDiagram(model: BrainModel, opts: DiagramOptions = {}): Diagram {
+  const all = model.neurons.filter(
+    (n) =>
+      ROUTINE_KINDS.has(n.kind) &&
+      n.region === 'database' &&
+      (opts.file === undefined || (n.file ?? '') === opts.file),
+  );
+  const shown = topByDegree(all, model, opts.max ?? 80);
+  const ids = new Set(shown.map((n) => n.id));
+  const byId = new Map(model.neurons.map((n) => [n.id, n]));
+  const linked = model.synapses.filter((s) => DB_LINK[s.kind] && ids.has(s.source));
+  // Tables (and routines outside the cap) they touch are drawn as plain boxes.
+  for (const s of linked) ids.add(s.target);
+  const items = [...ids].flatMap((id) => {
+    const n = byId.get(id);
+    if (!n) return [];
+    const rows: Item['rows'] = [];
+    if (n.kind === 'table') {
+      for (const c of (n.columns ?? []).filter((c) => c.primaryKey).slice(0, 3))
+        rows.push({ text: `PK   ${c.name}`, strong: true });
+    } else if (
+      n.kind === 'view' ||
+      (n.columns?.length && n.kind !== 'procedure' && n.kind !== 'function')
+    ) {
+      for (const c of (n.columns ?? []).slice(0, MAX_ROWS)) rows.push({ text: c.name });
+      if ((n.columns?.length ?? 0) > MAX_ROWS)
+        rows.push({ text: `+ ${(n.columns?.length ?? 0) - MAX_ROWS} more`, muted: true });
+    } else {
+      for (const p of (n.params ?? []).slice(0, MAX_ROWS))
+        rows.push({ text: `${(p.mode ?? 'in').padEnd(5)} ${p.name}: ${p.type}` });
+      if (n.returns) rows.push({ text: `returns ${n.returns}`, strong: true });
+      for (const d of (n.details ?? []).filter((d) => d.label === 'Fires' || d.label === 'On'))
+        rows.push({ text: `${d.label.toLowerCase()} ${d.value}` });
+    }
+    const accent =
+      n.kind === 'table'
+        ? '#bbf7d0'
+        : n.kind === 'view'
+          ? '#bae6fd'
+          : n.kind === 'trigger'
+            ? '#fecaca'
+            : '#fde68a';
+    return [
+      measure({
+        id: n.id,
+        title: n.name,
+        stereotype: n.kind === 'table' ? undefined : n.kind,
+        rows,
+        accent,
+      }),
+    ];
+  });
+  const links: Link[] = linked.map((s) => ({
+    from: s.source,
+    to: s.target,
+    style: DB_LINK[s.kind]!,
+    label: s.detail ?? s.kind,
+  }));
+  const notes =
+    shown.length < all.length
+      ? [`${all.length - shown.length} less-connected database objects are not drawn.`]
+      : [];
+  const scope = opts.file ? ` (${opts.file})` : '';
+  return render(
+    'routines',
+    items,
+    links,
+    'right',
+    all.length,
+    `${model.title}: database objects diagram${scope}`,
     notes,
   );
 }

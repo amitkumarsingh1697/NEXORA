@@ -1,0 +1,10 @@
+import common.hlsl @1 include
+#0 function Cam -> cbuffer @2-2
+#1 struct VSIn @3-3
+#2 function shade(n: float3) -> float4 @4-4
+#3 function main(v: VSIn) -> float4 @5-5
+call #2 float4 @4
+call #2 normalize @4
+call #2 helper @4
+call #3 mul @5
+call #3 float4 @5

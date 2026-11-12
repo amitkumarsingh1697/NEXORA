@@ -5,6 +5,7 @@ import ts from 'typescript';
 import type { DiscoveredFile } from './files';
 import { IntegrationDetector } from './integrations';
 import { SchemaDetector } from './schema';
+import { componentKindOf, maskComponent, SVELTE_AMBIENT, VUE_AMBIENT, virtualPathOf } from './sfc';
 import { GraphBuilder, type Confidence, type GraphOp, type NodeRef } from './model';
 import {
   applyDelta,
@@ -146,6 +147,10 @@ interface Ctx {
   integrations: IntegrationDetector;
   schema: SchemaDetector;
   pendingInferred: PendingInferred[];
+  /** Virtual module (absolute path) → the Svelte, Vue or Astro component it stands for. */
+  virtual: Map<string, string>;
+  /** Component path → offsets of component-tag references in its virtual module. */
+  componentTags: Map<string, Set<number>>;
 }
 
 function rel(ctx: Ctx, abs: string): string | null {
@@ -155,6 +160,8 @@ function rel(ctx: Ctx, abs: string): string | null {
 
 /** Repository-relative path of any file inside the repository (outside node_modules), discovered or not. */
 function repoPathOf(ctx: Ctx, abs: string): string | null {
+  const component = ctx.virtual.get(toPosix(abs));
+  if (component !== undefined) return component;
   let real = abs;
   try {
     real = realpathSync(abs);
@@ -356,6 +363,26 @@ function loadCompilerOptions(root: string, tsconfigRel: string | undefined): ts.
       base = parsed.options;
     }
   }
+  // SvelteKit's `$lib` alias lives in a generated .svelte-kit/tsconfig.json that a clone does
+  // not have; its documented default is src/lib (kit.files.lib).
+  const dir = join(root, tsconfigRel ?? '');
+  if (!base.paths?.['$lib'] && existsSync(join(dir, 'src/lib'))) {
+    let pkg: string;
+    try {
+      pkg = readFileSync(join(dir, 'package.json'), 'utf8');
+    } catch {
+      pkg = ''; // no package.json: not a SvelteKit package
+    }
+    if (pkg.includes('"@sveltejs/kit"'))
+      base = {
+        ...base,
+        paths: {
+          ...base.paths,
+          $lib: [join(dir, 'src/lib')],
+          '$lib/*': [join(dir, 'src/lib/*')],
+        },
+      };
+  }
   return {
     ...base,
     allowJs: true,
@@ -413,8 +440,77 @@ export function indexTypeScript(
     }),
     schema,
     pendingInferred: [],
+    virtual: new Map(),
+    componentTags: new Map(),
   };
   const code = files.filter((f) => f.lang === 'typescript' || f.lang === 'javascript');
+  // Svelte, Vue and Astro components: each is compiled as a virtual TypeScript module.
+  const virtualText = new Map<string, string>();
+  const ambient = new Map<string, string>();
+  const componentKinds = new Set<string>();
+  // Scripts without an extension (found by their `#!` line) are compiled under a virtual name too.
+  const virtualOf = new Map<string, string>();
+  for (const f of code) {
+    const kind = componentKindOf(f.path);
+    const bare = !kind && !/\.[^/]*$/.test(f.path.slice(f.path.lastIndexOf('/') + 1));
+    if (!kind && !bare) continue;
+    const vpath = kind
+      ? virtualPathOf(f.path)
+      : `${f.path}${f.lang === 'typescript' ? '.ts' : '.js'}`;
+    if (allPaths.has(vpath)) {
+      stats.filesFailed.push({
+        path: f.path,
+        error: `the file ${vpath} exists, so this file cannot be compiled under that name`,
+      });
+      continue;
+    }
+    let text: string;
+    try {
+      text = readFileSync(join(ctx.root, f.path), 'utf8');
+    } catch (e) {
+      stats.filesFailed.push({ path: f.path, error: e instanceof Error ? e.message : String(e) });
+      continue;
+    }
+    const masked = kind ? maskComponent(f.path, text) : null;
+    const abs = toPosix(join(ctx.root, vpath));
+    virtualText.set(abs, masked ? masked.code : text);
+    ctx.virtual.set(abs, f.path);
+    virtualOf.set(f.path, vpath);
+    if (masked) {
+      ctx.componentTags.set(f.path, new Set(masked.tags));
+      componentKinds.add(masked.kind);
+    }
+  }
+  // The runes and macros are declared as files of their packages, so calls to them are external.
+  if (componentKinds.has('svelte'))
+    ambient.set(
+      toPosix(join(ctx.root, 'node_modules/svelte/__codeatlas_runes.d.ts')),
+      SVELTE_AMBIENT,
+    );
+  if (componentKinds.has('vue'))
+    ambient.set(toPosix(join(ctx.root, 'node_modules/vue/__codeatlas_macros.d.ts')), VUE_AMBIENT);
+  const served = new Map([...virtualText, ...ambient]);
+  const withComponents = (host: ts.CompilerHost): ts.CompilerHost => {
+    if (!served.size) return host;
+    const fileExists = host.fileExists.bind(host);
+    const readFile = host.readFile.bind(host);
+    const getSourceFile = host.getSourceFile.bind(host);
+    host.fileExists = (f) => served.has(toPosix(f)) || fileExists(f);
+    host.readFile = (f) => served.get(toPosix(f)) ?? readFile(f);
+    host.getSourceFile = (fileName, lang, onError, shouldCreateNew) => {
+      const text = served.get(toPosix(fileName));
+      if (text === undefined) return getSourceFile(fileName, lang, onError, shouldCreateNew);
+      return ts.createSourceFile(
+        fileName,
+        text,
+        lang,
+        false,
+        fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+      );
+    };
+    return host;
+  };
+  const sourcePath = (p: string) => join(ctx.root, virtualOf.get(p) ?? p);
   const tsconfigDirs = [...allPaths]
     .filter((p) => p === 'tsconfig.json' || p.endsWith('/tsconfig.json'))
     .map((p) => (p === 'tsconfig.json' ? '' : p.slice(0, -'/tsconfig.json'.length)));
@@ -539,7 +635,11 @@ export function indexTypeScript(
     const todo = list.filter((f) => analyse(f.path));
     if (!todo.length) continue;
     const options = loadCompilerOptions(ctx.root, group === '\0none' ? undefined : group);
-    const host = sharedSourceHost(ts.createCompilerHost(options, true), options, sourceCache);
+    const host = sharedSourceHost(
+      withComponents(ts.createCompilerHost(options, true)),
+      options,
+      sourceCache,
+    );
     // Global-declaring files are compiled too, so re-analysed files see the same types:
     // analysed ones in this group, and declaration files any file in this group references.
     const roots = dirty
@@ -549,7 +649,7 @@ export function indexTypeScript(
       for (const g of extraGlobals)
         if (list.some((f) => previous?.files[f.path]?.deps.includes(g))) roots.push(g);
     const program = ts.createProgram({
-      rootNames: roots.map((p) => join(ctx.root, p)),
+      rootNames: [...roots.map(sourcePath), ...ambient.keys()],
       options,
       host,
     });
@@ -568,7 +668,7 @@ export function indexTypeScript(
       continue;
     }
     recorded(f.path, 1, () => {
-      const sf = p.program.getSourceFile(join(ctx.root, f.path));
+      const sf = p.program.getSourceFile(sourcePath(f.path));
       if (!sf) {
         stats.filesFailed.push({ path: f.path, error: 'not loaded by compiler' });
         return;
@@ -602,7 +702,7 @@ export function indexTypeScript(
       continue;
     }
     recorded(f.path, 2, () => {
-      const sf = p.program.getSourceFile(join(ctx.root, f.path));
+      const sf = p.program.getSourceFile(sourcePath(f.path));
       if (!sf) return;
       try {
         collectReferences(ctx, sf, f.path, p.checker);
@@ -1155,8 +1255,9 @@ function collectReferences(
 
   const linkCall = (node: ts.CallExpression | ts.NewExpression, kind: 'calls' | 'instantiates') => {
     const owner = ownerOf(node);
-    const line = lineOf(sf, node.getStart(sf));
     const nameNode = calleeName(node.expression);
+    // In a chain (`a()\n  .b()\n  .c()`) each call is cited at its own name, not the chain's start.
+    const line = lineOf(sf, (nameNode ?? node).getStart(sf));
     if (!nameNode) {
       ctx.stats.calls.dynamic++;
       unresolvedCalls++;
@@ -1201,7 +1302,40 @@ function collectReferences(
     }
   };
 
+  // Component tags in a Svelte, Vue or Astro template: `<Button>` renders what `Button` names.
+  const tags = new Set(ctx.componentTags.get(path) ?? []);
+  const renderTag = (node: ts.Identifier | ts.PropertyAccessExpression) => {
+    let dst: NodeRef | null = null;
+    const t = resolve(ts.isPropertyAccessExpression(node) ? node.name : node);
+    if (t.type === 'symbol') dst = { kind: 'symbol', key: t.key };
+    else if (ts.isIdentifier(node)) {
+      // A default import of a component module: the target is that component's file.
+      const decl = checker.getSymbolAtLocation(node)?.declarations?.[0];
+      let imp: ts.Node | undefined = decl;
+      while (imp && !ts.isImportDeclaration(imp)) imp = imp.parent;
+      if (imp && ts.isImportDeclaration(imp)) {
+        const mod = checker.getSymbolAtLocation(imp.moduleSpecifier);
+        const msf = mod?.valueDeclaration;
+        const target = msf && ts.isSourceFile(msf) ? rel(ctx, msf.fileName) : null;
+        if (target) dst = { kind: 'file', key: target };
+      }
+    }
+    if (!dst) return;
+    ctx.graph.addEdge({
+      kind: 'renders',
+      src: ownerOf(node),
+      dst,
+      confidence: 'observed',
+      evidencePath: path,
+      evidenceLine: lineOf(sf, node.getStart(sf)),
+    });
+  };
+
   const visit = (node: ts.Node): void => {
+    if (tags.size && (ts.isIdentifier(node) || ts.isPropertyAccessExpression(node))) {
+      const at = node.getStart(sf);
+      if (tags.delete(at)) renderTag(node);
+    }
     ctx.integrations.visit(node, sf, path, checker, () => ownerOf(node));
     ctx.schema.visit(node, sf, path, checker, () => ownerOf(node));
     if (

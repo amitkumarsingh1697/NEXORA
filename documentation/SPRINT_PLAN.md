@@ -85,6 +85,85 @@
 
 ---
 
+## Sprint L1: Full syntax analysis for every language with a grammar
+
+The founder asked for full analysis of every language, file, method, function and database object in CodeAtlas and ArchLens (2026-11-09). The work is split into six sprints so each one can be tested on its own.
+
+| ID   | Item                                        | Requirements     | Acceptance criteria                                                                                                                                                        |
+| ---- | ------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L1-1 | Vendored, hash-checked tree-sitter grammars | LANG-09          | Each grammar at an exact version with licence, npm integrity and SHA-256 in a manifest; a grammar whose hash differs is refused (test).                                    |
+| L1-2 | Extraction for 31 languages                 | LANG-09          | A fixture per language parses with no errors; declarations, parameters, returns, bases, imports and calls match a reviewed snapshot; broken source reports the error line. |
+| L1-3 | Labelled call and inheritance resolution    | LANG-10, LANG-11 | Every link observed, inferred or unresolved with a reason; no name-only member guesses in statically typed languages; built-in names on untyped receivers stay unresolved. |
+| L1-4 | CodeAtlas integration                       | LANG-09, LANG-12 | `full` only on an error-free parse; schema v8 records the resolution; brain draws members, parameters and the new synapses; `pnpm check` passes.                           |
+| L1-5 | Real-repository measurement                 | LANG-10          | Speed and sampled precision recorded for four public repositories (research R28).                                                                                          |
+
+**Status:** done 2026-11-09 (evidence in IMPLEMENTATION_STATUS.md, research R26 to R28, ADR 0015).
+**Excluded from L1, planned next:** L2 databases (views, procedures, functions, triggers, indexes and sequences with their bodies, through a PostgreSQL parser and statement analysers for other dialects); L3 ORM schema readers; L4 compiler-grade resolution through SCIP indexers where a toolchain exists; L5 grammars without published WebAssembly (Dart, Swift, SQL dialects), which need approval to build; L6 the ArchLens bundle, skill update and proof runs on large repositories.
+
+## Sprint L2: Database objects with their bodies
+
+| ID   | Item                                | Requirements | Acceptance criteria                                                                                                                                                                |
+| ---- | ----------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L2-1 | PostgreSQL through its own parser   | DB-01, DB-02 | Every statement of a PostgreSQL file parsed by libpg-query; PL/pgSQL bodies through its compiler front end; byte offsets mapped to lines (non-ASCII test).                         |
+| L2-2 | Statement reader for other dialects | DB-01, DB-02 | MySQL, SQL Server, Oracle, Db2 and SQLite fixtures: every statement split by its client's rules and recognised; parameters, modes, returns and body references at the right lines. |
+| L2-3 | CodeAtlas graph and status          | DB-03, DB-04 | Objects as nodes; reads, writes, calls, triggers and indexes linked with labels; unmatched names kept; `full` only for a complete PostgreSQL parse.                                |
+| L2-4 | Brain and diagram                   | DB-05        | Database neuron kinds in the database lobe with a definition panel; a database objects diagram.                                                                                    |
+| L2-5 | Real schemas                        | DB-01        | Sakila in 8 dialects and Pagila read (research R30).                                                                                                                               |
+
+**Status:** done 2026-11-10 (evidence in IMPLEMENTATION_STATUS.md, research R29 and R30, ADR 0016).
+**Excluded from L2, planned next:** ORM and migration-tool schemas (L3); complete grammars for MySQL, SQL Server, Oracle and Db2 (L5, needs approval to build tree-sitter grammars from source); search-path-aware name resolution across schemas.
+
+## Sprint L3: ORM and migration-tool schemas
+
+| ID   | Item                       | Requirements | Acceptance criteria                                                                                                                |
+| ---- | -------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| L3-1 | Readers for 23 frameworks  | ORM-01       | One fixture per framework read with its language's parser; down migrations and rollbacks skipped.                                  |
+| L3-2 | Default names              | ORM-02       | Each framework's rule ported from its source and tested on its own examples; default names labelled inferred with the rule.        |
+| L3-3 | Cross-file resolution      | ORM-03       | Inheritance, join tables, registrations; shared class names told apart or left unresolved, never guessed.                          |
+| L3-4 | Migration replay and dumps | ORM-04       | Drops and renames applied in migration order; Alembic by revision chain; Rails `schema.rb` and EF Core snapshots preferred.        |
+| L3-5 | Graph, brain, real repos   | ORM-05       | Tables, keys and `maps_to` in the CodeAtlas graph and brain; spring-petclinic, eShop, bakerydemo and mastodon read (research R32). |
+
+**Status:** done 2026-11-10 (evidence in IMPLEMENTATION_STATUS.md, research R31 and R32, ADR 0017).
+**Excluded from L3, planned next:** Hibernate `hbm.xml`, JPA `orm.xml`, MyBatis mappers, Doctrine XML and YAML mappings, Flyway Java migrations and EF6 `DbMigration` (still named in the brain's unread-schema notice); raw SQL inside ORM migrations; L4 compiler-grade resolution.
+
+## Sprint L4: compiler-grade resolution (SCIP)
+
+| ID   | Item                  | Requirements | Acceptance criteria                                                                                                          |
+| ---- | --------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| L4-1 | SCIP reader           | SCIP-01      | Decoder and symbol parser tested on hand-encoded input, malformed input and real indexer output; no new dependency.          |
+| L4-2 | Resolver              | SCIP-02      | Definitions, externals, ambiguity and missing definitions told apart; overloads kept as one symbol.                          |
+| L4-3 | Links in CodeAtlas    | SCIP-03      | Observed links with the tool and line; disagreements name the earlier choice; library calls external; syntax kept otherwise. |
+| L4-4 | Indexes given and run | SCIP-04      | `--scip` and `--run-indexers`; only source-only indexers run, hardened and timed; every source reported.                     |
+| L4-5 | Real repositories     | SCIP-03      | gin with scip-go and requests with scip-python measured with and without the index; samples checked by hand (research R34).  |
+
+**Status:** done 2026-11-12 (evidence in IMPLEMENTATION_STATUS.md, research R33 and R34, ADR 0018).
+**Excluded from L4:** running indexers that build the project (by design, ADR 0018); SCIP options in the web service; Go builtins as a known set. Next: L5, about 45 more grammars compiled from source.
+
+---
+
+## Sprint L5: grammars built from source
+
+| ID   | Item                 | Requirements | Acceptance criteria                                                                                                                             |
+| ---- | -------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| L5-1 | Pinned build         | GRAM-01      | 44 grammars built from listed commits with tree-sitter-cli 0.27.1; licence, commit, hash and patch in the manifest; every grammar hash-checked. |
+| L5-2 | Extraction rules     | GRAM-02      | A fixture per language parses without errors and matches a reviewed snapshot.                                                                   |
+| L5-3 | Registry and indexer | GRAM-03      | Registry and syntax layer list the same 71 languages; COBOL and Fortran indexed as full.                                                        |
+
+**Status:** done 2026-11-12 (evidence in IMPLEMENTATION_STATUS.md, research R35 and R36, ADR 0019).
+**Excluded from L5:** wiring the Vue, SQL, Make, CMake and Dockerfile grammars (their dedicated analysers stay); languages with no tree-sitter grammar (KNOWN_LIMITATIONS). Next: L6, the ArchLens bundle, skill update and proof runs on Twenty and Immich.
+
+## Sprint L6: ArchLens bundle and proof runs
+
+| ID   | Item       | Requirements       | Acceptance criteria                                                                                                                                                          |
+| ---- | ---------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L6-1 | Bundle     | ARCH-01            | `node scripts/brain/brain.mjs` builds a brain with Node alone; the committed bundle equals a fresh build and gives the same parts and connections as the in-process indexer. |
+| L6-2 | Skill text | ARCH-01            | SKILL.md and README describe the bundle, its flags and the current coverage; `check.mjs` passes.                                                                             |
+| L6-3 | Proof runs | ARCH-01 to ARCH-04 | Immich and Twenty indexed in full; every gap the runs show is fixed or recorded in KNOWN_LIMITATIONS.                                                                        |
+
+**Status:** done 2026-11-12 (research R37 to R40, ADR 0020 and 0021). The proof runs found and fixed: components as text only (ADR 0021), a 20,000-file cap and 512 KiB size limit, a 6,000-part brain cap, stale coverage notes, generated SQL query lists, Swift 6 and Rust 2024 syntax (grammars moved to newer commits), and an off-by-one in SQL error lines.
+**Excluded from L6:** measuring the 3D view on a real graphics card; Swift `~Copyable` and `case .x():` (grammar gaps upstream).
+---
+
 ## Blocked or external track (not sprint-scheduled)
 
 | Item                                                                 | Blocker                                       | Owner                                            |

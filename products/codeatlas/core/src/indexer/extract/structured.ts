@@ -1522,29 +1522,6 @@ export function readTextLockfile(path: string, text: string): StructuredResult {
   return result('partial', 'Lockfile package counter', { facts: { lockedPackages: n } });
 }
 
-// ---------------------------------------------------------------- SQL objects beyond tables
-
-const SQL_OBJECT =
-  /\bcreate\s+(?:or\s+replace\s+|or\s+alter\s+)?(?:(?:temp|temporary|materialized|editionable|noneditionable|unique|global|definer\s*=\s*\S+)\s+)*(view|procedure|proc|function|trigger|package\s+body|package|type\s+body|type|sequence|index|schema|synonym|domain|extension|event)\s+(?:if\s+not\s+exists\s+)?((?:[`"[]?[\w$#]+[`"\]]?\.)?[`"[]?[\w$#]+[`"\]]?)/gi;
-
-export function sqlObjects(text: string): StructSymbol[] {
-  const out: StructSymbol[] = [];
-  for (const m of text.matchAll(SQL_OBJECT)) {
-    const kind = (m[1] as string)
-      .toLowerCase()
-      .replace(/\s+/g, '-')
-      .replace(/^proc$/, 'procedure');
-    const name = (m[2] as string).replace(/[`"[\]]/g, '');
-    out.push({
-      name,
-      kind: `sql-${kind}`,
-      line: lineOf(text, m[0] as string, Math.max(0, (m.index ?? 0) - 1)) ?? 1,
-    });
-    if (out.length >= 2000) break;
-  }
-  return out;
-}
-
 // ---------------------------------------------------------------- CSV / TSV
 
 /** Row and column counts of comma- or tab-separated data. Cell values are never kept. */

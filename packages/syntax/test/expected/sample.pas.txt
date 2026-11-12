@@ -1,0 +1,20 @@
+namespace Cart
+import SysUtils @3 module
+import App.Store @3 module
+#0 class TCart @5-13 extends TBase, IShape
+#1 property FTotal -> Integer @7-7 in #0
+#2 constructor Create(a: Integer) @9-9 in #0
+#3 method Total(x: string, y?: Integer) -> Integer @10-10 in #0
+#4 method Clear() @11-11 in #0
+#5 property Size -> Integer @12-12 in #0
+#6 record TPoint @14-14
+#7 property x -> Integer @14-14 in #6
+#8 constructor Create(a: Integer) @16-19 recv TCart
+#9 method Total(x: string, y: Integer) -> Integer @20-27 recv TCart
+#10 method Clear() @28-28 recv TCart
+#11 function Helper(x: string) -> Integer @29-29
+call #8 inherited . Create @18
+call #9 TStore @23
+call #9 s . Save @24
+call #9 Helper @25
+call #9 WriteLn @26

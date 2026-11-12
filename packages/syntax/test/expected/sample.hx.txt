@@ -1,0 +1,20 @@
+namespace app
+import app.Store @2 module {Store}
+import haxe.ds.* @7 module
+import a.B @8 module {B as C}
+#0 class Cart @3-6 extends Base, Shape
+#1 constructor new() @4-4 in #0
+#2 method total(x: String, y?: Int) -> Int @5-5 in #0
+#3 interface Shape @9-9 extends Base
+#4 method area() -> Float @9-9 in #3
+#5 enum Color @10-10
+#6 type P @11-11
+#7 class M @12-12
+#8 method main() @12-12 in #7
+#9 property z -> Int @12-12 in #7
+call #2 Store @5
+call #2 s . save @5
+call #2 helper @5
+call #8 trace @12
+call #8 Std . parseInt @12
+call #8 a.b . c @12

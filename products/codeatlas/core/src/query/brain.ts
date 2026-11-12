@@ -4,6 +4,7 @@ import {
   classifyFile,
   inventoryOf,
   type BrainColumn,
+  type BrainDetail,
   type BrainCoverage,
   type BrainModel,
   type BrainNeuron,
@@ -45,6 +46,9 @@ const SYNAPSE_OF: Record<string, SynapseKind> = {
   builds: 'builds',
   runs: 'runs',
   includes: 'includes',
+  fires_on: 'fires_on',
+  indexes: 'indexes',
+  maps_to: 'maps_to',
 };
 
 /** Links between files (from build, CI, container and config files). */
@@ -59,6 +63,79 @@ const SYMBOL_KINDS = new Map<string, NeuronKind>([
   ['accessor', 'method'],
 ]);
 
+/** Database objects read from SQL files (symbol kind → neuron kind). */
+const SQL_KINDS = new Map<string, NeuronKind>([
+  ['view', 'view'],
+  ['function', 'function'],
+  ['procedure', 'procedure'],
+  ['trigger', 'trigger'],
+  ['index', 'index'],
+  ['sequence', 'sequence'],
+  ['datatype', 'datatype'],
+  ['package', 'package'],
+  ['policy', 'policy'],
+  ['rule', 'rule'],
+  ['event', 'event'],
+  ['synonym', 'synonym'],
+  ['schema', 'schema'],
+  ['extension', 'extension'],
+]);
+
+const KIND_WORD: Record<string, string> = {
+  'materialized-view': 'materialized view',
+  'package-body': 'package body',
+  'type-body': 'type body',
+};
+
+/** The facts of a database object, for its details panel. */
+function sqlDetails(d: Record<string, unknown>): BrainDetail[] {
+  const out: BrainDetail[] = [];
+  const add = (label: string, v: unknown) => {
+    if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) return;
+    out.push({ label, value: Array.isArray(v) ? v.join(', ') : String(v) });
+  };
+  const declKind = String(d.declKind ?? '');
+  add('Kind', KIND_WORD[declKind] ?? declKind);
+  if (declKind === 'trigger')
+    add(
+      'Fires',
+      [
+        d.timing,
+        Array.isArray(d.events) ? d.events.join(' OR ') : undefined,
+        d.forEach ? `for each ${String(d.forEach)}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+  add('On', d.table);
+  add('Runs', d.executes);
+  if (declKind === 'index') add('Columns', d.indexColumns);
+  if (d.unique) add('Unique', 'yes');
+  add('Method', d.method);
+  if (d.options && typeof d.options === 'object')
+    add(
+      'Options',
+      Object.entries(d.options as Record<string, string>).map(([k, v]) => `${k} ${v}`),
+    );
+  add('Owned by', d.ownedBy);
+  add('Values', d.values);
+  add('Language', d.routineLanguage);
+  add('Schema', d.schema);
+  add('Reads', d.reads);
+  add('Writes', d.writes);
+  if (Array.isArray(d.dynamicSql) && d.dynamicSql.length)
+    add('Not analysed', `SQL built at run time (line ${d.dynamicSql.join(', ')})`);
+  add('Not in this repository', d.unresolvedReads);
+  add('Calls not linked', d.unresolvedCalls);
+  if (Number(d.overloads) > 1)
+    add('Overloads', `${String(d.overloads)} definitions share this name`);
+  add(
+    'Read by',
+    [d.parser, d.dialect ? `(${String(d.dialect)})` : undefined].filter(Boolean).join(' '),
+  );
+  return out;
+}
+
 /**
  * Non-code files that still belong in the brain (CI, containers, orchestration, build and
  * infrastructure), by their file type in the shared registry; shell scripts and Procfiles too.
@@ -71,7 +148,7 @@ function isDevopsFile(path: string, role: unknown): boolean {
 }
 
 /** Above this many neurons the least-connected parts are left out so the page stays fast. */
-export const BRAIN_MAX_NEURONS = 6000;
+export const BRAIN_MAX_NEURONS = 100_000;
 
 /** UI frameworks whose presence in a package.json makes its package a browser app. */
 const UI_FRAMEWORKS = ['react', 'vue', 'svelte', '@angular/core', 'solid-js', 'preact'];
@@ -121,28 +198,52 @@ function uiPackageOf(path: string, packages: Map<string, string>): string | unde
 }
 
 /** Schema sources in formats CodeAtlas does not parse, found by path or a bounded content check. */
+/** Where an ORM table is defined, by which model, and how its name was found. */
+function tableDetails(data: Record<string, unknown>): { details?: BrainDetail[] } {
+  const by = Array.isArray(data.definedBy) ? (data.definedBy as Record<string, unknown>[]) : [];
+  if (!by.length) return {};
+  const details: BrainDetail[] = [];
+  if (data.tableKind === 'collection')
+    details.push({ label: 'Kind', value: 'document collection' });
+  if (data.tableKind === 'join-table')
+    details.push({ label: 'Kind', value: 'join table created by the ORM' });
+  for (const d of by.slice(0, 6)) {
+    const where = `${String(d.path)}:${String(d.line)}`;
+    const what = d.change
+      ? `${String(d.label)} migration adds columns`
+      : d.model
+        ? `${String(d.label)} model ${String(d.model)}`
+        : `${String(d.label)} migration`;
+    details.push({ label: 'Defined by', value: `${what} (${where})` });
+    if (d.rule) details.push({ label: 'Name', value: String(d.rule) });
+  }
+  return { details };
+}
+
 const UNREAD_SCHEMA_KINDS: {
   label: string;
   path: RegExp;
   content?: RegExp;
 }[] = [
-  { label: 'Liquibase changelogs', path: /(^|\/)[^/]*change-?log[^/]*\.(xml|ya?ml)$/i },
+  // Read since sprint L3 (ADR 0017): Liquibase, JPA, Django, SQLAlchemy, Rails, EF Core and the
+  // other frameworks in @nexora/orm. These mapping formats are still not read:
+  { label: 'Hibernate XML mappings', path: /\.hbm\.xml$/i },
+  { label: 'JPA orm.xml mapping files', path: /(^|\/)orm\.xml$/i, content: /<entity-mappings\b/ },
   {
-    label: 'JPA/Hibernate @Entity classes',
-    path: /\.(java|kt)$/,
-    content: /^\s*@(javax\.persistence\.|jakarta\.persistence\.)?Entity\b/m,
+    label: 'MyBatis mapper files',
+    path: /\.xml$/i,
+    content: /<!DOCTYPE\s+mapper\b|<mapper\s+namespace=/,
   },
-  { label: 'Django models files', path: /(^|\/)models\.py$/, content: /models\.Model\b/ },
+  { label: 'Doctrine XML or YAML mappings', path: /\.orm\.(xml|ya?ml)$/i },
   {
-    label: 'SQLAlchemy model files',
-    path: /\.py$/,
-    content: /\b(declarative_base\(|DeclarativeBase\b)/,
+    label: 'Flyway Java migrations',
+    path: /(^|\/)V\d+[\w.]*__\w+\.(java|kt)$/,
+    content: /\bBaseJavaMigration\b/,
   },
-  { label: 'Rails schema files', path: /(^|\/)db\/schema\.rb$/ },
   {
-    label: 'Entity Framework migrations',
-    path: /(^|\/)Migrations\/[^/]+\.cs$/,
-    content: /migrationBuilder\.CreateTable/,
+    label: 'Entity Framework 6 code-first migrations',
+    path: /\.cs$/,
+    content: /\bDbMigration\b[\s\S]*\bCreateTable\(/,
   },
 ];
 
@@ -354,7 +455,9 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
   for (const n of nodes) {
     if (n.filePath && isTestSupportPath(n.filePath)) continue;
     let kind: NeuronKind | undefined;
-    if (n.kind === 'symbol') {
+    const fromSql = n.kind === 'symbol' && n.data.extraction === 'sql';
+    if (fromSql) kind = SQL_KINDS.get(n.symbolKind ?? '');
+    else if (n.kind === 'symbol') {
       kind = SYMBOL_KINDS.get(n.symbolKind ?? '');
       if (
         kind === 'function' &&
@@ -380,13 +483,21 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
         region: 'database',
         reason: `database table defined in ${n.filePath ?? 'a schema'}`,
       };
+    else if (fromSql)
+      place = {
+        region: 'database',
+        reason: `database ${KIND_WORD[String(n.data.declKind)] ?? String(n.data.declKind ?? kind)} defined in ${n.filePath ?? 'SQL'}`,
+      };
     else place = placeFile(n.filePath);
 
     const params = Array.isArray(n.data.params)
       ? (n.data.params as BrainParam[]).map((p) => ({
           name: String(p.name).replace(/\s+/g, ' '),
-          type: String(p.type),
+          // An empty type means the source does not declare one (Python, Ruby, Lua…).
+          type: p.type === undefined || p.type === null ? '' : String(p.type),
           optional: !!p.optional,
+          ...(p.mode && p.mode !== 'in' ? { mode: p.mode } : {}),
+          ...(p.default !== undefined ? { default: String(p.default) } : {}),
         }))
       : undefined;
     neuronOf.set(n.id, {
@@ -409,9 +520,10 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
           }
         : {}),
       columns:
-        kind === 'table' && Array.isArray(n.data.columns)
+        (kind === 'table' || fromSql) && Array.isArray(n.data.columns)
           ? (n.data.columns as BrainColumn[])
           : undefined,
+      ...(fromSql ? { details: sqlDetails(n.data) } : kind === 'table' ? tableDetails(n.data) : {}),
       ref: n.id,
     });
   }
@@ -428,14 +540,21 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     }
   }
 
-  // A file read by declaration patterns has no file neuron; its links and imports are drawn
-  // from its first top-level declaration instead.
+  // A file read by declaration patterns or the syntax layer has no file neuron; its links and
+  // imports are drawn from its first top-level declaration instead.
   const primaryOf = new Map<number, BrainNeuron>();
   for (const e of edges) {
     if (e.kind !== 'contains' || nodeById.get(e.src)?.kind !== 'file') continue;
     const child = nodeById.get(e.dst);
     const neuron = neuronOf.get(e.dst);
-    if (!child || !neuron || child.data.extraction !== 'pattern') continue;
+    if (
+      !child ||
+      !neuron ||
+      (child.data.extraction !== 'pattern' &&
+        child.data.extraction !== 'syntax' &&
+        child.data.extraction !== 'sql')
+    )
+      continue;
     const cur = primaryOf.get(e.src);
     if (!cur || (neuron.line ?? 0) < (cur.line ?? 0)) primaryOf.set(e.src, neuron);
   }
@@ -463,7 +582,7 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
   for (const e of edges) {
     const kind = SYNAPSE_OF[e.kind];
     if (kind) add(e, kind);
-    // Imports between files resolved by the pattern analyser (TypeScript imports are drawn as calls).
+    // Imports between files resolved by the pattern or syntax analysers (TypeScript imports are drawn as calls).
     else if (e.kind === 'imports' && primaryOf.has(e.src) && primaryOf.has(e.dst))
       add(e, 'imports');
   }
@@ -505,8 +624,8 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
   notes.push(
     `Built by CodeAtlas from its index${repo.headCommit ? ` at commit ${repo.headCommit.slice(0, 10)}` : ''}. Links are labelled observed (resolved by the TypeScript compiler, or a path written literally in a build, CI or container file), inferred (matched by name or convention) or unknown.`,
     'Which lobe a part sits in is inferred from its file path and the packages the file imports.',
-    'Tables and columns are read from SQL files (CREATE TABLE, ALTER TABLE), Prisma schemas, Drizzle table definitions and CREATE TABLE statements inside code, with types, sizes and keys as written. A Drizzle query that names a table is an observed read or write; a Prisma call or a table named in a SQL string is inferred. Views, stored procedures, dynamic SQL and the Drizzle relational query API are not linked.',
-    'Inputs and return types of TypeScript and JavaScript come from the type checker. Classes, functions and methods of other languages come from declaration patterns: their names and lines are reliable, their parameters are as written, and calls between them are not extracted. An import between two such files is drawn from the first declaration of each. Test files, type aliases and plain variables are left out.',
+    'Tables and columns are read from SQL files (CREATE TABLE, ALTER TABLE), Prisma schemas, Drizzle table definitions and CREATE TABLE statements inside code, with types, sizes and keys as written. A Drizzle query that names a table is an observed read or write; a Prisma call or a table named in a SQL string is inferred. Views, materialized views, functions, procedures, triggers, indexes, sequences, types, packages, policies, rules and events are read from SQL files with their parameters and columns: PostgreSQL by its own parser (bodies included, PL/pgSQL through its compiler front end), other dialects by a statement reader, and each object says which. The tables a body reads and writes and the routines it calls are matched to the schema by name: observed from the PostgreSQL parser, inferred from the statement reader. SQL built at run time (EXECUTE, sp_executesql) and the Drizzle relational query API are not linked.',
+    'Inputs and return types of TypeScript and JavaScript, including the scripts and templates of Svelte, Vue and Astro components, come from the type checker, which also resolves their calls (observed). Languages with a tree-sitter grammar are parsed in full: classes, functions and methods with parameters and return types as written, imports, and calls matched to a declaration by name (inferred), or resolved by a SCIP index when one was given (observed). Languages without a grammar get declarations from patterns: names, lines and parameters as written, and no calls. Languages & files says which method read each language. An import between two files outside TypeScript is drawn from the first declaration of each. Test files, type aliases and plain variables are left out.',
     'Languages & files lists every language and file type found, with how each file was processed.',
   );
   return {

@@ -1,0 +1,6 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+def make_lib(name, srcs = []):
+    cc_library(name = name, srcs = srcs)
+
+make_lib("core", srcs = ["core.cc"])

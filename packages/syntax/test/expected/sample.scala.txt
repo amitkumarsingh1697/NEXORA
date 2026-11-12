@@ -1,0 +1,15 @@
+namespace shop.cart
+import shop.store.Store @3 module
+import scala.util.{Try,Success} @4 module
+#0 class Cart @6-14 extends Base, Saver
+#1 method add(sku: String, qty?: Int) -> Int @7-12 in #0
+#2 method check(sku: String) -> Boolean @13-13 in #0
+#3 object Cart @16-18
+#4 method helper(n: Int) -> Int @17-17 in #3
+#5 trait Saver @20-20
+#6 method save(sku: String) -> Unit @20-20 in #5
+call #1 check @8
+call #1 helper @9
+call #1 store . save @10
+call #4 new Counter() . next @17
+call #4 new Counter @17

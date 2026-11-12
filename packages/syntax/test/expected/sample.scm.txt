@@ -1,0 +1,7 @@
+import scheme base @1 module
+import srfi 1 @1 module
+#0 function run(x, ...rest) @2-2
+#1 property answer @3-3
+#2 record point @4-4
+call #0 helper @2
+call #0 display @2

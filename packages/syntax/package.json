@@ -1,0 +1,22 @@
+{
+  "name": "@nexora/syntax",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "description": "Full-syntax analysis for CodeAtlas and ArchLens: tree-sitter grammars (WebAssembly) and per-language extraction of declarations, parameters, return types, imports and calls.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "vendor": "node scripts/vendor-grammars.mjs"
+  },
+  "dependencies": {
+    "web-tree-sitter": "0.27.1"
+  },
+  "devDependencies": {
+    "tsx": "4.23.15"
+  }
+}
