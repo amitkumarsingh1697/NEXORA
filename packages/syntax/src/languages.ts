@@ -70,6 +70,9 @@ export const SPEC_BY_LANGUAGE: Record<string, LangSpec> = {
   Fortran: l5.fortran,
   'Fortran Free Form': l5.fortran,
   Ada: l5.ada,
+  COBOL: l5.cobol,
+  SystemVerilog: l5.systemverilog,
+  Verilog: l5.verilog,
 };
 
 export function specFor(language: string): LangSpec | undefined {

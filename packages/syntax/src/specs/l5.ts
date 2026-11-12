@@ -2505,3 +2505,257 @@ export const ada: LangSpec = {
     },
   },
 };
+
+// ---------------------------------------------------------------- COBOL
+
+const COBOL_HEADER = /^(paragraph_header|section_header)$/;
+/** A paragraph's statements follow its header as siblings, up to the next header. */
+const cobolTrailing = (n: Node): Node | null => {
+  const next = n.nextSibling;
+  if (!next || COBOL_HEADER.test(next.type)) return null;
+  // A paragraph ends at the next section header too; a section owns the paragraphs in it.
+  if (n.type === 'section_header' && next.type === 'paragraph_header') return null;
+  return next;
+};
+const cobolLabel = (n: Node | null | undefined) => text(childOfType(n, 'qualified_word')) ?? text(n);
+
+export const cobol: LangSpec = {
+  grammar: 'cobol',
+  decls: {
+    // A program is called by name (`CALL 'CARTPROG'`), so it is recorded as a callable.
+    program_definition: {
+      kind: 'function',
+      name: (n) => text(childOfType(childOfType(n, 'identification_division'), 'program_name')),
+    },
+    section_header: {
+      kind: 'function',
+      name: (n) => n.text.replace(/\s+SECTION.*$/is, '').trim(),
+      trailing: cobolTrailing,
+    },
+    paragraph_header: {
+      kind: 'function',
+      name: (n) => n.text.replace(/\.\s*$/, '').trim(),
+      trailing: cobolTrailing,
+    },
+    data_description: {
+      // Level 01 and 77 entries are the program's records and standalone items.
+      kind: (n) => (/^(0?1|77)$/.test(text(childOfType(n, 'level_number')) ?? '') ? 'property' : null),
+      name: (n) => text(childOfType(n, 'entry_name')),
+      returns: (n) => text(childOfType(n, 'picture_clause')),
+    },
+  },
+  calls: {
+    perform_statement_call_proc: (n) => {
+      const label = childOfType(field(n, 'procedure'), 'label');
+      const name = cobolLabel(label);
+      return name ? { nameString: name } : null;
+    },
+    goto_statement: (n) => {
+      const name = cobolLabel(field(n, 'to'));
+      return name ? { nameString: name } : null;
+    },
+    call_statement: (n) => {
+      const x = field(n, 'x');
+      // A literal names the program; a data item holds the name at run time.
+      return x?.type === 'string' ? { nameString: unquote(x.text) } : null;
+    },
+  },
+  imports: {
+    copy_statement: (n) => {
+      const b = text(field(n, 'book'));
+      return b ? [imp(unquote(b), n, { style: 'include' })] : [];
+    },
+  },
+};
+
+// ---------------------------------------------------------------- SystemVerilog
+
+const svHeader = (n: Node) =>
+  childOfType(n, 'module_ansi_header', 'module_nonansi_header', 'interface_ansi_header', 'interface_nonansi_header', 'program_ansi_header', 'program_nonansi_header') ?? n;
+const svPorts = (n: Node): SyntaxParam[] | undefined => {
+  const list = childOfType(svHeader(n), 'list_of_port_declarations', 'list_of_ports');
+  if (!list) return undefined;
+  return named(list).flatMap((p) => {
+    const name = text(field(p, 'port_name')) ?? text(childOfType(p, 'simple_identifier'));
+    if (!name) return [];
+    const head = named(p).find((c) => /header/.test(c.type));
+    return [{ name, ...(head ? { type: head.text.replace(/\s+/g, ' ') } : {}) }];
+  });
+};
+const svTfPorts = (n: Node): SyntaxParam[] => {
+  const body = childOfType(n, 'function_body_declaration', 'task_body_declaration') ?? n;
+  const list = childOfType(body, 'tf_port_list', 'class_constructor_arg_list');
+  if (!list) return [];
+  const items = named(list).flatMap((c) => (c.type === 'class_constructor_arg' ? named(c) : [c]));
+  return items
+    .filter((c) => c.type === 'tf_port_item')
+    .flatMap((p) => {
+      const name = text(field(p, 'name'));
+      if (!name) return [];
+      const type = named(p)
+        .filter((c) => c.type !== 'simple_identifier' && !/default|expression/.test(c.type))
+        .map((c) => c.text)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return [{ name, ...(type ? { type } : {}), ...(hasToken(p, '=') ? { optional: true } : {}) }];
+    });
+};
+const svBodyName = (n: Node) => text(field(childOfType(n, 'function_body_declaration', 'task_body_declaration'), 'name'));
+
+export const systemverilog: LangSpec = {
+  grammar: 'systemverilog',
+  decls: {
+    module_declaration: { kind: 'module', name: (n) => text(field(svHeader(n), 'name')), paramList: svPorts },
+    interface_declaration: { kind: 'interface', name: (n) => text(field(svHeader(n), 'name')), paramList: svPorts },
+    program_declaration: { kind: 'module', name: (n) => text(field(svHeader(n), 'name')), paramList: svPorts },
+    package_declaration: { kind: 'namespace' },
+    class_declaration: {
+      kind: 'class',
+      bases: (n) => childrenOfType(n, 'class_type', 'interface_class_type').map((c) => c.text.trim()),
+    },
+    interface_class_declaration: { kind: 'interface' },
+    function_declaration: {
+      kind: 'function',
+      name: svBodyName,
+      paramList: svTfPorts,
+      returns: (n) => {
+        const b = childOfType(n, 'function_body_declaration');
+        const t = named(b).find((c) => /data_type|implicit_data_type|void/.test(c.type));
+        return t ? t.text.replace(/\s+/g, ' ') : undefined;
+      },
+    },
+    task_declaration: { kind: 'function', name: svBodyName, paramList: svTfPorts },
+    class_constructor_declaration: { kind: 'constructor', name: () => 'new', paramList: svTfPorts },
+    class_property: {
+      kind: 'property',
+      name: (n) =>
+        text(field(childOfType(childOfType(childOfType(n, 'data_declaration'), 'list_of_variable_decl_assignments'), 'variable_decl_assignment'), 'name')),
+      returns: (n) => text(childOfType(childOfType(n, 'data_declaration'), 'data_type_or_implicit')),
+    },
+  },
+  calls: {
+    tf_call: (n) => {
+      const h = named(n)[0];
+      if (!h) return null;
+      const ids = childrenOfType(h, 'simple_identifier');
+      const last = ids[ids.length - 1];
+      if (!last) return { callee: h };
+      return ids.length > 1
+        ? { nameString: last.text, receiverText: ids.slice(0, -1).map((i) => i.text).join('.') }
+        : { name: last };
+    },
+    method_call: (n) => {
+      const body = childOfType(n, 'method_call_body');
+      const nm = field(body, 'name');
+      const recv = named(n)[0];
+      return nm && recv && recv.type !== 'method_call_body' ? { name: nm, receiver: recv } : nm ? { name: nm } : null;
+    },
+    // A module instance builds one copy of that module: the hardware hierarchy.
+    module_instantiation: (n) => {
+      const t = text(field(n, 'instance_type'));
+      return t ? { nameString: t, isNew: true } : null;
+    },
+    class_new: (n) => {
+      const t = text(childOfType(n, 'class_scope'))?.replace(/::\s*$/, '');
+      return t ? { nameString: t, isNew: true } : null;
+    },
+  },
+  imports: {
+    package_import_declaration: (n) =>
+      childrenOfType(n, 'package_import_item').map((it) => {
+        const ids = childrenOfType(it, 'simple_identifier').map((c) => c.text);
+        return imp(ids[0] ?? it.text, n, ids[1] ? { names: [{ name: ids[1] }] } : {});
+      }),
+    include_compiler_directive: (n) => {
+      const s = text(childOfType(childOfType(n, 'quoted_string'), 'quoted_string_item')) ?? strip(text(named(n)[0]));
+      return s ? [imp(s, n, { style: 'include' })] : [];
+    },
+  },
+  vars: {
+    data_declaration: (n) => {
+      const type = text(childOfType(n, 'data_type_or_implicit'));
+      return childrenOfType(childOfType(n, 'list_of_variable_decl_assignments'), 'variable_decl_assignment').flatMap((v) => {
+        const name = text(field(v, 'name'));
+        return name ? [{ name, type }] : [];
+      });
+    },
+  },
+};
+
+// ---------------------------------------------------------------- Verilog
+
+/** The first `simple_identifier` under `n`, at any depth (the Verilog grammar nests names). */
+function deepIdent(n: Node | null | undefined): string | undefined {
+  if (!n) return undefined;
+  if (n.type === 'simple_identifier' || n.type === 'escaped_identifier') return n.text;
+  for (const c of named(n)) {
+    const r = deepIdent(c);
+    if (r) return r;
+  }
+  return undefined;
+}
+const vlogPorts = (list: Node | null | undefined, item: RegExp, nameType: string): SyntaxParam[] =>
+  named(list)
+    .filter((p) => item.test(p.type))
+    .flatMap((p) => {
+      const name = deepIdent(childOfType(p, nameType));
+      if (!name) return [];
+      const type = named(p)
+        .filter((c) => c.type !== nameType)
+        .map((c) => c.text)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return [{ name, ...(type ? { type } : {}) }];
+    });
+
+export const verilog: LangSpec = {
+  grammar: 'verilog',
+  decls: {
+    module_declaration: {
+      kind: 'module',
+      name: (n) => deepIdent(childOfType(n, 'module_header')),
+      paramList: (n) =>
+        vlogPorts(
+          childOfType(childOfType(n, 'module_ansi_header', 'module_nonansi_header'), 'list_of_port_declarations'),
+          /ansi_port_declaration/,
+          'port_identifier',
+        ),
+    },
+    function_body_declaration: {
+      kind: 'function',
+      name: (n) => deepIdent(childOfType(n, 'function_identifier')),
+      paramList: (n) => vlogPorts(childOfType(n, 'tf_port_list'), /^tf_port_item/, 'port_identifier'),
+      returns: (n) => text(named(n).find((c) => /data_type|implicit/.test(c.type)))?.replace(/\s+/g, ' '),
+    },
+    task_body_declaration: {
+      kind: 'function',
+      name: (n) => deepIdent(childOfType(n, 'task_identifier')),
+      paramList: (n) => vlogPorts(childOfType(n, 'tf_port_list'), /^tf_port_item/, 'port_identifier'),
+    },
+  },
+  calls: {
+    tf_call: (n) => {
+      const h = named(n)[0];
+      if (!h) return null;
+      const ids = h.type === 'simple_identifier' ? [h] : childrenOfType(h, 'simple_identifier');
+      const last = ids[ids.length - 1];
+      if (!last) return { callee: h };
+      return ids.length > 1
+        ? { nameString: last.text, receiverText: ids.slice(0, -1).map((i) => i.text).join('.') }
+        : { name: last };
+    },
+    // A module instance builds one copy of that module: the hardware hierarchy.
+    module_instantiation: (n) => {
+      const t = childOfType(n, 'simple_identifier');
+      return t ? { nameString: t.text, isNew: true } : null;
+    },
+  },
+  imports: {
+    include_compiler_directive: (n) => {
+      const s = strip(text(childOfType(n, 'double_quoted_string')));
+      return s ? [imp(s, n, { style: 'include' })] : [];
+    },
+  },
+};
