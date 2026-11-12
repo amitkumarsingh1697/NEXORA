@@ -1255,8 +1255,9 @@ function collectReferences(
 
   const linkCall = (node: ts.CallExpression | ts.NewExpression, kind: 'calls' | 'instantiates') => {
     const owner = ownerOf(node);
-    const line = lineOf(sf, node.getStart(sf));
     const nameNode = calleeName(node.expression);
+    // In a chain (`a()\n  .b()\n  .c()`) each call is cited at its own name, not the chain's start.
+    const line = lineOf(sf, (nameNode ?? node).getStart(sf));
     if (!nameNode) {
       ctx.stats.calls.dynamic++;
       unresolvedCalls++;

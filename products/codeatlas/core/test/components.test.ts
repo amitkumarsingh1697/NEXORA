@@ -18,6 +18,20 @@ const FILES: Record<string, string> = {
     '}',
     '',
   ].join('\n'),
+  'src/lib/chain.ts': [
+    'class B {',
+    '  a(): B {',
+    '    return this;',
+    '  }',
+    '  b(): B {',
+    '    return this;',
+    '  }',
+    '}',
+    'export const built = new B()',
+    '  .a()',
+    '  .b();',
+    '',
+  ].join('\n'),
   'src/lib/stores.ts': [
     'export const user = { subscribe(run: (v: { name: string }) => void) { run({ name: "a" }); return () => {}; } };',
     '',
@@ -253,6 +267,19 @@ describe('Svelte, Vue and Astro components', () => {
       '2 imports bin/tool -> src/lib/format.ts [observed]',
       '4 calls bin/tool#main -> src/lib/format.ts#label [observed]',
       '6 calls bin/tool -> bin/tool#main [observed]',
+    ]);
+  });
+});
+
+describe('call evidence lines', () => {
+  it('cites each call in a chain at the line of its own name', () => {
+    expect(
+      edges('src/lib/chain.ts')
+        .filter((e) => e.kind === 'calls')
+        .map(fmt),
+    ).toEqual([
+      '10 calls src/lib/chain.ts#built -> src/lib/chain.ts#B.a [observed]',
+      '11 calls src/lib/chain.ts#built -> src/lib/chain.ts#B.b [observed]',
     ]);
   });
 });

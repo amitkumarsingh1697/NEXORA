@@ -152,6 +152,16 @@ The founder asked for full analysis of every language, file, method, function an
 **Status:** done 2026-11-12 (evidence in IMPLEMENTATION_STATUS.md, research R35 and R36, ADR 0019).
 **Excluded from L5:** wiring the Vue, SQL, Make, CMake and Dockerfile grammars (their dedicated analysers stay); languages with no tree-sitter grammar (KNOWN_LIMITATIONS). Next: L6, the ArchLens bundle, skill update and proof runs on Twenty and Immich.
 
+## Sprint L6: ArchLens bundle and proof runs
+
+| ID   | Item       | Requirements       | Acceptance criteria                                                                                                                                                          |
+| ---- | ---------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L6-1 | Bundle     | ARCH-01            | `node scripts/brain/brain.mjs` builds a brain with Node alone; the committed bundle equals a fresh build and gives the same parts and connections as the in-process indexer. |
+| L6-2 | Skill text | ARCH-01            | SKILL.md and README describe the bundle, its flags and the current coverage; `check.mjs` passes.                                                                             |
+| L6-3 | Proof runs | ARCH-01 to ARCH-04 | Immich and Twenty indexed in full; every gap the runs show is fixed or recorded in KNOWN_LIMITATIONS.                                                                        |
+
+**Status:** done 2026-11-12 (research R37 to R40, ADR 0020 and 0021). The proof runs found and fixed: components as text only (ADR 0021), a 20,000-file cap and 512 KiB size limit, a 6,000-part brain cap, stale coverage notes, generated SQL query lists, Swift 6 and Rust 2024 syntax (grammars moved to newer commits), and an off-by-one in SQL error lines.
+**Excluded from L6:** measuring the 3D view on a real graphics card; Swift `~Copyable` and `case .x():` (grammar gaps upstream).
 ---
 
 ## Blocked or external track (not sprint-scheduled)
