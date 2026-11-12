@@ -4,7 +4,7 @@ import type { BrainModel } from '@nexora/brain';
 import { buildBrain, indexRepository, openDb } from '@nexora/codeatlas-core';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,10 +66,18 @@ describe('ArchLens brain bundle', () => {
       sha(join(skill, 'brain.mjs')),
       'run `pnpm --filter @nexora/codeatlas-service skill`',
     ).toBe(sha(join(fresh, 'brain.mjs')));
-    expect(sha(join(skill, 'grammars', 'MANIFEST.json'))).toBe(
-      sha(join(fresh, 'grammars', 'MANIFEST.json')),
-    );
+    expect(sha(join(skill, 'GRAMMARS.json'))).toBe(sha(join(fresh, 'GRAMMARS.json')));
+    expect(sha(join(skill, 'runtime.pack.gz'))).toBe(sha(join(fresh, 'runtime.pack.gz')));
   }, 60_000);
+
+  it('keeps the skill under the 200-file upload limit of the Claude app', () => {
+    const count = (d: string): number =>
+      readdirSync(d, { withFileTypes: true }).reduce(
+        (n, e) => n + (e.isDirectory() ? count(join(d, e.name)) : 1),
+        0,
+      );
+    expect(count(join(skill, '..', '..'))).toBeLessThan(200);
+  });
 
   it('runs with Node alone and matches the in-process indexer', () => {
     const r = repo();
