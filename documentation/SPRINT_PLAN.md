@@ -141,6 +141,19 @@ The founder asked for full analysis of every language, file, method, function an
 
 ---
 
+## Sprint L5: grammars built from source
+
+| ID   | Item                 | Requirements | Acceptance criteria                                                                                                                             |
+| ---- | -------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| L5-1 | Pinned build         | GRAM-01      | 44 grammars built from listed commits with tree-sitter-cli 0.27.1; licence, commit, hash and patch in the manifest; every grammar hash-checked. |
+| L5-2 | Extraction rules     | GRAM-02      | A fixture per language parses without errors and matches a reviewed snapshot.                                                                   |
+| L5-3 | Registry and indexer | GRAM-03      | Registry and syntax layer list the same 71 languages; COBOL and Fortran indexed as full.                                                        |
+
+**Status:** done 2026-11-12 (evidence in IMPLEMENTATION_STATUS.md, research R35 and R36, ADR 0019).
+**Excluded from L5:** wiring the Vue, SQL, Make, CMake and Dockerfile grammars (their dedicated analysers stay); languages with no tree-sitter grammar (KNOWN_LIMITATIONS). Next: L6, the ArchLens bundle, skill update and proof runs on Twenty and Immich.
+
+---
+
 ## Blocked or external track (not sprint-scheduled)
 
 | Item                                                                 | Blocker                                       | Owner                                            |
