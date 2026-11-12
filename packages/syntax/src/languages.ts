@@ -57,6 +57,13 @@ export const SPEC_BY_LANGUAGE: Record<string, LangSpec> = {
   Hack: l5.hack,
   V: l5.v,
   Odin: l5.odin,
+  D: l5.d,
+  Vala: l5.vala,
+  Haxe: l5.haxe,
+  ActionScript: l5.actionscript,
+  Nim: l5.nim,
+  Elm: l5.elm,
+  Gleam: l5.gleam,
 };
 
 export function specFor(language: string): LangSpec | undefined {
