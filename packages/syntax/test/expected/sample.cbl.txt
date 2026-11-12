@@ -1,0 +1,8 @@
+import CUSTREC @15 include
+#0 function CARTPROG @1-14
+#1 property WS-TOTAL -> PIC 9(5) @5-5 in #0
+#2 property WS-ITEM @6-6 in #0
+#3 function MAIN-PARA @9-12 in #0
+#4 function ADD-PARA @13-14 in #0
+call #3 ADD-PARA @10
+call #3 STORESUB @11

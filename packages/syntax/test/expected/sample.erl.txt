@@ -1,0 +1,11 @@
+namespace cart
+import lists @4 module {sum}
+import records.hrl @5 include
+#0 module cart @1-1 extends gen_server
+#1 record item @6-6
+#2 function run(X) @8-8
+#3 function total(A, B) @9-10
+call #2 helper @8
+call #2 store . save @8
+call #2 total @8
+call #3 sum @9

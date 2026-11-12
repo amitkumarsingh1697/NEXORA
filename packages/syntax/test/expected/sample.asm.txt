@@ -1,0 +1,5 @@
+import macros.inc @1 include
+#0 function main @3-6
+#1 function helper @7-9
+#2 function .done @10-11
+call #0 helper @5

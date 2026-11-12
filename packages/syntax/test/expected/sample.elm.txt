@@ -1,0 +1,10 @@
+namespace App.Cart
+import Html @2 module {div, text}
+import App.Store @3 module
+#0 record Cart @4-4
+#1 type Msg @5-5
+#2 function total(c: Cart, x: Int) -> Int @7-7
+#3 function helper(a, b) @8-8
+#4 function send -> String -> Cmd msg @9-9
+call #2 helper @7
+call #2 Store . save @7

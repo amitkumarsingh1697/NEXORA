@@ -1,0 +1,11 @@
+import common.glsl @2 include
+#0 struct Light @4-4
+#1 function shade(n: vec3, l: Light) -> vec3 @5-5
+#2 function main() -> void @6-6
+call #1 normalize @5
+call #1 helper @5
+call #2 vec4 @6
+call #2 shade @6
+call #2 vec3 @6
+call #2 Light @6
+call #2 vec3 @6

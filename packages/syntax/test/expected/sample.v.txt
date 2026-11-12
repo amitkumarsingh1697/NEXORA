@@ -1,0 +1,12 @@
+namespace cart
+import os @3 module
+import app.store @4 module
+#0 struct Cart @6-9
+#1 interface Shape @11-13
+#2 enum Color @15-18
+#3 method total(x: int) -> int @20-24 recv Cart
+#4 function helper(a: int, ...rest: int) -> int @26-29
+call #3 st . new_store @21
+call #3 s . save @22
+call #3 helper @23
+call #4 println @27

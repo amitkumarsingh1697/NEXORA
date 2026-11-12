@@ -73,6 +73,12 @@ export const SPEC_BY_LANGUAGE: Record<string, LangSpec> = {
   COBOL: l5.cobol,
   SystemVerilog: l5.systemverilog,
   Verilog: l5.verilog,
+  VHDL: l5.vhdl,
+  Assembly: l5.asm,
+  'Unix Assembly': l5.asm,
+  WGSL: l5.wgsl,
+  Nix: l5.nix,
+  fish: l5.fish,
 };
 
 export function specFor(language: string): LangSpec | undefined {

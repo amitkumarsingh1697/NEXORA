@@ -1,0 +1,11 @@
+import gleam/io @1 module
+import app/store @2 module {Store, save}
+#0 type Cart @3-3
+#1 type Id @4-4
+#2 function total(c: Cart, x: Int) -> Int @5-10
+#3 function helper(a) @11-11
+#4 property limit -> Int @12-12
+call #2 store . new @6
+call #2 save @7
+call #2 io . println @8
+call #2 helper @9

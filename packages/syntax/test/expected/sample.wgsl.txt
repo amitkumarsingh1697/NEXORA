@@ -1,0 +1,7 @@
+#0 struct Vertex @1-1
+#1 property pos -> vec3<f32> @1-1 in #0
+#2 property mvp -> mat4x4<f32> @2-2
+#3 function shade(v: Vertex, k: f32) -> vec4<f32> @3-3
+#4 function main(v: Vertex) -> vec4<f32> @4-4
+call #3 helper @3
+call #4 shade @4

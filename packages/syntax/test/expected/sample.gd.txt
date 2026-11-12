@@ -1,0 +1,10 @@
+import res://store.gd @3 path
+#0 class Player @2-2 extends Node2D
+#1 function _ready() -> void @5-8
+#2 function move(dist: float, fast?) -> int @9-10
+#3 class Inner @11-13 extends Object
+#4 method run() @12-13 in #3
+call #1 Store . new @6
+call #1 s . save @7
+call #1 move @8
+call #1 helper @8

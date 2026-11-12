@@ -1,0 +1,15 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. CARTPROG.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 WS-TOTAL PIC 9(5) VALUE 0.
+       01 WS-ITEM.
+          05 WS-NAME PIC X(10).
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           PERFORM ADD-PARA.
+           CALL 'STORESUB' USING WS-TOTAL.
+           STOP RUN.
+       ADD-PARA.
+           ADD 1 TO WS-TOTAL.
+       COPY CUSTREC.

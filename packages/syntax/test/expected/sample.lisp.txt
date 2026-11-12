@@ -1,0 +1,10 @@
+#0 function run(x, y?, ...more) @3-3
+#1 function m(x) @4-4
+#2 class circle @5-5 extends shape
+#3 function area(c) @6-6
+#4 function area(s) @7-7
+#5 property *count* @8-8
+#6 struct point @9-9
+call #0 helper @3
+call #0 format @3
+call #3 slot-value @6

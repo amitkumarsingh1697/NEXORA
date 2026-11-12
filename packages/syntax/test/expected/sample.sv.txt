@@ -1,0 +1,20 @@
+import defs.vh @1 include
+import pkg @11 module
+#0 module counter(clk: input, d: input [W-1:0], q: output reg [W-1:0]) @2-9
+#1 function inc(x: input [W-1:0]) -> [W-1:0] @4-6 in #0
+#2 function reset_t() @7-7 in #0
+#3 namespace pkg @10-10
+#4 class Base @12-12
+#5 class Cart @13-16 extends Base
+#6 property total -> int @14-14 in #5
+#7 method add(x: int) -> int @15-15 in #5
+#8 interface bus_if @17-17
+#9 class C @18-21 extends B, I
+#10 constructor new(a: int) @19-19 in #9
+#11 method run(x: input int, y: output int) @20-20 in #9
+#12 module top @22-22
+call #0 adder @3
+call #0 inc @8
+call #7 helper @15
+call #11 obj . go @20
+call #11 pkg . f @20

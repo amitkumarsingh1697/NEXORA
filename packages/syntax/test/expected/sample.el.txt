@@ -1,0 +1,7 @@
+import cl-lib @1 module
+#0 function app-run(x, y?) @2-2
+#1 function app-m(x) @3-3
+#2 property app-count @4-4
+#3 property app-name @5-5
+call #0 app-helper @2
+call #0 message @2

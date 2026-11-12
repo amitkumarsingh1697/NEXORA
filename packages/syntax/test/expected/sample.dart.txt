@@ -1,0 +1,23 @@
+import package:app/store.dart @1 module
+import cart.dart @2 path
+#0 class Shape @3-3
+#1 method area() -> double @3-3 in #0
+#2 class Circle @4-13 extends Shape, Mix, Comparable
+#3 constructor Circle(r) @6-6 in #2
+#4 constructor Circle.unit() @7-7 in #2
+#5 method area() -> double @9-9 in #2
+#6 method count(xs: List<int>, min?: int) -> int @10-10 in #2
+#7 method radius(v: double) @11-11 in #2
+#8 method size -> int @12-12 in #2
+#9 enum Color @14-14
+#10 trait Mix @15-15
+#11 impl String @16-16
+#12 method twice() -> int @16-16 in #11
+#13 type Fn @17-17
+#14 function top(a: int, b?: int) -> int @18-18
+call #6 xs . where @10
+call #14 Store @18
+call #14 s . save @18
+call #14 print @18
+call #14 c . total @18
+call #14 helper @18

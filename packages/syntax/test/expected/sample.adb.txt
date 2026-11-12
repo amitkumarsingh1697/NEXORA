@@ -1,0 +1,12 @@
+import Ada.Text_IO @1 module
+import App.Store @2 module
+#0 module Cart @3-20
+#1 record Point @4-6 in #0
+#2 class Shape @7-7 in #0
+#3 class Box @8-8 in #0 extends Shape
+#4 function Total(C: Cart_Type, X?: Integer) -> Integer @9-15 in #0
+#5 function Reset(C: Cart_Type) @16-19 in #0
+call #4 App.Store . Save @12
+call #4 Put_Line @13
+call #4 Helper @14
+call #5 Clear @18

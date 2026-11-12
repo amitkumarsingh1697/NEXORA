@@ -1,0 +1,8 @@
+namespace app
+import app.Store @2 module {Store}
+#0 class Cart @3-6 extends Base, Shape
+#1 constructor Cart() @4-4 in #0
+#2 method total(x: String, ...rest) -> int @5-5 in #0
+call #2 Store @5
+call #2 s . save @5
+call #2 helper @5

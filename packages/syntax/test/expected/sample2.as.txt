@@ -1,0 +1,10 @@
+import flash.display.* @1 module
+#0 interface IShape @2-2 extends IBase
+#1 method area() -> Number @2-2 in #0
+#2 class M @3-3
+#3 property X -> int @3-3 in #2
+#4 property size() -> int @3-3 in #2
+#5 method f(a?: int) -> void @3-3 in #2
+#6 function top() -> void @4-4
+call #5 trace @3
+call #5 a.b . c @3

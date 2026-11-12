@@ -196,16 +196,22 @@ export function extractTree(tree: Tree, spec: LangSpec, language: string): Synta
       const trailing = own(spec.decls, c.type)?.trailing;
       const k = declarations[d]!.kind;
       const asOwner =
-        /^(function|method|constructor|property)$/.test(k) || nextOwner < 0 || CONTAINER_KINDS.has(k);
+        /^(function|method|constructor|property)$/.test(k) ||
+        nextOwner < 0 ||
+        CONTAINER_KINDS.has(k);
       // Bodies (Dart) or further clauses (Erlang) after the declaration belong to it: their
       // calls and nested declarations too.
-      for (let cur: Node = c; trailing; ) {
+      for (let cur: Node = c; trailing;) {
         const body = trailing(cur);
-        const next = kids[i + 1];
-        if (!body || !next || body.startIndex !== next.startIndex) break;
+        if (!body) break;
+        // Unnamed tokens (a newline in assembly) may sit between the two.
+        let j = i + 1;
+        while (j < kids.length && !kids[j]!.isNamed && kids[j]!.startIndex < body.startIndex) j++;
+        const next = kids[j];
+        if (!next || body.startIndex !== next.startIndex) break;
         declarations[d]!.endLine = endLineOf(next);
         walk(next, asOwner ? d : nextOwner, d);
-        i++;
+        i = j;
         cur = next;
       }
     }

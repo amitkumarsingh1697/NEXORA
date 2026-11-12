@@ -1,0 +1,9 @@
+import <nixpkgs> @1 module
+import ./util.nix @5 path
+import ./pkg.nix @9 path
+#0 function helper(x) @3-3
+#1 function mkCart(name, total?) @4-4
+call top mkCart @7
+call top helper @8
+call top pkgs . callPackage @9
+call top lib.strings . concatStringsSep @10

@@ -31,6 +31,7 @@ const FILES: Record<string, string | Buffer> = {
     'pub struct Engine;\n\nimpl Engine {\n    pub fn run(&self) {}\n}\n',
   'legacy/PAYROLL.cbl':
     '       IDENTIFICATION DIVISION.\n       PROGRAM-ID. PAYROLL.\n       PROCEDURE DIVISION.\n       MAIN-PARA.\n           STOP RUN.\n',
+  'legacy/Cart.st': "Object subclass: #Cart\n  instanceVariableNames: 'items'\n",
   'legacy/solver.f90':
     'module solver\ncontains\n  subroutine solve(x)\n    real :: x\n  end subroutine solve\nend module solver\n',
   'db/packages/billing.pkb':
@@ -181,16 +182,18 @@ describe('universal language and file-type inventory', () => {
       'services/api/store/store.go',
       'bin/deploy',
       'infra/main.tf',
+      // Sprint L5: built from pinned grammar sources.
+      'legacy/PAYROLL.cbl',
+      'legacy/solver.f90',
     ]) {
       expect(rec(p)?.status, p).toBe('full');
       expect(rec(p)?.resolution, p).toBe('syntax');
       expect(rec(p)?.method, p).toMatch(/^Full syntax parse \(tree-sitter /);
     }
-    // No grammar yet: declaration patterns, never called full.
-    for (const p of ['legacy/PAYROLL.cbl', 'legacy/solver.f90']) {
-      expect(rec(p)?.status, p).toBe('partial');
-      expect(rec(p)?.resolution, p).toBeNull();
-    }
+    // No grammar: declaration patterns, never called full.
+    expect(rec('legacy/Cart.st')?.language).toBe('Smalltalk');
+    expect(rec('legacy/Cart.st')?.status).toBe('partial');
+    expect(rec('legacy/Cart.st')?.resolution).toBeNull();
     expect(rec('legacy/PAYROLL.cbl')?.language).toBe('COBOL');
     expect(rec('legacy/solver.f90')?.language).toBe('Fortran Free Form');
     const names = (
@@ -207,6 +210,8 @@ describe('universal language and file-type inventory', () => {
         'main',
         'Open',
         'solver',
+        'solver.solve',
+        'PAYROLL',
         'aws_s3_bucket.logs',
       ]),
     );

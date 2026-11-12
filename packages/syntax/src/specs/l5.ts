@@ -1277,7 +1277,22 @@ export const v: LangSpec = {
     type_declaration: { kind: 'type' },
     function_declaration: {
       kind: 'function',
-      params: (n) => field(field(n, 'signature'), 'parameters'),
+      // `rest ...int`: the grammar keeps `...` as an unnamed token beside the type.
+      paramList: (n) =>
+        childrenOfType(field(field(n, 'signature'), 'parameters'), 'parameter_declaration').flatMap(
+          (p) => {
+            const name = text(field(p, 'name'));
+            if (!name) return [];
+            const type = text(field(p, 'type'));
+            return [
+              {
+                name,
+                ...(type ? { type } : {}),
+                ...(hasToken(p, '...') ? { variadic: true } : {}),
+              },
+            ];
+          },
+        ),
       returns: (n) => text(field(field(n, 'signature'), 'result')),
       receiver: (n) => text(field(field(n, 'receiver'), 'type'))?.replace(/^[&]?(mut\s+)?/, ''),
       receiverName: (n) => text(field(field(n, 'receiver'), 'name')),
@@ -1298,7 +1313,7 @@ export const v: LangSpec = {
       const spec = childOfType(n, 'import_spec');
       const path = text(childOfType(spec, 'import_path'));
       if (!path) return [];
-      const alias = text(childOfType(spec, 'import_alias'));
+      const alias = text(childOfType(spec, 'import_alias'))?.replace(/^as\s+/, '');
       return [imp(path, n, alias ? { alias } : {})];
     },
   },
@@ -2517,7 +2532,8 @@ const cobolTrailing = (n: Node): Node | null => {
   if (n.type === 'section_header' && next.type === 'paragraph_header') return null;
   return next;
 };
-const cobolLabel = (n: Node | null | undefined) => text(childOfType(n, 'qualified_word')) ?? text(n);
+const cobolLabel = (n: Node | null | undefined) =>
+  text(childOfType(n, 'qualified_word')) ?? text(n);
 
 export const cobol: LangSpec = {
   grammar: 'cobol',
@@ -2539,7 +2555,8 @@ export const cobol: LangSpec = {
     },
     data_description: {
       // Level 01 and 77 entries are the program's records and standalone items.
-      kind: (n) => (/^(0?1|77)$/.test(text(childOfType(n, 'level_number')) ?? '') ? 'property' : null),
+      kind: (n) =>
+        /^(0?1|77)$/.test(text(childOfType(n, 'level_number')) ?? '') ? 'property' : null,
       name: (n) => text(childOfType(n, 'entry_name')),
       returns: (n) => text(childOfType(n, 'picture_clause')),
     },
@@ -2571,7 +2588,15 @@ export const cobol: LangSpec = {
 // ---------------------------------------------------------------- SystemVerilog
 
 const svHeader = (n: Node) =>
-  childOfType(n, 'module_ansi_header', 'module_nonansi_header', 'interface_ansi_header', 'interface_nonansi_header', 'program_ansi_header', 'program_nonansi_header') ?? n;
+  childOfType(
+    n,
+    'module_ansi_header',
+    'module_nonansi_header',
+    'interface_ansi_header',
+    'interface_nonansi_header',
+    'program_ansi_header',
+    'program_nonansi_header',
+  ) ?? n;
 const svPorts = (n: Node): SyntaxParam[] | undefined => {
   const list = childOfType(svHeader(n), 'list_of_port_declarations', 'list_of_ports');
   if (!list) return undefined;
@@ -2601,18 +2626,32 @@ const svTfPorts = (n: Node): SyntaxParam[] => {
       return [{ name, ...(type ? { type } : {}), ...(hasToken(p, '=') ? { optional: true } : {}) }];
     });
 };
-const svBodyName = (n: Node) => text(field(childOfType(n, 'function_body_declaration', 'task_body_declaration'), 'name'));
+const svBodyName = (n: Node) =>
+  text(field(childOfType(n, 'function_body_declaration', 'task_body_declaration'), 'name'));
 
 export const systemverilog: LangSpec = {
   grammar: 'systemverilog',
   decls: {
-    module_declaration: { kind: 'module', name: (n) => text(field(svHeader(n), 'name')), paramList: svPorts },
-    interface_declaration: { kind: 'interface', name: (n) => text(field(svHeader(n), 'name')), paramList: svPorts },
-    program_declaration: { kind: 'module', name: (n) => text(field(svHeader(n), 'name')), paramList: svPorts },
+    module_declaration: {
+      kind: 'module',
+      name: (n) => text(field(svHeader(n), 'name')),
+      paramList: svPorts,
+    },
+    interface_declaration: {
+      kind: 'interface',
+      name: (n) => text(field(svHeader(n), 'name')),
+      paramList: svPorts,
+    },
+    program_declaration: {
+      kind: 'module',
+      name: (n) => text(field(svHeader(n), 'name')),
+      paramList: svPorts,
+    },
     package_declaration: { kind: 'namespace' },
     class_declaration: {
       kind: 'class',
-      bases: (n) => childrenOfType(n, 'class_type', 'interface_class_type').map((c) => c.text.trim()),
+      bases: (n) =>
+        childrenOfType(n, 'class_type', 'interface_class_type').map((c) => c.text.trim()),
     },
     interface_class_declaration: { kind: 'interface' },
     function_declaration: {
@@ -2630,8 +2669,17 @@ export const systemverilog: LangSpec = {
     class_property: {
       kind: 'property',
       name: (n) =>
-        text(field(childOfType(childOfType(childOfType(n, 'data_declaration'), 'list_of_variable_decl_assignments'), 'variable_decl_assignment'), 'name')),
-      returns: (n) => text(childOfType(childOfType(n, 'data_declaration'), 'data_type_or_implicit')),
+        text(
+          field(
+            childOfType(
+              childOfType(childOfType(n, 'data_declaration'), 'list_of_variable_decl_assignments'),
+              'variable_decl_assignment',
+            ),
+            'name',
+          ),
+        ),
+      returns: (n) =>
+        text(childOfType(childOfType(n, 'data_declaration'), 'data_type_or_implicit')),
     },
   },
   calls: {
@@ -2642,14 +2690,24 @@ export const systemverilog: LangSpec = {
       const last = ids[ids.length - 1];
       if (!last) return { callee: h };
       return ids.length > 1
-        ? { nameString: last.text, receiverText: ids.slice(0, -1).map((i) => i.text).join('.') }
+        ? {
+            nameString: last.text,
+            receiverText: ids
+              .slice(0, -1)
+              .map((i) => i.text)
+              .join('.'),
+          }
         : { name: last };
     },
     method_call: (n) => {
       const body = childOfType(n, 'method_call_body');
       const nm = field(body, 'name');
       const recv = named(n)[0];
-      return nm && recv && recv.type !== 'method_call_body' ? { name: nm, receiver: recv } : nm ? { name: nm } : null;
+      return nm && recv && recv.type !== 'method_call_body'
+        ? { name: nm, receiver: recv }
+        : nm
+          ? { name: nm }
+          : null;
     },
     // A module instance builds one copy of that module: the hardware hierarchy.
     module_instantiation: (n) => {
@@ -2668,14 +2726,19 @@ export const systemverilog: LangSpec = {
         return imp(ids[0] ?? it.text, n, ids[1] ? { names: [{ name: ids[1] }] } : {});
       }),
     include_compiler_directive: (n) => {
-      const s = text(childOfType(childOfType(n, 'quoted_string'), 'quoted_string_item')) ?? strip(text(named(n)[0]));
+      const s =
+        text(childOfType(childOfType(n, 'quoted_string'), 'quoted_string_item')) ??
+        strip(text(named(n)[0]));
       return s ? [imp(s, n, { style: 'include' })] : [];
     },
   },
   vars: {
     data_declaration: (n) => {
       const type = text(childOfType(n, 'data_type_or_implicit'));
-      return childrenOfType(childOfType(n, 'list_of_variable_decl_assignments'), 'variable_decl_assignment').flatMap((v) => {
+      return childrenOfType(
+        childOfType(n, 'list_of_variable_decl_assignments'),
+        'variable_decl_assignment',
+      ).flatMap((v) => {
         const name = text(field(v, 'name'));
         return name ? [{ name, type }] : [];
       });
@@ -2718,7 +2781,10 @@ export const verilog: LangSpec = {
       name: (n) => deepIdent(childOfType(n, 'module_header')),
       paramList: (n) =>
         vlogPorts(
-          childOfType(childOfType(n, 'module_ansi_header', 'module_nonansi_header'), 'list_of_port_declarations'),
+          childOfType(
+            childOfType(n, 'module_ansi_header', 'module_nonansi_header'),
+            'list_of_port_declarations',
+          ),
           /ansi_port_declaration/,
           'port_identifier',
         ),
@@ -2726,13 +2792,16 @@ export const verilog: LangSpec = {
     function_body_declaration: {
       kind: 'function',
       name: (n) => deepIdent(childOfType(n, 'function_identifier')),
-      paramList: (n) => vlogPorts(childOfType(n, 'tf_port_list'), /^tf_port_item/, 'port_identifier'),
-      returns: (n) => text(named(n).find((c) => /data_type|implicit/.test(c.type)))?.replace(/\s+/g, ' '),
+      paramList: (n) =>
+        vlogPorts(childOfType(n, 'tf_port_list'), /^tf_port_item/, 'port_identifier'),
+      returns: (n) =>
+        text(named(n).find((c) => /data_type|implicit/.test(c.type)))?.replace(/\s+/g, ' '),
     },
     task_body_declaration: {
       kind: 'function',
       name: (n) => deepIdent(childOfType(n, 'task_identifier')),
-      paramList: (n) => vlogPorts(childOfType(n, 'tf_port_list'), /^tf_port_item/, 'port_identifier'),
+      paramList: (n) =>
+        vlogPorts(childOfType(n, 'tf_port_list'), /^tf_port_item/, 'port_identifier'),
     },
   },
   calls: {
@@ -2743,7 +2812,13 @@ export const verilog: LangSpec = {
       const last = ids[ids.length - 1];
       if (!last) return { callee: h };
       return ids.length > 1
-        ? { nameString: last.text, receiverText: ids.slice(0, -1).map((i) => i.text).join('.') }
+        ? {
+            nameString: last.text,
+            receiverText: ids
+              .slice(0, -1)
+              .map((i) => i.text)
+              .join('.'),
+          }
         : { name: last };
     },
     // A module instance builds one copy of that module: the hardware hierarchy.
@@ -2756,6 +2831,307 @@ export const verilog: LangSpec = {
     include_compiler_directive: (n) => {
       const s = strip(text(childOfType(n, 'double_quoted_string')));
       return s ? [imp(s, n, { style: 'include' })] : [];
+    },
+  },
+};
+
+// ---------------------------------------------------------------- VHDL
+
+const vhdlInterface = (list: Node | null | undefined): SyntaxParam[] =>
+  named(list).flatMap((d) => {
+    const mode = named(d).find((c) => /mode_indication/.test(c.type));
+    const type = mode?.text
+      .replace(/\s+/g, ' ')
+      .replace(/\s*:=.*$/, '')
+      .trim();
+    const optional = !!childOfType(mode, 'initialiser');
+    return named(childOfType(d, 'identifier_list')).map((id) => ({
+      name: id.text,
+      ...(type ? { type } : {}),
+      ...(optional ? { optional } : {}),
+    }));
+  });
+const vhdlSpec = (n: Node) => childOfType(n, 'function_specification', 'procedure_specification');
+const vhdlSubprogram: DeclRule = {
+  kind: (n) => (vhdlSpec(n) ? 'function' : null),
+  name: (n) => {
+    const s = vhdlSpec(n);
+    return text(field(s, 'function')) ?? text(field(s, 'procedure'));
+  },
+  paramList: (n) =>
+    vhdlInterface(
+      childOfType(childOfType(vhdlSpec(n), 'parameter_list_specification'), 'interface_list'),
+    ),
+  returns: (n) => text(field(vhdlSpec(n), 'type')),
+};
+const vhdlName = (n: Node | null | undefined): CallParts | null => {
+  const id = childrenOfType(n, 'identifier').pop();
+  if (!id) return null;
+  const before = n!.text.slice(0, id.startIndex - n!.startIndex).replace(/\.$/, '');
+  return before ? { nameString: id.text, receiverText: before } : { name: id };
+};
+
+export const vhdl: LangSpec = {
+  grammar: 'vhdl',
+  decls: {
+    entity_declaration: {
+      kind: 'module',
+      name: (n) => text(field(n, 'entity')),
+      paramList: (n) =>
+        vhdlInterface(
+          childOfType(childOfType(childOfType(n, 'entity_head'), 'port_clause'), 'interface_list'),
+        ),
+    },
+    // An architecture is one implementation of its entity.
+    architecture_definition: {
+      kind: 'impl',
+      name: (n) => text(field(n, 'architecture')),
+      receiver: (n) => text(field(n, 'entity')),
+    },
+    package_declaration: { kind: 'namespace', name: (n) => text(field(n, 'package')) },
+    package_body: { kind: 'namespace', name: (n) => text(field(n, 'package')) },
+    component_declaration: {
+      kind: 'interface',
+      name: (n) => text(field(n, 'component')),
+      paramList: (n) =>
+        vhdlInterface(
+          childOfType(
+            childOfType(childOfType(n, 'component_body'), 'port_clause'),
+            'interface_list',
+          ),
+        ),
+    },
+    subprogram_definition: vhdlSubprogram,
+    subprogram_declaration: vhdlSubprogram,
+    signal_declaration: {
+      kind: (n) =>
+        n.parent?.type === 'architecture_head' || n.parent?.type === 'package_declaration_body'
+          ? 'property'
+          : null,
+      name: (n) => text(named(childOfType(n, 'identifier_list'))[0]),
+      returns: (n) => text(childOfType(n, 'subtype_indication')),
+    },
+  },
+  calls: {
+    procedure_call_statement: (n) => vhdlName(childOfType(n, 'name')),
+    // `f(x)` in an expression is a function call, an array element or a type conversion; only a
+    // matching declaration links it.
+    name: (n) =>
+      childOfType(n, 'parenthesis_group') &&
+      n.parent?.type !== 'procedure_call_statement' &&
+      !childOfType(n, 'library_type')
+        ? vhdlName(n)
+        : null,
+    component_instantiation_statement: (n) => {
+      const u = childOfType(n, 'instantiated_unit');
+      const target = u ? field(u, 'entity') : field(n, 'component');
+      const id = childrenOfType(target, 'identifier').pop();
+      return id ? { nameString: id.text, isNew: true } : null;
+    },
+  },
+  imports: {
+    use_clause: (n) =>
+      childrenOfType(childOfType(n, 'selected_name_list'), 'selected_name').map((s) =>
+        imp(s.text.replace(/\s+/g, ''), n),
+      ),
+  },
+};
+
+// ---------------------------------------------------------------- Assembly
+
+/** A label's instructions follow it as siblings, up to the next label. */
+const asmTrailing = (n: Node): Node | null => {
+  const next = n.nextNamedSibling;
+  return next && next.type !== 'label' ? next : null;
+};
+const ASM_CALL = /^(call[lqw]?|bl[x]?|blr|jal[r]?|jsr|bsr|brasl|bal)$/i;
+
+export const asm: LangSpec = {
+  grammar: 'asm',
+  decls: {
+    label: { kind: 'function', name: (n) => text(named(n)[0]), trailing: asmTrailing },
+  },
+  calls: {
+    instruction: (n) => {
+      if (!ASM_CALL.test(text(field(n, 'kind')) ?? '')) return null;
+      const target = named(n).find((c) => c.type === 'ident');
+      const name = target?.text.trim().replace(/@plt$/i, '');
+      return name ? { nameString: name } : null;
+    },
+  },
+  imports: {
+    meta: (n) => {
+      if (!/^\.?(include|incbin)$/i.test(text(field(n, 'kind')) ?? '')) return [];
+      const s = strip(text(childOfType(n, 'string')));
+      return s ? [imp(s, n, { style: 'include' })] : [];
+    },
+  },
+};
+
+// ---------------------------------------------------------------- WGSL
+
+export const wgsl: LangSpec = {
+  grammar: 'wgsl',
+  decls: {
+    function_declaration: {
+      kind: 'function',
+      paramList: (n) =>
+        childrenOfType(field(n, 'parameters'), 'parameter').flatMap((p) => {
+          const v = childOfType(p, 'variable_identifier_declaration');
+          const name = text(field(v, 'name'));
+          const type = text(field(v, 'type'));
+          return name ? [{ name, ...(type ? { type } : {}) }] : [];
+        }),
+      returns: (n) => text(childOfType(field(n, 'type'), 'type_declaration')),
+    },
+    struct_declaration: { kind: 'struct' },
+    struct_member: {
+      kind: 'property',
+      name: (n) => text(field(childOfType(n, 'variable_identifier_declaration'), 'name')),
+      returns: (n) => text(field(childOfType(n, 'variable_identifier_declaration'), 'type')),
+    },
+    global_variable_declaration: {
+      kind: 'property',
+      name: (n) =>
+        text(
+          field(
+            childOfType(childOfType(n, 'variable_declaration'), 'variable_identifier_declaration'),
+            'name',
+          ),
+        ),
+      returns: (n) =>
+        text(
+          field(
+            childOfType(childOfType(n, 'variable_declaration'), 'variable_identifier_declaration'),
+            'type',
+          ),
+        ),
+    },
+    global_constant_declaration: {
+      kind: 'property',
+      name: (n) =>
+        text(field(childOfType(n, 'variable_identifier_declaration'), 'name')) ??
+        text(childOfType(n, 'identifier')),
+    },
+    type_alias: { kind: 'type' },
+  },
+  imports: {},
+  calls: {
+    type_constructor_or_function_call_expression: (n) => {
+      const t = childOfType(n, 'type_declaration');
+      const id = named(t)[0];
+      // `vec3<f32>(…)` constructs a built-in type; a plain identifier calls a function or a struct.
+      return id?.type === 'identifier' && named(t).length === 1 ? { name: id } : null;
+    },
+  },
+};
+
+// ---------------------------------------------------------------- Nix
+
+/** The innermost function of a curried application `f a b` and its first argument. */
+const nixHead = (n: Node): { fn: Node | null; arg: Node | null } => {
+  let cur = n;
+  while (field(cur, 'function')?.type === 'apply_expression') cur = field(cur, 'function')!;
+  return { fn: field(cur, 'function'), arg: field(cur, 'argument') };
+};
+const NIX_PATH = /^(path_expression|spath_expression|hpath_expression)$/;
+
+export const nix: LangSpec = {
+  grammar: 'nix',
+  decls: {
+    // `name = args: body;` binds a function.
+    binding: {
+      kind: (n) => (field(n, 'expression')?.type === 'function_expression' ? 'function' : null),
+      name: (n) => text(field(n, 'attrpath')),
+      paramList: (n) => {
+        const f = field(n, 'expression')!;
+        const u = text(field(f, 'universal'));
+        const formals = childrenWithField(field(f, 'formals'), 'formal').flatMap((p) => {
+          const name = text(field(p, 'name'));
+          return name ? [{ name, ...(field(p, 'default') ? { optional: true } : {}) }] : [];
+        });
+        return [...(u ? [{ name: u }] : []), ...formals];
+      },
+      body: (n) => field(field(n, 'expression'), 'body'),
+    },
+  },
+  calls: {
+    apply_expression: (n) => {
+      // Only the whole application `f a b`, not each partial step inside it.
+      if (
+        n.parent?.type === 'apply_expression' &&
+        field(n.parent, 'function')?.startIndex === n.startIndex
+      )
+        return null;
+      const { fn, arg } = nixHead(n);
+      if (!fn) return null;
+      if (fn.type === 'variable_expression') {
+        if (text(field(fn, 'name')) === 'import' && arg && NIX_PATH.test(arg.type)) return null;
+        return { name: field(fn, 'name')! };
+      }
+      if (fn.type === 'select_expression') {
+        const attrs = childrenWithField(field(fn, 'attrpath'), 'attr');
+        const last = attrs[attrs.length - 1];
+        const recv = [text(field(fn, 'expression')), ...attrs.slice(0, -1).map((a) => a.text)].join(
+          '.',
+        );
+        return last ? { nameString: last.text, receiverText: recv } : null;
+      }
+      return null;
+    },
+  },
+  imports: {
+    apply_expression: (n) => {
+      const { fn, arg } = nixHead(n);
+      if (!fn || !arg || !NIX_PATH.test(arg.type)) return [];
+      const name =
+        fn.type === 'variable_expression'
+          ? text(field(fn, 'name'))
+          : text(childrenWithField(field(fn, 'attrpath'), 'attr').pop());
+      // `import ./x.nix` and `callPackage ./x.nix {}` both read another file.
+      if (name !== 'import' && name !== 'callPackage') return [];
+      // Report it once, from the innermost application.
+      if (field(n, 'function')?.type === 'apply_expression') return [];
+      return [imp(arg.text, n, { style: arg.type === 'spath_expression' ? 'module' : 'path' })];
+    },
+  },
+};
+
+// ---------------------------------------------------------------- fish
+
+const FISH_SOURCE = new Set(['source', '.']);
+
+export const fish: LangSpec = {
+  grammar: 'fish',
+  decls: {
+    function_definition: {
+      kind: 'function',
+      // `--argument-names a b` (or `-a a b`) names the positional parameters.
+      paramList: (n) => {
+        const opts = childrenWithField(n, 'option');
+        const out: SyntaxParam[] = [];
+        let on = false;
+        for (const o of opts) {
+          if (/^-/.test(o.text)) on = o.text === '--argument-names' || o.text === '-a';
+          else if (on) out.push({ name: o.text });
+        }
+        return out;
+      },
+    },
+  },
+  calls: {
+    command: (n) => {
+      const name = field(n, 'name');
+      if (!name || FISH_SOURCE.has(name.text)) return null;
+      return { callee: name };
+    },
+  },
+  imports: {
+    command: (n) => {
+      const name = text(field(n, 'name'));
+      if (!name || !FISH_SOURCE.has(name)) return [];
+      const arg = field(n, 'argument');
+      return arg ? [imp(unquote(arg.text), n, { style: 'path' })] : [];
     },
   },
 };

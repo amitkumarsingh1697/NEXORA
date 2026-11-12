@@ -1,0 +1,21 @@
+import Gtk @1 module
+#0 namespace App @2-8
+#1 class Cart @3-6 in #0 extends Base, Shape
+#2 method total(x: string, y?: int) -> int @4-4 in #1
+#3 constructor Cart() @5-5 in #1
+#4 interface Shape @7-7 in #0 extends Object
+#5 method area() -> int @7-7 in #4
+#6 struct Point @9-9
+#7 enum Color @10-10
+#8 type Cb(a: int) -> void @11-11
+#9 class A @12-12
+#10 property name -> string @12-12 in #9
+#11 method changed() -> void @12-12 in #9
+#12 constructor A @12-12 in #9
+#13 method run(...args: string[]) -> void @12-12 in #9
+call #2 Store @4
+call #2 s . save @4
+call #2 helper @4
+call #13 Cart @12
+call #13 c . total @12
+call #13 App.Cart . make @12

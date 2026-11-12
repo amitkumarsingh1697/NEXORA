@@ -1,0 +1,6 @@
+#0 method new(items: {number}) -> Cart @3-3 recv Cart
+#1 method total(x: number, ......) -> number @4-4 recv Cart
+#2 function helper(x: number) @5-5
+call #0 setmetatable @3
+call #1 self.store . save @4
+call #1 helper @4

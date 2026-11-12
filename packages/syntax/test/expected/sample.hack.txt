@@ -1,0 +1,9 @@
+namespace App
+import App\Store @3 module
+#0 class Cart @4-6 extends Base, Shape
+#1 method total($x: string, ...$xs: int) -> int @5-5 in #0
+#2 function top($a: int) -> void @7-7
+call #1 new Store @5
+call #1 $s . save @5
+call #1 helper @5
+call #2 Cart . make @7

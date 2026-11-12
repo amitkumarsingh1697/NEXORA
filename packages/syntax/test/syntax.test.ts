@@ -42,7 +42,15 @@ describe('grammars', () => {
     for (const [id, g] of Object.entries(m)) {
       const bytes = gunzipSync(readFileSync(join(grammarsDir, `${id}.wasm.gz`)));
       expect(createHash('sha256').update(bytes).digest('hex'), id).toBe(g.sha256);
-      expect(g.license, id).toMatch(/MIT|Apache|BSD|ISC/);
+      // Permissive licences, plus the two weak-copyleft grammars reviewed in ADR 0019 (their
+      // licence text ships beside them and their source commit is in the manifest).
+      expect(g.license, id).toMatch(
+        id === 'nim'
+          ? /^MPL-2\.0$/
+          : id === 'vala'
+            ? /^LGPL-2\.1-only$/
+            : /MIT|Apache|BSD|ISC|CC0-1\.0|Unlicense/,
+      );
     }
     expect(availableGrammars().sort()).toEqual(Object.keys(m).sort());
   });
@@ -215,6 +223,6 @@ describe('broken source', () => {
   });
 
   it('an unknown language has no spec', () => {
-    expect(analyseSyntax('COBOL', 'IDENTIFICATION DIVISION.')).toBeNull();
+    expect(analyseSyntax('Smalltalk', 'Object subclass: #Cart')).toBeNull();
   });
 });

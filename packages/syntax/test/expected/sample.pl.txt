@@ -1,0 +1,10 @@
+namespace App::Cart
+import List::Util @4 module
+import App::Store @5 module
+#0 class App::Cart @1-1 extends App::Base, App::Thing
+#1 method new(...%args) @7-7 recv App::Cart
+#2 method total($x) @8-8 recv App::Cart
+call #2 App::Store . new @8
+call #2 $s . save @8
+call #2 sum @8
+call #2 helper @8
