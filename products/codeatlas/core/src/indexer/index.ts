@@ -513,8 +513,9 @@ function buildAndPersist(
       docs++;
       const rec = records.get(f.path);
       if (rec) {
-        rec.status = 'partial';
-        rec.method = 'Markdown section and link reader';
+        rec.status = 'full';
+        rec.method =
+          'Markdown reader (every heading as a nested section, links and code names to repository files and symbols)';
       }
     }
   }

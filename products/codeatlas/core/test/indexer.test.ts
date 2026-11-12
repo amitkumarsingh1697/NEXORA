@@ -757,8 +757,15 @@ describe('tree and language filter (S3-2)', () => {
     const members = treeChildren(db, repoId, symbols[1]!.expand as { symbol: string });
     expect(members.map((m) => [m.label, m.symbolKind])).toEqual([['run', 'method']]);
     expect(members[0]!.expand).toBeUndefined();
-    // Files without symbols cannot be expanded; unknown parents give nothing.
-    expect(files.find((f) => f.label === 'docs/README.md')?.expand).toBeUndefined();
+    // A Markdown file expands to its sections; files without symbols cannot be expanded;
+    // unknown parents give nothing.
+    const readme = files.find((f) => f.label === 'docs/README.md');
+    expect(
+      treeChildren(db, repoId, readme!.expand as { file: string }).map((s) => s.symbolKind),
+    ).toContain('section');
+    const bare = files.filter((f) => !f.childCount);
+    expect(bare.length).toBeGreaterThan(0);
+    for (const f of bare) expect(f.expand).toBeUndefined();
     expect(treeChildren(db, repoId, { file: 'nope.ts' })).toEqual([]);
   });
 

@@ -11,7 +11,7 @@ export const VIEWER_CSS = `
 .nb-labels{position:absolute;inset:0;pointer-events:none}
 .nb-labels>div{position:absolute;left:0;top:0;white-space:nowrap;font-size:11px;color:#dbeafe;text-shadow:0 0 4px #000,0 0 8px #000;margin:-8px 0 0 8px}
 .nb-labels .nb-lbl-region{font-size:15px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;margin:-10px 0 0 -40px}
-.nb-labels .nb-r-frontend{color:#7dd3fc}.nb-labels .nb-r-backend{color:#c4b5fd}.nb-labels .nb-r-database{color:#6ee7b7}.nb-labels .nb-r-devops{color:#fcd34d}.nb-labels .nb-r-core{color:#f9a8d4}
+.nb-labels .nb-r-frontend{color:#7dd3fc}.nb-labels .nb-r-backend{color:#c4b5fd}.nb-labels .nb-r-database{color:#6ee7b7}.nb-labels .nb-r-devops{color:#fcd34d}.nb-labels .nb-r-core{color:#f9a8d4}.nb-labels .nb-r-docs{color:#bef264}
 .nb-labels .nb-lbl-sel{font-size:13px;font-weight:700;color:#fff}
 .nb-labels .nb-lbl-hover{color:#fff;font-weight:600}
 .nb-tooltip{position:absolute;pointer-events:none;background:var(--nb-panel);border:1px solid var(--nb-line);border-radius:6px;padding:3px 8px;font-size:12px}

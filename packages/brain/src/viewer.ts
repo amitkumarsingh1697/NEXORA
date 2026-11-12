@@ -39,6 +39,7 @@ export const REGION_COLORS: Record<RegionId, string> = {
   database: '#34d399',
   devops: '#fbbf24',
   core: '#f472b6',
+  docs: '#a3e635',
 };
 
 const SYNAPSE_COLORS: Record<SynapseKind, string> = {
@@ -90,6 +91,14 @@ const KIND_SIZE: Record<NeuronKind, number> = {
   synonym: 0.6,
   schema: 1.4,
   extension: 0.8,
+  dependency: 0.7,
+  plugin: 0.8,
+  task: 0.8,
+  module: 1.2,
+  bean: 1.0,
+  key: 0.45,
+  element: 0.45,
+  section: 0.6,
 };
 
 const KIND_LABEL: Record<NeuronKind, string> = {
@@ -117,6 +126,14 @@ const KIND_LABEL: Record<NeuronKind, string> = {
   synonym: 'Synonym',
   schema: 'Schema',
   extension: 'Extension',
+  dependency: 'Dependency',
+  plugin: 'Plugin',
+  task: 'Task',
+  module: 'Module',
+  bean: 'Bean',
+  key: 'Key',
+  element: 'Element',
+  section: 'Section',
 };
 
 const OVERVIEW_CAMERA: Vec3 = [3.9, 1.5, 2.8];
@@ -237,6 +254,25 @@ function cerebellum(): BrainPart {
   }
   g.computeVertexNormals();
   return { geometry: g, regionOfVertex: new Array<RegionId>(pos.count).fill('core') };
+}
+
+/** The brainstem, under the middle of the brain, where documentation sits. */
+function brainstem(): BrainPart {
+  const g = new THREE.CylinderGeometry(1, 0.8, 1, 48, 16);
+  const pos = g.getAttribute('position') as THREE.BufferAttribute;
+  const { center, radii } = LOBES.docs;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    pos.setXYZ(
+      i,
+      center[0] + v.x * radii[0] * 1.1,
+      center[1] + v.y * radii[1] * 2,
+      center[2] + v.z * radii[2] * 1.1 - v.y * 0.25,
+    );
+  }
+  g.computeVertexNormals();
+  return { geometry: g, regionOfVertex: new Array<RegionId>(pos.count).fill('docs') };
 }
 
 /** The columns of a table: name, type with size, null, key, default and reference. */
@@ -395,7 +431,7 @@ export function mountBrain(
     rim.position.set(-5, -2, -4);
     scene.add(rim);
 
-    for (const part of [hemisphere(-1), hemisphere(1), cerebellum()]) {
+    for (const part of [hemisphere(-1), hemisphere(1), cerebellum(), brainstem()]) {
       const count = part.regionOfVertex.length;
       part.geometry.setAttribute(
         'color',

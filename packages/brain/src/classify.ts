@@ -35,6 +35,11 @@ const SERVER_ONLY_WORDS =
 const BACKEND_FOLDER = new RegExp(`(^|/)(${BACKEND_WORDS})/`, 'i');
 
 const RULES: { region: RegionId; test: RegExp; reason: string }[] = [
+  {
+    region: 'docs',
+    test: /\.(md|mdx|markdown|rst|adoc|asciidoc|txt)$|(^|\/)(README|CHANGELOG|CONTRIBUTING|LICENSE|NOTICE|AUTHORS|COPYING)(\.[a-z]+)?$/i,
+    reason: 'documentation file',
+  },
   // DevOps first: CI, containers and tool configuration are never application code.
   {
     region: 'devops',
@@ -45,6 +50,11 @@ const RULES: { region: RegionId; test: RegExp; reason: string }[] = [
     region: 'devops',
     test: /(^|\/)(Dockerfile[^/]*|docker-compose[^/]*\.ya?ml|compose\.ya?ml|Makefile|Procfile|Jenkinsfile|\.gitlab-ci\.yml|vercel\.json|netlify\.toml)$/i,
     reason: 'build or deployment file',
+  },
+  {
+    region: 'devops',
+    test: /(^|\/)(pom\.xml|build\.gradle(\.kts)?|settings\.gradle(\.kts)?|gradle\.properties|libs\.versions\.toml|package\.json|Cargo\.toml|go\.(mod|work)|pyproject\.toml|setup\.cfg|requirements[^/]*\.txt|Gemfile|composer\.json|build\.sbt|[^/]+\.(csproj|fsproj|vbproj|sln)|CMakeLists\.txt|meson\.build|BUILD(\.bazel)?|WORKSPACE)$/i,
+    reason: 'build manifest',
   },
   {
     region: 'devops',
@@ -105,6 +115,10 @@ export function classifyFile(path: string | undefined, hints: PlacementHints = {
   const imports = hints.imports ?? [];
   const firstRule = (region: RegionId) => RULES.find((r) => r.region === region && r.test.test(p));
 
+  if (hints.kind === 'section') return { region: 'docs', reason: 'documentation section' };
+  const docs = firstRule('docs');
+  if (docs && !/(^|\/)(CMakeLists|requirements[^/]*)\.txt$/i.test(p))
+    return { region: 'docs', reason: docs.reason };
   // Tool and CI files win over everything else.
   const devops = firstRule('devops');
   if (devops) return { region: 'devops', reason: devops.reason };

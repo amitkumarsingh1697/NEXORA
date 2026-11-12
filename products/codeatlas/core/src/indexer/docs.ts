@@ -1,4 +1,5 @@
-import type { GraphBuilder } from './model';
+import { posix } from 'node:path';
+import type { GraphBuilder, NodeRef } from './model';
 
 export interface DocSection {
   heading: string;
@@ -64,6 +65,42 @@ export function indexMarkdown(
     data: { sections: sections.length, adr: ADR_RE.test(path) || /^#\s*ADR/im.test(text) },
   });
   const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+  // Each heading is a section symbol, nested under the nearest heading above it of a higher
+  // level, so the outline of a document can be drawn and searched.
+  const stack: { level: number; key: string; trail: string }[] = [];
+  const usedKeys = new Set<string>();
+  for (const s of sections) {
+    if (!s.level || !s.heading) continue;
+    while (stack.length && (stack[stack.length - 1] as { level: number }).level >= s.level)
+      stack.pop();
+    const parent = stack[stack.length - 1];
+    const trail = parent ? `${parent.trail} > ${s.heading}` : s.heading;
+    let key = `${path}#${trail}`;
+    if (usedKeys.has(key)) key = `${key}@${s.startLine}`;
+    usedKeys.add(key);
+    graph.addNode({
+      kind: 'symbol',
+      key,
+      name: s.heading,
+      filePath: path,
+      module: moduleOf(path),
+      symbolKind: 'section',
+      exported: false,
+      startLine: s.startLine,
+      endLine: s.endLine,
+      data: { extraction: 'markdown', structured: true, level: s.level, label: s.heading },
+    });
+    const src: NodeRef = parent ? { kind: 'symbol', key: parent.key } : { kind: 'file', key: path };
+    graph.addEdge({
+      kind: 'contains',
+      src,
+      dst: { kind: 'symbol', key },
+      confidence: 'observed',
+      evidencePath: path,
+      evidenceLine: s.startLine,
+    });
+    stack.push({ level: s.level, key, trail });
+  }
   let mentions = 0;
   for (const s of sections) {
     graph.chunks.push({
@@ -80,11 +117,8 @@ export function indexMarkdown(
       .concat([...s.body.matchAll(/\]\(([^)\s#]+)(?:#[^)]*)?\)/g)].map((m) => m[1] as string));
     for (const raw of tokens) {
       const t = raw.replace(/^\.\//, '').replace(/[()]/g, '').trim();
-      const asPath = filePaths.has(t)
-        ? t
-        : dir && filePaths.has(`${dir}/${t}`)
-          ? `${dir}/${t}`
-          : null;
+      const near = dir ? posix.normalize(`${dir}/${t}`) : posix.normalize(t);
+      const asPath = filePaths.has(t) ? t : filePaths.has(near) ? near : null;
       const line = s.startLine + (s.body.slice(0, s.body.indexOf(raw)).match(/\n/g)?.length ?? 0);
       if (asPath && !seen.has(asPath)) {
         seen.add(asPath);

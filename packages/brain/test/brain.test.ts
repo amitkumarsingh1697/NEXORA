@@ -162,6 +162,17 @@ describe('classifyFile', () => {
     ['src/lib/math.ts', 'core'],
     ['products/app/web/src/api.ts', 'frontend'],
     ['products/app/server/src/api.ts', 'backend'],
+    ['README.md', 'docs'],
+    ['docs/guide/setup.mdx', 'docs'],
+    ['CHANGELOG', 'docs'],
+    ['dist/licenses/licenses.xml', 'core'],
+    ['tools/LicenseProcessMojo.groovy', 'core'],
+    ['LICENSE.txt', 'docs'],
+    ['pom.xml', 'devops'],
+    ['services/web/build.gradle.kts', 'devops'],
+    ['settings.gradle', 'devops'],
+    ['package.json', 'devops'],
+    ['CMakeLists.txt', 'devops'],
   ])('%s → %s', (path, region) => {
     expect(classifyFile(path).region).toBe(region);
   });
@@ -239,6 +250,30 @@ describe('layoutBrain', () => {
     expect(Math.hypot(svc[0] - add[0], svc[1] - add[1], svc[2] - add[2])).toBeLessThanOrEqual(
       0.09 * Math.sqrt(3),
     );
+  });
+
+  it('places documentation in the brainstem and accepts the build, configuration and docs kinds', () => {
+    const m: BrainModel = {
+      ...structuredClone(MODEL),
+      neurons: [
+        { id: 'readme', name: 'README.md', kind: 'file', file: 'README.md' },
+        { id: 'intro', name: 'Intro', kind: 'section', file: 'README.md', parent: 'readme' },
+        { id: 'pom', name: 'pom.xml', kind: 'file', file: 'pom.xml' },
+        ...(['dependency', 'plugin', 'task', 'module', 'bean', 'key', 'element'] as const).map(
+          (kind) => ({ id: kind, name: kind, kind, file: 'pom.xml', parent: 'pom' }),
+        ),
+      ],
+      synapses: [{ source: 'readme', target: 'pom', kind: 'references', confidence: 'inferred' }],
+    };
+    const v = validateBrain(m);
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.warnings).toEqual([]);
+    const out = layoutBrain(v.model);
+    expect(out.find((n) => n.id === 'intro')?.region).toBe('docs');
+    expect(out.find((n) => n.id === 'dependency')?.region).toBe('devops');
+    const intro = out.find((n) => n.id === 'intro')!;
+    expect(inside(intro.position, LOBES.docs.center, LOBES.docs.radii)).toBeLessThan(1.5);
   });
 
   it('keeps a producer-given region and reason', () => {
