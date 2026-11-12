@@ -1,0 +1,230 @@
+{
+  "builder": {
+    "package": "tree-sitter-cli",
+    "version": "0.27.1"
+  },
+  "grammars": [
+    {
+      "id": "dart",
+      "repository": "https://github.com/UserNobody14/tree-sitter-dart",
+      "commit": "0038280b774b65c1b89ba7fec50624d8baed9fe1"
+    },
+    {
+      "id": "swift",
+      "repository": "https://github.com/alex-pinkus/tree-sitter-swift",
+      "commit": "9e3b87f66f1fd2f3b931376fd3723ab788e337c3"
+    },
+    {
+      "id": "clojure",
+      "repository": "https://github.com/sogaiu/tree-sitter-clojure",
+      "commit": "e43eff80d17cf34852dcd92ca5e6986d23a7040f"
+    },
+    {
+      "id": "commonlisp",
+      "repository": "https://github.com/tree-sitter-grammars/tree-sitter-commonlisp",
+      "commit": "32323509b3d9fe96607d151c2da2c9009eb13a2f"
+    },
+    {
+      "id": "crystal",
+      "repository": "https://github.com/crystal-lang-tools/tree-sitter-crystal",
+      "commit": "50ca9e6fcfb16a2cbcad59203cfd8ad650e25c49"
+    },
+    {
+      "id": "d",
+      "repository": "https://github.com/gdamore/tree-sitter-d",
+      "commit": "64f27931b4e6fdd75af1102c79bacbca68a8dacc"
+    },
+    {
+      "id": "elm",
+      "repository": "https://github.com/elm-tooling/tree-sitter-elm",
+      "commit": "e1e8fea161a1e66f3997855d316be2a43e4e956f"
+    },
+    {
+      "id": "erlang",
+      "repository": "https://github.com/WhatsApp/tree-sitter-erlang",
+      "commit": "62c82e67b73e13f3ef06e4c8c07ff035a8235d30"
+    },
+    {
+      "id": "fortran",
+      "repository": "https://github.com/stadelmanma/tree-sitter-fortran",
+      "commit": "72f8759dea28ff6671e0868a9ed5ad4a18413917"
+    },
+    {
+      "id": "gdscript",
+      "repository": "https://github.com/PrestonKnopp/tree-sitter-gdscript",
+      "commit": "872e2e96905892c954da4101c74b884d0155f4d8"
+    },
+    {
+      "id": "gleam",
+      "repository": "https://github.com/gleam-lang/tree-sitter-gleam",
+      "commit": "fa6d0d94804f1b342e175865a3dbeb316ee5115e"
+    },
+    {
+      "id": "hack",
+      "repository": "https://github.com/slackhq/tree-sitter-hack",
+      "commit": "1a7ded90288189746c54861ac144ede97df95081"
+    },
+    {
+      "id": "haxe",
+      "repository": "https://github.com/vantreeseba/tree-sitter-haxe",
+      "commit": "a25faf5efa842502a326ec803cfbe5a442a11e7c"
+    },
+    {
+      "id": "luau",
+      "repository": "https://github.com/tree-sitter-grammars/tree-sitter-luau",
+      "commit": "a8914d6c1fc5131f8e1c13f769fa704c9f5eb02f"
+    },
+    {
+      "id": "matlab",
+      "repository": "https://github.com/acristoffers/tree-sitter-matlab",
+      "commit": "ff2f83da49bb06128c4cfd055e7c95c05c77cded"
+    },
+    {
+      "id": "nim",
+      "repository": "https://github.com/alaviss/tree-sitter-nim",
+      "commit": "ac72ba30d16edf0be021588a9301ede4accd6cf4"
+    },
+    {
+      "id": "odin",
+      "repository": "https://github.com/tree-sitter-grammars/tree-sitter-odin",
+      "commit": "d2ca8efb4487e156a60d5bd6db2598b872629403"
+    },
+    {
+      "id": "pascal",
+      "repository": "https://github.com/Isopod/tree-sitter-pascal",
+      "commit": "042119eca2e18a60e56317fb06ee3ba5c32cb447"
+    },
+    {
+      "id": "perl",
+      "repository": "https://github.com/tree-sitter-perl/tree-sitter-perl",
+      "commit": "4a40da6d7e5e4f7205d190ff0fd901fb60d631fa"
+    },
+    {
+      "id": "purescript",
+      "repository": "https://github.com/postsolar/tree-sitter-purescript",
+      "commit": "f541f95ffd6852fbbe88636317c613285bc105af"
+    },
+    {
+      "id": "r",
+      "repository": "https://github.com/r-lib/tree-sitter-r",
+      "commit": "58a22794466c0fc15b0d3b40531db751593721e8"
+    },
+    {
+      "id": "racket",
+      "repository": "https://github.com/6cdh/tree-sitter-racket",
+      "commit": "b3cbbde75ce2de3079e33c7fe90bd41b1d45be48"
+    },
+    {
+      "id": "scheme",
+      "repository": "https://github.com/6cdh/tree-sitter-scheme",
+      "commit": "45c72463ac4260ef6e07d1c0642ed43d4e9957b4"
+    },
+    {
+      "id": "verilog",
+      "repository": "https://github.com/tree-sitter/tree-sitter-verilog",
+      "commit": "227d277b6a1a5e2bf818d6206935722a7503de08"
+    },
+    {
+      "id": "systemverilog",
+      "repository": "https://github.com/gmlarumbe/tree-sitter-systemverilog",
+      "commit": "08c5e379b9b6022d4c433a9249e6d54dedd051ba"
+    },
+    {
+      "id": "v",
+      "repository": "https://github.com/vlang/v-analyzer",
+      "commit": "7801a67d0583371265c2b50258ee3641c14dfdaf",
+      "path": "tree_sitter_v"
+    },
+    {
+      "id": "vhdl",
+      "repository": "https://github.com/jpt13653903/tree-sitter-vhdl",
+      "commit": "0d5d60b269c7f9861c2bada7cef58fe62e6e7879"
+    },
+    {
+      "id": "vala",
+      "repository": "https://github.com/vala-lang/tree-sitter-vala",
+      "commit": "97e6db3c8c73b15a9541a458d8e797a07f588ef4"
+    },
+    {
+      "id": "cobol",
+      "repository": "https://github.com/yutaro-sakamoto/tree-sitter-cobol",
+      "commit": "550020ddf42ef9b718ad897868a9308d2afcda35"
+    },
+    {
+      "id": "ada",
+      "repository": "https://github.com/briot/tree-sitter-ada",
+      "commit": "b1d2035a83c43c0c66bf249ef8188ddfd12b9ca0"
+    },
+    {
+      "id": "actionscript",
+      "repository": "https://github.com/Rileran/tree-sitter-actionscript",
+      "commit": "24919034fc78fdf9bedaac6616b6a60af20ab9b5"
+    },
+    {
+      "id": "apex",
+      "repository": "https://github.com/aheber/tree-sitter-sfapex",
+      "commit": "1a4baf203f0bf1b8ab8bcaed3a6ce011a9c1837f",
+      "path": "apex"
+    },
+    {
+      "id": "asm",
+      "repository": "https://github.com/RubixDev/tree-sitter-asm",
+      "commit": "839741fef4dab5128952334624905c82b40c7133"
+    },
+    {
+      "id": "elisp",
+      "repository": "https://github.com/Wilfred/tree-sitter-elisp",
+      "commit": "0cbf0906d9ee707c8c109422fba9cdd17ae13dcf"
+    },
+    {
+      "id": "glsl",
+      "repository": "https://github.com/tree-sitter-grammars/tree-sitter-glsl",
+      "commit": "24a6c8ef698e4480fecf8340d771fbcb5de8fbb4"
+    },
+    {
+      "id": "hlsl",
+      "repository": "https://github.com/tree-sitter-grammars/tree-sitter-hlsl",
+      "commit": "bab9111922d53d43668fabb61869bec51bbcb915"
+    },
+    {
+      "id": "wgsl",
+      "repository": "https://github.com/szebniok/tree-sitter-wgsl",
+      "commit": "40259f3c77ea856841a4e0c4c807705f3e4a2b65"
+    },
+    {
+      "id": "nix",
+      "repository": "https://github.com/nix-community/tree-sitter-nix",
+      "commit": "21daff7ec37b01539eddd1e0ac468d2070c2ed5c"
+    },
+    {
+      "id": "vue",
+      "repository": "https://github.com/tree-sitter-grammars/tree-sitter-vue",
+      "commit": "ce8011a414fdf8091f4e4071752efc376f4afb08"
+    },
+    {
+      "id": "sql",
+      "repository": "https://github.com/DerekStride/tree-sitter-sql",
+      "commit": "4cd7224bfcf1fee23227c4d626760341c9b26772"
+    },
+    {
+      "id": "make",
+      "repository": "https://github.com/tree-sitter-grammars/tree-sitter-make",
+      "commit": "70613f3d812cbabbd7f38d104d60a409c4008b43"
+    },
+    {
+      "id": "cmake",
+      "repository": "https://github.com/uyha/tree-sitter-cmake",
+      "commit": "a3ec2b2144daf7132e7ee824d8cab9610523d10f"
+    },
+    {
+      "id": "dockerfile",
+      "repository": "https://github.com/camdencheek/tree-sitter-dockerfile",
+      "commit": "971acdd908568b4531b0ba28a445bf0bb720aba5"
+    },
+    {
+      "id": "fish",
+      "repository": "https://github.com/ram02z/tree-sitter-fish",
+      "commit": "b7f1d682941e0c62dfcd6bf9ef481638351bab16"
+    }
+  ]
+}
