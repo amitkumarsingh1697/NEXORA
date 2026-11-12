@@ -46,7 +46,8 @@ export function extractTree(tree: Tree, spec: LangSpec, language: string): Synta
   let namespace: string | undefined;
   const readParam = spec.param ?? genericParam;
 
-  const walk = (n: Node, owner: number, container: number) => {
+  /** Walks `n`; returns the index of the declaration it made, or -1. */
+  const walk = (n: Node, owner: number, container: number): number => {
     if ((n.isError || n.isMissing) && !(n.isMissing && spec.optionalTokens?.includes(n.type))) {
       if (problems.length < MAX_PROBLEMS)
         problems.push({
@@ -57,6 +58,7 @@ export function extractTree(tree: Tree, spec: LangSpec, language: string): Synta
     }
     let nextOwner = owner;
     let nextContainer = container;
+    let made = -1;
 
     const ns = own(spec.namespace, n.type);
     if (ns && namespace === undefined) namespace = ns(n) ?? undefined;
@@ -70,7 +72,10 @@ export function extractTree(tree: Tree, spec: LangSpec, language: string): Synta
       if (parts?.nameText) {
         calls.push({ owner, callee: parts.nameText, name: parts.nameText, line: line(n) });
       } else if (parts?.nameString) {
-        const receiver = parts.receiver?.text.replace(/\s+/g, ' ').trim();
+        const receiver = (parts.receiverText ?? parts.receiver?.text)
+          ?.replace(/\s+/g, ' ')
+          .trim()
+          .replace(/(\?\.|\.|::|->)$/, '');
         calls.push({
           owner,
           callee: `${receiver ? `${receiver}.` : ''}${parts.nameString}`.slice(0, 120),
@@ -170,12 +175,35 @@ export function extractTree(tree: Tree, spec: LangSpec, language: string): Synta
         };
         declarations.push(d);
         const idx = declarations.length - 1;
+        made = idx;
         nextContainer = idx;
         if (/^(function|method|constructor|property)$/.test(kind)) nextOwner = idx;
         else if (owner < 0 || CONTAINER_KINDS.has(kind)) nextOwner = idx;
       }
     }
-    for (const c of n.children) if (c) walk(c, nextOwner, nextContainer);
+    const kids = n.children;
+    for (let i = 0; i < kids.length; i++) {
+      const c = kids[i];
+      if (!c) continue;
+      const d = walk(c, nextOwner, nextContainer);
+      if (d < 0) continue;
+      const trailing = own(spec.decls, c.type)?.trailing;
+      const k = declarations[d]!.kind;
+      const asOwner =
+        /^(function|method|constructor|property)$/.test(k) || nextOwner < 0 || CONTAINER_KINDS.has(k);
+      // Bodies (Dart) or further clauses (Erlang) after the declaration belong to it: their
+      // calls and nested declarations too.
+      for (let cur: Node = c; trailing; ) {
+        const body = trailing(cur);
+        const next = kids[i + 1];
+        if (!body || !next || body.startIndex !== next.startIndex) break;
+        declarations[d]!.endLine = next.endPosition.row + 1;
+        walk(next, asOwner ? d : nextOwner, d);
+        i++;
+        cur = next;
+      }
+    }
+    return made;
   };
   walk(tree.rootNode, -1, -1);
   return {

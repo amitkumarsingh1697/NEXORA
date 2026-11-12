@@ -20,6 +20,11 @@ export interface DeclRule {
   receiverName?: (n: Node) => string | null | undefined;
   /** The node whose start ends the signature. Default: the `body` field. */
   body?: (n: Node) => Node | null | undefined;
+  /**
+   * A body the grammar places after the declaration, as its next sibling (Dart's
+   * `function_signature` then `function_body`): walked as part of the declaration.
+   */
+  trailing?: (n: Node) => Node | null | undefined;
 }
 
 export interface CallParts {
@@ -33,6 +38,8 @@ export interface CallParts {
   nameText?: string;
   /** The callee's name when it is not one node (an Objective-C selector such as `add:qty:`). */
   nameString?: string;
+  /** With `nameString`: the receiver as text, when it is not one node (a Dart selector chain). */
+  receiverText?: string;
 }
 
 export interface LangSpec {

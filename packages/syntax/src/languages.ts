@@ -5,6 +5,7 @@
 import type { LangSpec } from './spec';
 import * as m from './specs/mainstream';
 import * as x from './specs/more';
+import * as l5 from './specs/l5';
 
 export const SPEC_BY_LANGUAGE: Record<string, LangSpec> = {
   Python: m.python,
@@ -37,6 +38,21 @@ export const SPEC_BY_LANGUAGE: Record<string, LangSpec> = {
   Puppet: x.puppet,
   Bicep: x.bicep,
   HCL: x.hcl,
+  Dart: l5.dart,
+  Swift: l5.swift,
+  Perl: l5.perl,
+  R: l5.r,
+  Erlang: l5.erlang,
+  Clojure: l5.clojure,
+  Scheme: l5.scheme,
+  Racket: l5.racket,
+  'Common Lisp': l5.commonlisp,
+  'Emacs Lisp': l5.elisp,
+  Luau: l5.luau,
+  Crystal: l5.crystal,
+  GLSL: { ...m.c, grammar: 'glsl' },
+  HLSL: { ...m.cpp, grammar: 'hlsl' },
+  Apex: { ...m.java, grammar: 'apex' },
 };
 
 export function specFor(language: string): LangSpec | undefined {
