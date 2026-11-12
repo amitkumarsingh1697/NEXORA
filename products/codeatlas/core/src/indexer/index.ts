@@ -22,6 +22,7 @@ import {
   type UnlistedPaths,
 } from './files';
 import { analyseNonTsFiles, type AnalyseStats } from './extract/analyse';
+import { loadScip, type ScipOptions, type ScipReport } from './scip';
 import {
   analyserOf,
   checkInventory,
@@ -106,6 +107,8 @@ export interface CoverageReport {
   };
   /** Declarations, imports and file links found by the non-TypeScript analysers. */
   otherAnalysis: AnalyseStats;
+  /** SCIP indexes read or produced for this run (absent when none was asked for). */
+  scip?: ScipReport;
   /** Database objects read from SQL files, and how their references were linked. */
   database: {
     files: number;
@@ -125,6 +128,8 @@ export interface IndexOptions {
   now?: () => Date;
   /** Analyse every file even if a previous index could be reused (S3-4). */
   full?: boolean;
+  /** SCIP indexes to read, and whether to run the source-only indexers (ADR 0018). */
+  scip?: ScipOptions;
 }
 
 const CHUNK_MAX_LINES = 150;
@@ -245,6 +250,7 @@ export function indexRepository(
       started,
       opts.adapters ?? DEFAULT_ADAPTERS,
       !opts.full,
+      opts.scip,
     );
     db.prepare(
       "UPDATE index_runs SET status = 'succeeded', finished_at = ?, coverage = ?, duration_ms = ? WHERE id = ?",
@@ -271,6 +277,7 @@ function buildAndPersist(
   started: number,
   adapters: LanguageAdapter[],
   incremental: boolean,
+  scipOpts?: ScipOptions,
 ): CoverageReport {
   progress('Discovering files');
   const disc = discoverFiles(repo.root);
@@ -383,9 +390,13 @@ function buildAndPersist(
     } else rec.status = 'full';
   }
 
+  const scip =
+    scipOpts && (scipOpts.files?.length || scipOpts.run)
+      ? loadScip(repo.root, [...paths], scipOpts, progress)
+      : undefined;
   progress('Analysing other languages and file formats');
   const otherAnalysis = analyseNonTsFiles(
-    { graph, records, allPaths: paths, moduleOf },
+    { graph, records, allPaths: paths, moduleOf, scip: scip?.resolver },
     disc.files,
     texts,
     adapterFiles,
@@ -678,6 +689,7 @@ function buildAndPersist(
     },
     inventory: { ...inventory, unlisted: disc.unlisted, summary: coverageSentence(inventory) },
     otherAnalysis,
+    ...(scip ? { scip: scip.report } : {}),
     database: {
       files: sqlFiles.length,
       filesFullyParsed: sqlFiles.filter(

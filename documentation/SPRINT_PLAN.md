@@ -126,6 +126,19 @@ The founder asked for full analysis of every language, file, method, function an
 **Status:** done 2026-11-10 (evidence in IMPLEMENTATION_STATUS.md, research R31 and R32, ADR 0017).
 **Excluded from L3, planned next:** Hibernate `hbm.xml`, JPA `orm.xml`, MyBatis mappers, Doctrine XML and YAML mappings, Flyway Java migrations and EF6 `DbMigration` (still named in the brain's unread-schema notice); raw SQL inside ORM migrations; L4 compiler-grade resolution.
 
+## Sprint L4: compiler-grade resolution (SCIP)
+
+| ID   | Item                  | Requirements | Acceptance criteria                                                                                                          |
+| ---- | --------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| L4-1 | SCIP reader           | SCIP-01      | Decoder and symbol parser tested on hand-encoded input, malformed input and real indexer output; no new dependency.          |
+| L4-2 | Resolver              | SCIP-02      | Definitions, externals, ambiguity and missing definitions told apart; overloads kept as one symbol.                          |
+| L4-3 | Links in CodeAtlas    | SCIP-03      | Observed links with the tool and line; disagreements name the earlier choice; library calls external; syntax kept otherwise. |
+| L4-4 | Indexes given and run | SCIP-04      | `--scip` and `--run-indexers`; only source-only indexers run, hardened and timed; every source reported.                     |
+| L4-5 | Real repositories     | SCIP-03      | gin with scip-go and requests with scip-python measured with and without the index; samples checked by hand (research R34).  |
+
+**Status:** done 2026-11-12 (evidence in IMPLEMENTATION_STATUS.md, research R33 and R34, ADR 0018).
+**Excluded from L4:** running indexers that build the project (by design, ADR 0018); SCIP options in the web service; Go builtins as a known set. Next: L5, about 45 more grammars compiled from source.
+
 ---
 
 ## Blocked or external track (not sprint-scheduled)

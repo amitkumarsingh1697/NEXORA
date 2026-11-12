@@ -9,10 +9,33 @@ import { createService, listen } from './server';
 import { allRegistrars } from './routes';
 
 const [cmd, ...args] = process.argv.slice(2);
+
+/**
+ * `--scip <file>` (repeatable) reads an index an indexer already wrote; `--run-indexers` runs the
+ * source-only ones found on PATH (scip-python, scip-go). Removes the flags from `args`.
+ */
+function scipFlags(a: string[]): { files: string[]; run: boolean } {
+  const files: string[] = [];
+  let run = false;
+  for (let i = 0; i < a.length;) {
+    if (a[i] === '--scip') {
+      const f = a[i + 1];
+      if (!f) throw new Error('--scip needs a .scip file');
+      files.push(f);
+      a.splice(i, 2);
+    } else if (a[i] === '--run-indexers') {
+      run = true;
+      a.splice(i, 1);
+    } else i++;
+  }
+  return { files, run };
+}
 const cfg = loadServiceConfig(process.env, {
   webDir:
     process.env.CODEATLAS_WEB_DIR || fileURLToPath(new URL('../../web/dist', import.meta.url)),
 });
+
+const SCIP_USAGE = '[--scip index.scip]… [--run-indexers]';
 
 async function main(): Promise<void> {
   switch (cmd) {
@@ -29,11 +52,13 @@ async function main(): Promise<void> {
       return;
     }
     case 'index': {
+      const scip = scipFlags(args);
       const root = args[0];
-      if (!root) throw new Error('usage: codeatlas index <path>');
+      if (!root) throw new Error(`usage: codeatlas index <path> ${SCIP_USAGE}`);
       const db = openDb(join(cfg.home, 'codeatlas.db'));
       const report = indexRepository(db, root, {
         onProgress: (m) => process.stderr.write(`… ${m}\n`),
+        scip,
       });
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       return;
@@ -42,12 +67,20 @@ async function main(): Promise<void> {
       // codeatlas brain <path> [--out file.html]: index, then write the 3D brain as one HTML file.
       const outFlag = args.indexOf('--out');
       const out = outFlag >= 0 ? args.splice(outFlag, 2)[1] : undefined;
+      const scip = scipFlags(args);
       const root = args[0];
-      if (!root) throw new Error('usage: codeatlas brain <path> [--out brain.html]');
+      if (!root) throw new Error(`usage: codeatlas brain <path> [--out brain.html] ${SCIP_USAGE}`);
       const db = openDb(join(cfg.home, 'codeatlas.db'));
       const report = indexRepository(db, root, {
         onProgress: (m) => process.stderr.write(`… ${m}\n`),
+        scip,
       });
+      for (const s of report.scip?.sources ?? [])
+        process.stderr.write(
+          s.error
+            ? `SCIP ${s.name}: not used (${s.error})\n`
+            : `SCIP ${s.name}: ${s.documents} files from ${s.tool ?? 'an indexer'}\n`,
+        );
       const brain = buildBrain(db, report.repoId);
       if (!brain) throw new Error('The repository was indexed but could not be read back.');
       const file = resolve(out ?? `${brain.source.repository || 'repository'}-brain.html`);
@@ -86,7 +119,7 @@ async function main(): Promise<void> {
     }
     default:
       process.stdout.write(
-        'usage: codeatlas <serve|index <path>|brain <path> [--out file.html]|search <repoId> <query>>\n',
+        `usage: codeatlas <serve|index <path>|brain <path> [--out file.html]|search <repoId> <query>>\n  index and brain also take ${SCIP_USAGE}\n`,
       );
       process.exitCode = cmd ? 1 : 0;
   }

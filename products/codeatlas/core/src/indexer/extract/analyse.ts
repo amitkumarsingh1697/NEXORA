@@ -8,9 +8,11 @@ import {
   CONTAINER_KINDS,
   resolveBases,
   resolveCalls,
+  type DeclRef,
   type ResolveFile,
   type SyntaxResult,
 } from '@nexora/syntax';
+import type { ScipResolver } from '@nexora/scip';
 import { posix } from 'node:path';
 import type { DiscoveredFile } from '../files';
 import type { GraphBuilder, NodeRef } from '../model';
@@ -60,6 +62,32 @@ export interface AnalyseStats {
     bases: { observed: number; inferred: number; unresolved: number };
     receivers: number;
   };
+  /** What SCIP indexes decided (ADR 0018). */
+  scip: ScipLinkStats;
+}
+
+export interface ScipLinkStats {
+  /** Files an index covers. */
+  files: number;
+  /** Calls and bases linked by the compiler's answer (observed). */
+  resolved: number;
+  /** ...of which the syntax layer had linked to the same target. */
+  agreed: number;
+  /** ...of which the syntax layer had linked to a different declaration. */
+  corrected: number;
+  /** ...of which the syntax layer had left unresolved. */
+  added: number;
+  /** Names the compiler resolved outside the repository: no link drawn, not counted unresolved. */
+  external: number;
+  /** Inferred syntax links the compiler said point outside the repository: removed. */
+  removed: number;
+  /** No answer, or several: the syntax result stands. */
+  undecided: number;
+  /**
+   * The compiler's target is in the repository but is not a declaration the syntax layer drew
+   * (a field, variable or parameter, for example): the syntax result stands.
+   */
+  notDrawn: number;
 }
 
 /** Brain-compatible symbol kinds for declarations (others are stored and searchable, not drawn). */
@@ -155,6 +183,8 @@ export interface AnalyseContext {
   records: Map<string, FileRecord>;
   allPaths: Set<string>;
   moduleOf: (p: string) => string;
+  /** Compiler-grade answers from SCIP indexes (ADR 0018), when any were given or produced. */
+  scip?: ScipResolver;
 }
 
 function setStatus(
@@ -359,6 +389,17 @@ export function analyseNonTsFiles(
       bases: { observed: 0, inferred: 0, unresolved: 0 },
       receivers: 0,
     },
+    scip: {
+      files: 0,
+      resolved: 0,
+      agreed: 0,
+      corrected: 0,
+      added: 0,
+      external: 0,
+      removed: 0,
+      undecided: 0,
+      notDrawn: 0,
+    },
   };
   const { graph, records } = ctx;
   const extractions = new Map<string, { f: DiscoveredFile; x: Extraction; keys: string[] }>();
@@ -554,9 +595,13 @@ export function analyseNonTsFiles(
     parsed.set(f.path, { f, r, keys, refIndex, targets: refs.map(() => undefined), receivers });
 
     stats.syntax.files++;
+    const scipTool = ctx.scip?.covers(f.path);
+    if (scipTool) stats.scip.files++;
     if (rec) {
-      rec.method = `Full syntax parse (${label})`;
-      rec.resolution = 'syntax';
+      rec.method = scipTool
+        ? `Full syntax parse (${label}); references resolved by ${scipTool}`
+        : `Full syntax parse (${label})`;
+      rec.resolution = scipTool ? 'compiler' : 'syntax';
       if (r.problems.length) {
         stats.syntax.withErrors++;
         const first = r.problems[0]!;
@@ -854,10 +899,95 @@ export function analyseNonTsFiles(
       importTargets: p.refIndex.map((k) => (k < 0 ? undefined : p.targets[k])),
     }));
     const keyOf = (file: string, decl: number) => parsed.get(file)?.keys[decl];
+
+    /** The declaration a SCIP definition names: same file, same name, its line inside. */
+    const declAt = (file: string, line: number, name: string): DeclRef | undefined => {
+      const p = parsed.get(file);
+      if (!p) return undefined;
+      let best: { decl: number; span: number } | undefined;
+      p.r.declarations.forEach((d, i) => {
+        if (d.name !== name || line < d.line || line > d.endLine) return;
+        const span = d.endLine - d.line;
+        if (!best || span < best.span) best = { decl: i, span };
+      });
+      return best ? { file, decl: best.decl } : undefined;
+    };
+
+    /**
+     * The compiler's answer for a name at a line, from SCIP: a target in the repository
+     * (observed), 'external' (no link, not unresolved), or undefined (the syntax result stands).
+     */
+    const compiler = (
+      file: string,
+      line: number,
+      name: string,
+      syntaxTarget: DeclRef | undefined,
+      syntaxConfidence: 'observed' | 'inferred' | 'unresolved',
+    ): 'external' | { target: DeclRef; confidence: 'observed'; detail: string } | undefined => {
+      const a = ctx.scip?.resolve(file, line, name);
+      if (!a || a.kind === 'ambiguous' || a.kind === 'undefined') {
+        if (ctx.scip?.covers(file)) stats.scip.undecided++;
+        return undefined;
+      }
+      if (a.kind === 'external') {
+        if (syntaxTarget && syntaxConfidence !== 'unresolved') {
+          if (syntaxConfidence === 'observed') {
+            // The syntax layer saw it declared in the repository: keep both views, the syntax one.
+            stats.scip.undecided++;
+            return undefined;
+          }
+          stats.scip.removed++;
+        } else stats.scip.external++;
+        return 'external';
+      }
+      // Every declaration of this symbol the syntax layer drew: the definition sites, and a
+      // same-named declaration whose name line the symbol occurs on (an overload stub or the
+      // implementation after it).
+      const sites: DeclRef[] = [];
+      const add = (t: DeclRef | undefined) => {
+        if (t && !sites.some((x) => x.file === t.file && x.decl === t.decl)) sites.push(t);
+      };
+      for (const x of a.definition.sites) add(declAt(x.path, x.line, a.definition.name));
+      for (const path of new Set(a.definition.sites.map((x) => x.path))) {
+        const lines = ctx.scip!.linesOf(a.definition.symbol, path);
+        parsed.get(path)?.r.declarations.forEach((d, i) => {
+          if (d.name === a.definition.name && lines.has(d.line)) add({ file: path, decl: i });
+        });
+      }
+      if (!sites.length) {
+        stats.scip.notDrawn++;
+        return undefined;
+      }
+      stats.scip.resolved++;
+      const lineOf = (t: DeclRef) => parsed.get(t.file)?.r.declarations[t.decl]?.line ?? 0;
+      const detail = (t: DeclRef) => `resolved by ${a.tool} to ${t.file}:${lineOf(t)}`;
+      if (!syntaxTarget || syntaxConfidence === 'unresolved') stats.scip.added++;
+      else if (sites.some((t) => t.file === syntaxTarget.file && t.decl === syntaxTarget.decl)) {
+        stats.scip.agreed++;
+        return { target: syntaxTarget, confidence: 'observed', detail: detail(syntaxTarget) };
+      } else stats.scip.corrected++;
+      // The site with the longest body: an implementation rather than an overload stub.
+      const span = (t: DeclRef) => {
+        const d = parsed.get(t.file)?.r.declarations[t.decl];
+        return d ? d.endLine - d.line : 0;
+      };
+      const target = sites.reduce((m, t) => (span(t) > span(m) ? t : m));
+      const corrected = syntaxTarget && syntaxConfidence !== 'unresolved';
+      return {
+        target,
+        confidence: 'observed',
+        detail: corrected
+          ? `${detail(target)} (name matching had chosen ${syntaxTarget.file}:${lineOf(syntaxTarget)})`
+          : detail(target),
+      };
+    };
     const unresolvedBy = new Map<string, Set<string>>();
 
-    for (const l of resolveCalls(files)) {
-      const srcKey = l.from >= 0 ? keyOf(l.file, l.from) : undefined;
+    for (const l0 of resolveCalls(files)) {
+      const srcKey = l0.from >= 0 ? keyOf(l0.file, l0.from) : undefined;
+      const c = compiler(l0.file, l0.line, l0.name, l0.target, l0.confidence);
+      if (c === 'external') continue;
+      const l = c ? { ...l0, ...c } : l0;
       const dstKey = l.target ? keyOf(l.target.file, l.target.decl) : undefined;
       if (!dstKey || l.confidence === 'unresolved') {
         stats.syntax.calls.unresolved++;
@@ -884,7 +1014,16 @@ export function analyseNonTsFiles(
       if (node) node.data = { ...node.data, unresolvedCalls: [...names] };
     }
 
-    for (const b of resolveBases(files)) {
+    for (const b0 of resolveBases(files)) {
+      const bName =
+        b0.base
+          .replace(/<.*$/s, '')
+          .split(/\.|::|\\/)
+          .filter(Boolean)
+          .pop() ?? b0.base;
+      const c = compiler(b0.file, b0.line, bName, b0.target, b0.confidence);
+      if (c === 'external') continue;
+      const b = c ? { ...b0, ...c } : b0;
       const srcKey = keyOf(b.file, b.from);
       const dstKey = b.target ? keyOf(b.target.file, b.target.decl) : undefined;
       if (!srcKey || !dstKey || b.confidence === 'unresolved') {

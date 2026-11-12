@@ -11,6 +11,7 @@ export {
   type CoverageReport,
   type IndexOptions,
 } from './indexer/index';
+export { loadScip, type ScipOptions, type ScipReport, type ScipSource } from './indexer/scip';
 export { nextRoutePath, isTestPath } from './indexer/ts-indexer';
 export { splitMarkdown } from './indexer/docs';
 export {

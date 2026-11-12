@@ -1,0 +1,22 @@
+
+¶w
+scip-go0.2.9index--output
+../go.scip--quiet--module-version0.0.0--repository-remoteexample.com/store9file:///home/claude/nexora/packages/scip/test/fixtures/go ¹
+main.goD:scip-go gomod example.com/store 0.0.0 `example.com/store`/B>2scip-go gomod github.com/golang/go/src go1.22 fmt/BL@scip-go gomod example.com/store 0.0.0 `example.com/store/store`/BUAscip-go gomod example.com/store 0.0.0 `example.com/store`/main().B	Z local 0B	L@scip-go gomod example.com/store 0.0.0 `example.com/store/store`/B	RFscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#B	local 0B
+XLscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#Add().B
+>2scip-go gomod github.com/golang/go/src go1.22 fmt/BH<scip-go gomod github.com/golang/go/src go1.22 fmt/Println().Blocal 0BZNscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#Count().B^
+Ascip-go gomod example.com/store 0.0.0 `example.com/store`/main().(2main:"go*func main()X
+:scip-go gomod example.com/store 0.0.0 `example.com/store`/(#2main:"go*package main"
+local 0(=2s:"go*var s *Store"go0÷
+store/store.goJ@scip-go gomod example.com/store 0.0.0 `example.com/store/store`/BB6scip-go gomod github.com/golang/go/src go1.22 strings/BYEscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Item#B	Z ^Jscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Item#Name.BRZFscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#B
+Z !`Lscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#items.BRQEscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Item#Blocal 0BRFscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#B	`Lscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#Add().BZ local 1Blocal 0BXLscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#items.Blocal 0BXLscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#items.BQEscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Item#BVJscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Item#Name.B $B6scip-go gomod github.com/golang/go/src go1.22 strings/B&-L@scip-go gomod github.com/golang/go/src go1.22 strings/ToUpper().B.5local 1B6:local 2BRFscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#B	`Nscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#Count().BR3local 2B)*XLscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#items.B+0Ž
+Fscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#Store keeps items.(12Store:'"go*!type Store struct{ items []Item }x
+Lscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#items.(2items:"go*struct field items []Item«
+Lscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#Add()..Add stores an item under its upper-cased name.(2Add:$"go*func (*Store).Add(name string)¤
+Nscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Store#Count().(Count returns how many items are stored.(2Count:"go*func (*Store).Count() int`
+@scip-go gomod example.com/store 0.0.0 `example.com/store/store`/(#2store:"go*package storeŽ
+Escip-go gomod example.com/store 0.0.0 `example.com/store/store`/Item#Item is a stored item.(12Item:%"go*type Item struct{ Name string }t
+Jscip-go gomod example.com/store 0.0.0 `example.com/store/store`/Item#Name.(2Name:"go*struct field Name string"
+local 0(=2s:"go*var s *Store(
+local 1(=2name:"go*var name string"
+local 2(=2s:"go*var s *Store"go0

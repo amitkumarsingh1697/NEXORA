@@ -89,6 +89,12 @@ importers:
         specifier: 4.23.15
         version: 4.23.15
 
+  packages/scip:
+    devDependencies:
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+
   packages/sql:
     dependencies:
       libpg-query:
@@ -135,6 +141,9 @@ importers:
       '@nexora/orm':
         specifier: workspace:*
         version: link:../../../packages/orm
+      '@nexora/scip':
+        specifier: workspace:*
+        version: link:../../../packages/scip
       '@nexora/sql':
         specifier: workspace:*
         version: link:../../../packages/sql
