@@ -184,6 +184,9 @@ importers:
       '@nexora/logging':
         specifier: workspace:*
         version: link:../../../packages/logging
+      '@nexora/syntax':
+        specifier: workspace:*
+        version: link:../../../packages/syntax
       '@nexora/validation':
         specifier: workspace:*
         version: link:../../../packages/validation
@@ -193,6 +196,10 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+    devDependencies:
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
 
   products/codeatlas/web:
     dependencies:

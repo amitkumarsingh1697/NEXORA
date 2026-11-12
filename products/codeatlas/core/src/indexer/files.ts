@@ -4,6 +4,7 @@
  * reason it was not read. Nothing is dropped without a record (requirement: no silent
  * omissions). Language and file type come from @nexora/languages, the single registry.
  */
+import { componentKindOf } from './sfc';
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -71,12 +72,31 @@ export interface DiscoveryResult {
   unlisted: UnlistedPaths[];
 }
 
-export const LIMITS = {
-  maxFiles: 20_000,
-  maxFileBytes: 512 * 1024,
+export interface DiscoveryLimits {
+  /** Files read and analysed; the rest are recorded as excluded. Infinity for no limit. */
+  maxFiles: number;
+  /** Larger files are recorded but not read. */
+  maxFileBytes: number;
   /** Lockfiles are often larger than source files and are only counted, so they get more room. */
+  maxLockfileBytes: number;
+}
+
+/** Defaults for the local service. The brain command lifts the file count (see brain-command.ts). */
+export const LIMITS: DiscoveryLimits = {
+  maxFiles: 20_000,
+  maxFileBytes: 4 * 1024 * 1024,
   maxLockfileBytes: 16 * 1024 * 1024,
 };
+
+const size = (bytes: number) =>
+  bytes >= 1024 * 1024 ? `${bytes / (1024 * 1024)} MiB` : `${bytes / 1024} KiB`;
+
+/** The reason recorded for a skipped file, with the limits that applied. */
+export function skipReasonText(reason: SkipReason, limits: DiscoveryLimits = LIMITS): string {
+  if (reason === 'too_large') return `larger than the ${size(limits.maxFileBytes)} per-file limit`;
+  if (reason === 'limit') return `beyond the ${limits.maxFiles.toLocaleString('en-US')}-file limit`;
+  return SKIP_REASON_TEXT[reason];
+}
 
 /**
  * Directories never walked, and never indexed even when git tracks files in them (build
@@ -88,7 +108,7 @@ export { IGNORED_DIRS, isSecretPath, looksGenerated };
 export const SKIP_REASON_TEXT: Record<SkipReason, string> = {
   secret: 'may contain credentials; never read',
   binary: 'binary content',
-  too_large: `larger than the ${LIMITS.maxFileBytes / 1024} KiB per-file limit`,
+  too_large: `larger than the ${size(LIMITS.maxFileBytes)} per-file limit`,
   generated: 'generated',
   limit: `beyond the ${LIMITS.maxFiles.toLocaleString('en-US')}-file limit`,
   ignored_dir: 'in a build-output or dependency folder',
@@ -100,9 +120,15 @@ export const SKIP_REASON_TEXT: Record<SkipReason, string> = {
 
 /** Adapter routing for a classified file. */
 export function fileLangOf(path: string, c: Classification): FileLang {
+  // Svelte, Vue and Astro components are compiled as TypeScript (see sfc.ts), and so are
+  // scripts without an extension that a `#!` line identifies.
+  const bare = !/\.[^/]*$/.test(path.slice(path.lastIndexOf('/') + 1));
+  if (c.language === 'Svelte' || c.language === 'Vue' || c.language === 'Astro')
+    return componentKindOf(path) ? 'typescript' : 'text';
   if (c.language === 'TypeScript' || c.language === 'TSX')
-    return /\.(ts|tsx|mts|cts)$/i.test(path) ? 'typescript' : 'text';
-  if (c.language === 'JavaScript') return /\.(js|jsx|mjs|cjs)$/i.test(path) ? 'javascript' : 'text';
+    return bare || /\.(ts|tsx|mts|cts)$/i.test(path) ? 'typescript' : 'text';
+  if (c.language === 'JavaScript')
+    return bare || /\.(js|jsx|mjs|cjs)$/i.test(path) ? 'javascript' : 'text';
   if (c.language === 'Markdown' || c.language === 'MDX') return 'markdown';
   if (c.language === 'JSON' || c.language === 'JSON with Comments' || c.language === 'JSON5')
     return 'json';
@@ -116,7 +142,7 @@ export function langOf(p: string): FileLang {
 
 const HEAD_BYTES = 8192;
 
-export function discoverFiles(root: string): DiscoveryResult {
+export function discoverFiles(root: string, limits: DiscoveryLimits = LIMITS): DiscoveryResult {
   const { paths, usedGit, submodules, unlisted } = listRepository(root);
   const files: DiscoveredFile[] = [];
   const skipped: SkippedFile[] = [];
@@ -154,7 +180,7 @@ export function discoverFiles(root: string): DiscoveryResult {
     bytes?: number,
   ) => {
     skipped.push({ path, reason });
-    record(path, c, status, 'not read', SKIP_REASON_TEXT[reason], bytes);
+    record(path, c, status, 'not read', skipReasonText(reason, limits), bytes);
   };
   const byName = (path: string) => classify({ path, head: null });
 
@@ -205,12 +231,12 @@ export function discoverFiles(root: string): DiscoveryResult {
       );
       continue;
     }
-    if (files.length >= LIMITS.maxFiles) {
+    if (files.length >= limits.maxFiles) {
       skip(path, byName(path), 'limit', 'excluded', size);
       continue;
     }
     const isLock = isLockfile(path);
-    const max = isLock ? LIMITS.maxLockfileBytes : LIMITS.maxFileBytes;
+    const max = isLock ? limits.maxLockfileBytes : limits.maxFileBytes;
     let buf: Buffer;
     try {
       buf = size > max ? readHead(abs, HEAD_BYTES) : readFileSync(abs);

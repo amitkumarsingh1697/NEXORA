@@ -201,15 +201,20 @@ function setRefs(o: SqlObject, c: Collected, dynamic: number[] = []) {
   if (dynamic.length) o.dynamicSql = [...new Set(dynamic)];
 }
 
-/** Parses SQL text; returns the tree or the error with its line (relative to `text`). */
-export function tryParse(text: string): { tree: Node } | { error: string; line: number } {
+/**
+ * Parses SQL text; returns the tree, or the error with its line and the byte offset of the token
+ * it stopped at (both relative to `text`; libpg-query's cursorPosition is 0-based).
+ */
+export function tryParse(
+  text: string,
+): { tree: Node } | { error: string; line: number; offset?: number } {
   try {
     return { tree: parseSync(text) };
   } catch (e) {
     const err = e as Error & { sqlDetails?: { cursorPosition?: number } };
     const pos = err.sqlDetails?.cursorPosition;
-    const line = pos !== undefined ? new Bytes(text).line(Math.max(0, pos - 1)) : 1;
-    return { error: err.message, line };
+    const line = pos !== undefined ? new Bytes(text).line(Math.max(0, pos)) : 1;
+    return { error: err.message, line, offset: pos };
   }
 }
 

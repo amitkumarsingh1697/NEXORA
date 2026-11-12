@@ -1,4 +1,6 @@
 import { realpathSync, statSync } from 'node:fs';
+import { componentKindOf, type ComponentKind } from './sfc';
+
 import { basename, extname } from 'node:path';
 import type { Db } from '../store/db';
 import { tx } from '../store/db';
@@ -16,8 +18,10 @@ import {
 } from './extract/sql';
 import {
   IGNORED_DIRS as IGNORED_DIR_NAMES,
+  LIMITS,
   discoverFiles,
   sha1,
+  type DiscoveryLimits,
   type DiscoveredFile,
   type UnlistedPaths,
 } from './files';
@@ -43,6 +47,12 @@ import {
 } from './adapters';
 import type { IncrementalInfo } from './ts-cache';
 import { isTestPath, nearest, type PackageInfo, type TsIndexStats } from './ts-indexer';
+
+const COMPONENT_NAMES: Record<ComponentKind, string> = {
+  svelte: 'Svelte',
+  vue: 'Vue',
+  astro: 'Astro',
+};
 
 export interface CoverageReport {
   repoId: number;
@@ -130,6 +140,8 @@ export interface IndexOptions {
   full?: boolean;
   /** SCIP indexes to read, and whether to run the source-only indexers (ADR 0018). */
   scip?: ScipOptions;
+  /** File count and size limits; defaults to LIMITS. */
+  limits?: Partial<DiscoveryLimits>;
 }
 
 const CHUNK_MAX_LINES = 150;
@@ -251,6 +263,7 @@ export function indexRepository(
       opts.adapters ?? DEFAULT_ADAPTERS,
       !opts.full,
       opts.scip,
+      { ...LIMITS, ...opts.limits },
     );
     db.prepare(
       "UPDATE index_runs SET status = 'succeeded', finished_at = ?, coverage = ?, duration_ms = ? WHERE id = ?",
@@ -277,10 +290,11 @@ function buildAndPersist(
   started: number,
   adapters: LanguageAdapter[],
   incremental: boolean,
-  scipOpts?: ScipOptions,
+  scipOpts: ScipOptions | undefined,
+  limits: DiscoveryLimits,
 ): CoverageReport {
   progress('Discovering files');
-  const disc = discoverFiles(repo.root);
+  const disc = discoverFiles(repo.root, limits);
   const paths = new Set(disc.files.map((f) => f.path));
   const texts = disc.texts;
   const records = disc.records;
@@ -380,6 +394,9 @@ function buildAndPersist(
     if (!rec) continue;
     const adapter = adapters.find((a) => a.languages.includes(f.lang));
     rec.method = adapter?.name ?? 'language adapter';
+    const component = componentKindOf(f.path);
+    if (component)
+      rec.method = `${COMPONENT_NAMES[component]} component: ${component === 'astro' ? 'frontmatter, scripts' : 'scripts'}, template expressions and component tags compiled as TypeScript (TypeScript Compiler API); markup and styles are not code`;
     rec.resolution = 'compiler';
     if (failedPass1.has(f.path)) {
       rec.status = 'failed';
@@ -604,10 +621,17 @@ function buildAndPersist(
     limitations.push(
       `${inventory.counts.text.toLocaleString('en-US')} files are searchable as text only, with no structure extracted: ${textLangs}${inventory.languages.filter((l) => l.counts.text > 0).length > 12 ? ', …' : ''}.`,
     );
-  if (inventory.counts.partial)
+  if (inventory.counts.partial) {
+    const partialLangs = inventory.languages.filter((l) => l.counts.partial > 0);
     limitations.push(
-      `${inventory.counts.partial.toLocaleString('en-US')} files are partially analysed (declaration patterns, generic parsers or schema readers): their structure is shown, but not checked by a compiler, and calls between their functions are not extracted.`,
+      `${inventory.counts.partial.toLocaleString('en-US')} files are partially analysed: ${partialLangs
+        .slice(0, 12)
+        .map((l) => `${l.counts.partial.toLocaleString('en-US')} ${l.language}`)
+        .join(
+          ', ',
+        )}${partialLangs.length > 12 ? ', …' : ''}. Files read by declaration patterns or by format and schema readers show their structure, not checked by a compiler and without calls; code files with syntax errors were read except for the parts that did not parse. Languages & files gives each file's reason.`,
     );
+  }
   if (inventory.counts.failed)
     limitations.push(
       `${inventory.counts.failed.toLocaleString('en-US')} files could not be analysed (see the inventory for each reason), e.g. ${inventory.reasons

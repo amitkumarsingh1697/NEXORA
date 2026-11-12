@@ -63,6 +63,37 @@ export function blankClientInput(text: string): string {
 
 const PG_LIKE = new Set<Dialect>(['postgresql', 'generic', 'sqlite']);
 
+const QUERY_START =
+  /^(select|with|insert|update|delete|create|alter|drop|truncate|grant|revoke|comment|merge|call|copy|values|explain|table|begin|start|commit|rollback|end|abort|savepoint|release|show|set|reset|lock|vacuum|analyze|refresh|reindex|cluster|listen|notify|prepare|execute|deallocate|discard|declare|fetch|close|do)\b/i;
+
+/**
+ * Pieces of a text that holds several queries without `;` between them (generated query
+ * snapshots do this). The PostgreSQL parser finds the boundaries: where it stops at a line that
+ * starts (column 0) with a statement keyword, a new piece starts. Empty unless there are at
+ * least two pieces and every piece parses on its own.
+ */
+export function unterminatedQueries(text: string): { start: number; end: number }[] {
+  const pieces: { start: number; end: number }[] = [];
+  let start = 0;
+  for (let guard = 0; guard < 10_000; guard++) {
+    const rest = text.slice(start);
+    const r = tryParse(rest);
+    if ('tree' in r) {
+      pieces.push({ start, end: text.length });
+      return pieces.length > 1 ? pieces : [];
+    }
+    if (r.offset === undefined) return [];
+    // Start of the line holding the token the parser stopped at.
+    const stop = Buffer.from(rest, 'utf8').subarray(0, r.offset).toString('utf8').length;
+    const at = rest.lastIndexOf('\n', stop - 1) + 1;
+    if (at === 0 || !QUERY_START.test(rest.slice(at))) return [];
+    if ('error' in tryParse(rest.slice(0, at))) return [];
+    pieces.push({ start, end: start + at });
+    start += at;
+  }
+  return [];
+}
+
 export function analyseSql(text: string, language?: string): SqlResult {
   const { dialect } = detectDialect(text, language);
   const objects: SqlObject[] = [];
@@ -110,6 +141,30 @@ export function analyseSql(text: string, language?: string): SqlResult {
       charAt = st.start;
       const stmtText = src.slice(st.start, st.end);
       const parsed = tryParse(stmtText);
+      // Generated query files list queries without semicolons between them; read them as
+      // separate statements when every piece then parses.
+      const pieces = 'tree' in parsed ? [] : unterminatedQueries(stmtText);
+      const trees = pieces.map((p) => tryParse(stmtText.slice(p.start, p.end)));
+      if (pieces.length && trees.every((t) => 'tree' in t)) {
+        statements += pieces.length - 1;
+        pieces.forEach((p, k) => {
+          const t = trees[k] as Extract<ReturnType<typeof tryParse>, { tree: unknown }>;
+          const pieceAt = byteAt + Buffer.byteLength(stmtText.slice(0, p.start), 'utf8');
+          for (const s of t.tree.stmts ?? []) {
+            const start = pieceAt + (s.stmt_location ?? 0);
+            const end = s.stmt_len
+              ? start + s.stmt_len
+              : pieceAt + Buffer.byteLength(stmtText.slice(p.start, p.end), 'utf8');
+            const r = pgStatement(s.stmt, b, start, end, pieceAt);
+            objects.push(...r.objects);
+            if (r.comment) comments.push(r.comment);
+            problems.push(...r.problems);
+          }
+          understood++;
+          viaParser++;
+        });
+        continue;
+      }
       if ('tree' in parsed) {
         for (const s of parsed.tree.stmts ?? []) {
           const start = byteAt + (s.stmt_location ?? 0);
@@ -138,11 +193,14 @@ export function analyseSql(text: string, language?: string): SqlResult {
       if (r.understood) understood++;
       else if (r.problem) problems.push({ line: st.line, message: r.problem });
     }
+    const allParsed = viaParser === statements && !problems.length;
     return finish(
       {
         dialect,
-        mode: 'reader',
-        method: `${PG_PARSER}, with the ${READER} for statements it does not accept`,
+        mode: allParsed ? 'parser' : 'reader',
+        method: allParsed
+          ? `${PG_PARSER}, one query at a time`
+          : `${PG_PARSER}, with the ${READER} for statements it does not accept`,
         statements,
         understood,
         objects,

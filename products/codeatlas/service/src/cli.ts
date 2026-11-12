@@ -1,43 +1,25 @@
 #!/usr/bin/env node
-import { buildBrain, indexRepository, openDb, search } from '@nexora/codeatlas-core';
-import { renderBrainHtml } from '@nexora/brain';
-import { writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { indexRepository, openDb, search } from '@nexora/codeatlas-core';
+import { join } from 'node:path';
+import { BRAIN_USAGE, SCIP_USAGE, scipFlags, writeBrain } from './brain-command';
 import { fileURLToPath } from 'node:url';
 import { loadServiceConfig } from './config';
+import { relaunchWithLargerHeap } from './heap';
 import { createService, listen } from './server';
 import { allRegistrars } from './routes';
 
 const [cmd, ...args] = process.argv.slice(2);
 
-/**
- * `--scip <file>` (repeatable) reads an index an indexer already wrote; `--run-indexers` runs the
- * source-only ones found on PATH (scip-python, scip-go). Removes the flags from `args`.
- */
-function scipFlags(a: string[]): { files: string[]; run: boolean } {
-  const files: string[] = [];
-  let run = false;
-  for (let i = 0; i < a.length;) {
-    if (a[i] === '--scip') {
-      const f = a[i + 1];
-      if (!f) throw new Error('--scip needs a .scip file');
-      files.push(f);
-      a.splice(i, 2);
-    } else if (a[i] === '--run-indexers') {
-      run = true;
-      a.splice(i, 1);
-    } else i++;
-  }
-  return { files, run };
-}
 const cfg = loadServiceConfig(process.env, {
   webDir:
     process.env.CODEATLAS_WEB_DIR || fileURLToPath(new URL('../../web/dist', import.meta.url)),
 });
 
-const SCIP_USAGE = '[--scip index.scip]… [--run-indexers]';
-
 async function main(): Promise<void> {
+  if (cmd === 'index' || cmd === 'brain') {
+    const code = relaunchWithLargerHeap(process.argv[1]!, process.argv.slice(2));
+    if (code !== null) process.exit(code);
+  }
   switch (cmd) {
     case 'serve': {
       const { server, ctx } = createService(cfg, allRegistrars);
@@ -64,50 +46,9 @@ async function main(): Promise<void> {
       return;
     }
     case 'brain': {
-      // codeatlas brain <path> [--out file.html]: index, then write the 3D brain as one HTML file.
-      const outFlag = args.indexOf('--out');
-      const out = outFlag >= 0 ? args.splice(outFlag, 2)[1] : undefined;
-      const scip = scipFlags(args);
-      const root = args[0];
-      if (!root) throw new Error(`usage: codeatlas brain <path> [--out brain.html] ${SCIP_USAGE}`);
+      // codeatlas brain <path> [--out file.html] [--json model.json]: index, then write the brain.
       const db = openDb(join(cfg.home, 'codeatlas.db'));
-      const report = indexRepository(db, root, {
-        onProgress: (m) => process.stderr.write(`… ${m}\n`),
-        scip,
-      });
-      for (const s of report.scip?.sources ?? [])
-        process.stderr.write(
-          s.error
-            ? `SCIP ${s.name}: not used (${s.error})\n`
-            : `SCIP ${s.name}: ${s.documents} files from ${s.tool ?? 'an indexer'}\n`,
-        );
-      const brain = buildBrain(db, report.repoId);
-      if (!brain) throw new Error('The repository was indexed but could not be read back.');
-      const file = resolve(out ?? `${brain.source.repository || 'repository'}-brain.html`);
-      writeFileSync(file, renderBrainHtml(brain));
-      process.stdout.write(
-        `Architecture brain: ${brain.neurons.length} parts, ${brain.synapses.length} connections.\nOpen ${file} in a browser.\n`,
-      );
-      // Coverage is part of the result, not a detail: a partial brain must say so (QA AL-01).
-      if (brain.coverage) {
-        process.stdout.write(
-          `${brain.coverage.partial ? 'Partial coverage' : 'Coverage'}: ${brain.coverage.summary}\n`,
-        );
-        for (const g of brain.coverage.gaps) process.stdout.write(`  - ${g}\n`);
-        const inv = brain.coverage.inventory;
-        if (inv) {
-          const pct = (x: number | null) => (x === null ? 'n/a' : `${Math.round(x * 100)}%`);
-          process.stdout.write('Languages and formats (files, analysed, status):\n');
-          for (const l of inv.languages.slice(0, 20))
-            process.stdout.write(
-              `  ${l.language.padEnd(28)} ${String(l.files).padStart(7)} ${pct(l.coverage).padStart(5)}  ${l.status}\n`,
-            );
-          if (inv.languages.length > 20)
-            process.stdout.write(
-              `  … and ${inv.languages.length - 20} more (see Languages & files in the brain)\n`,
-            );
-        }
-      }
+      writeBrain(db, args, (t) => process.stdout.write(t));
       return;
     }
     case 'search': {
@@ -119,7 +60,7 @@ async function main(): Promise<void> {
     }
     default:
       process.stdout.write(
-        `usage: codeatlas <serve|index <path>|brain <path> [--out file.html]|search <repoId> <query>>\n  index and brain also take ${SCIP_USAGE}\n`,
+        `usage: codeatlas <serve|index <path>|brain <path> ${BRAIN_USAGE}|search <repoId> <query>>\n  index and brain also take ${SCIP_USAGE}\n`,
       );
       process.exitCode = cmd ? 1 : 0;
   }

@@ -15,15 +15,20 @@
     "start": "node --no-warnings --import tsx src/cli.ts serve",
     "cli": "node --no-warnings --import tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "skill": "node scripts/make-skill-brain.mjs"
   },
   "dependencies": {
-    "@nexora/brain": "workspace:*",
     "@nexora/ai": "workspace:*",
+    "@nexora/brain": "workspace:*",
     "@nexora/codeatlas-core": "workspace:*",
     "@nexora/logging": "workspace:*",
+    "@nexora/syntax": "workspace:*",
     "@nexora/validation": "workspace:*",
     "tsx": "4.23.15",
     "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }

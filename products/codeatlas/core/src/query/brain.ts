@@ -148,7 +148,7 @@ function isDevopsFile(path: string, role: unknown): boolean {
 }
 
 /** Above this many neurons the least-connected parts are left out so the page stays fast. */
-export const BRAIN_MAX_NEURONS = 6000;
+export const BRAIN_MAX_NEURONS = 100_000;
 
 /** UI frameworks whose presence in a package.json makes its package a browser app. */
 const UI_FRAMEWORKS = ['react', 'vue', 'svelte', '@angular/core', 'solid-js', 'preact'];
@@ -625,7 +625,7 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     `Built by CodeAtlas from its index${repo.headCommit ? ` at commit ${repo.headCommit.slice(0, 10)}` : ''}. Links are labelled observed (resolved by the TypeScript compiler, or a path written literally in a build, CI or container file), inferred (matched by name or convention) or unknown.`,
     'Which lobe a part sits in is inferred from its file path and the packages the file imports.',
     'Tables and columns are read from SQL files (CREATE TABLE, ALTER TABLE), Prisma schemas, Drizzle table definitions and CREATE TABLE statements inside code, with types, sizes and keys as written. A Drizzle query that names a table is an observed read or write; a Prisma call or a table named in a SQL string is inferred. Views, materialized views, functions, procedures, triggers, indexes, sequences, types, packages, policies, rules and events are read from SQL files with their parameters and columns: PostgreSQL by its own parser (bodies included, PL/pgSQL through its compiler front end), other dialects by a statement reader, and each object says which. The tables a body reads and writes and the routines it calls are matched to the schema by name: observed from the PostgreSQL parser, inferred from the statement reader. SQL built at run time (EXECUTE, sp_executesql) and the Drizzle relational query API are not linked.',
-    'Inputs and return types of TypeScript and JavaScript come from the type checker. Classes, functions and methods of other languages come from declaration patterns: their names and lines are reliable, their parameters are as written, and calls between them are not extracted. An import between two such files is drawn from the first declaration of each. Test files, type aliases and plain variables are left out.',
+    'Inputs and return types of TypeScript and JavaScript, including the scripts and templates of Svelte, Vue and Astro components, come from the type checker, which also resolves their calls (observed). Languages with a tree-sitter grammar are parsed in full: classes, functions and methods with parameters and return types as written, imports, and calls matched to a declaration by name (inferred), or resolved by a SCIP index when one was given (observed). Languages without a grammar get declarations from patterns: names, lines and parameters as written, and no calls. Languages & files says which method read each language. An import between two files outside TypeScript is drawn from the first declaration of each. Test files, type aliases and plain variables are left out.',
     'Languages & files lists every language and file type found, with how each file was processed.',
   );
   return {

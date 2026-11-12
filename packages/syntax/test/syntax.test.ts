@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, writeFileSync, copyFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -225,4 +226,26 @@ describe('broken source', () => {
   it('an unknown language has no spec', () => {
     expect(analyseSyntax('Smalltalk', 'Object subclass: #Cart')).toBeNull();
   });
+});
+
+describe('process exit', () => {
+  it('a process that parsed COBOL and Fortran exits promptly (no background optimisation of their lexers)', () => {
+    const script = [
+      "import { initSyntax, analyseSyntax } from './src/index.ts';",
+      'await initSyntax();',
+      "analyseSyntax('COBOL', '       IDENTIFICATION DIVISION.\\n       PROGRAM-ID. P.\\n');",
+      "analyseSyntax('Fortran Free Form', 'program p\\nend program p\\n');",
+    ].join('\n');
+    const t = Date.now();
+    execFileSync(
+      'node',
+      ['--no-warnings', '--import', 'tsx', '--input-type=module', '-e', script],
+      {
+        cwd: join(grammarsDir, '..'),
+        stdio: 'ignore',
+      },
+    );
+    // Without baseline-only compilation this took 40 to 60 s (research R37).
+    expect(Date.now() - t).toBeLessThan(15_000);
+  }, 60_000);
 });

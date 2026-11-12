@@ -6,6 +6,7 @@ import {
   blankClientInput,
   detectDialect,
   initSql,
+  unterminatedQueries,
   splitStatements,
   tokenize,
   type SqlObject,
@@ -431,5 +432,58 @@ describe('reference reading', () => {
       { line: 1, message: 'statement not recognised: FROBNICATE everything' },
     ]);
     expect(analyseSql('', 'SQL')).toMatchObject({ statements: 0, objects: [], problems: [] });
+  });
+});
+
+describe('query lists without semicolons', () => {
+  // The shape of generated query snapshots (for example Immich's server/src/queries/*.sql).
+  const text = [
+    '-- NOTE: This file is auto generated',
+    '',
+    '-- UserRepository.get',
+    'select',
+    '  "user"."id"',
+    'from',
+    '  "user"',
+    'where',
+    '  "user"."id" = $1',
+    '',
+    '-- UserRepository.update',
+    'update "user"',
+    'set',
+    '  "name" = $1',
+    'where',
+    '  "id" = $2',
+    '',
+  ].join('\n');
+
+  it('finds where each query starts', () => {
+    expect(unterminatedQueries(text).map((p) => text.slice(p.start).split('\n')[0])).toEqual([
+      '-- NOTE: This file is auto generated',
+      'update "user"',
+    ]);
+    // A transaction written out line by line splits into its statements.
+    const tx =
+      '-- R.replace\nbegin\ndelete from "t"\nwhere\n  "id" = $1\nrollback\n\nSHOW server_version\n';
+    expect(unterminatedQueries(tx).map((p) => tx.slice(p.start, p.end).trim())).toEqual([
+      '-- R.replace\nbegin',
+      'delete from "t"\nwhere\n  "id" = $1',
+      'rollback',
+      'SHOW server_version',
+    ]);
+    // A keyword inside a statement, or indented, never starts a new one.
+    expect(unterminatedQueries('select a\nfrom t\nwhere b in (\nselect c from d)\n')).toEqual([]);
+  });
+
+  it('parses every query with the PostgreSQL parser and reports the file as fully parsed', () => {
+    const r = analyseSql(text, 'SQL');
+    expect(r).toMatchObject({ mode: 'parser', statements: 2, understood: 2, problems: [] });
+    expect(r.parsedStatements).toBe(2);
+  });
+
+  it('keeps the old reading when a piece still does not parse', () => {
+    const r = analyseSql(`${text}\nselect from where\n`, 'SQL');
+    expect(r.mode).toBe('reader');
+    expect(r.problems.length).toBeGreaterThan(0);
   });
 });

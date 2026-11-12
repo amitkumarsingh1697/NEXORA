@@ -123,6 +123,8 @@ const OVERVIEW_CAMERA: Vec3 = [3.9, 1.5, 2.8];
 const OVERVIEW_TARGET: Vec3 = [0, 0.05, -0.1];
 const CURVE_SEGMENTS = 8;
 const MAX_PULSES = 360;
+/** Above this many parts the 3D view trades detail for speed. */
+const LARGE_BRAIN = 6000;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -365,7 +367,9 @@ export function mountBrain(
   let flying = false;
 
   if (has3d) {
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    // Large brains drop antialiasing and use simpler spheres, so each frame stays affordable.
+    const large = neurons.length > LARGE_BRAIN;
+    renderer = new THREE.WebGLRenderer({ antialias: !large, alpha: false });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     renderer.setClearColor(0x05060d, 1);
     renderer.domElement.setAttribute('aria-label', `3D brain of ${model.title}`);
@@ -438,7 +442,9 @@ export function mountBrain(
     scene.add(stem);
 
     // Neurons.
-    const sphere = new THREE.SphereGeometry(0.017, 12, 10);
+    const sphere = large
+      ? new THREE.SphereGeometry(0.017, 6, 4)
+      : new THREE.SphereGeometry(0.017, 12, 10);
     instanced = new THREE.InstancedMesh(
       sphere,
       new THREE.MeshBasicMaterial({ color: 0xffffff }),
@@ -806,15 +812,24 @@ export function mountBrain(
     const list = el('div', { class: 'nb-files' });
     for (const [file, items] of files) {
       const d = el('details');
-      if (files.length <= 6) d.open = true;
-      d.append(el('summary', {}, file));
-      const ul = el('ul');
-      for (const n of items.sort((x, y) => (x.line ?? 0) - (y.line ?? 0))) {
-        const li = el('li');
-        li.append(neuronButton(n, KIND_LABEL[n.kind].toLowerCase()));
-        ul.append(li);
+      d.append(el('summary', {}, `${file} (${items.length})`));
+      // A file's parts are listed when it is first opened, so a lobe with tens of thousands of
+      // parts opens without building a button for each one.
+      const fill = () => {
+        if (d.querySelector('ul')) return;
+        const ul = el('ul');
+        for (const n of items.sort((x, y) => (x.line ?? 0) - (y.line ?? 0))) {
+          const li = el('li');
+          li.append(neuronButton(n, KIND_LABEL[n.kind].toLowerCase()));
+          ul.append(li);
+        }
+        d.append(ul);
+      };
+      d.addEventListener('toggle', () => d.open && fill());
+      if (files.length <= 6) {
+        fill();
+        d.open = true;
       }
-      d.append(ul);
       list.append(d);
     }
     left.append(list);

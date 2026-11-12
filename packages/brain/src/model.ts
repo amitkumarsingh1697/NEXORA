@@ -302,8 +302,8 @@ export interface BrainModel {
 export type ValidationResult =
   { ok: true; model: BrainModel; warnings: string[] } | { ok: false; errors: string[] };
 
-const MAX_NEURONS = 20_000;
-const MAX_SYNAPSES = 100_000;
+const MAX_NEURONS = 100_000;
+const MAX_SYNAPSES = 400_000;
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);

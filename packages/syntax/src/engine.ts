@@ -10,12 +10,21 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
+import { setFlagsFromString } from 'node:v8';
 import { Language, Parser } from 'web-tree-sitter';
 
 let ready: Promise<void> | null = null;
 let initialised = false;
 let grammarDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'grammars');
 const loaded = new Map<string, Language | Error>();
+
+/**
+ * Grammars compiled with V8's baseline compiler only. Their generated lexers are single functions
+ * so large that V8's optimising compiler spends 8 s (Fortran) to 60 s (COBOL) of one CPU on them
+ * in the background after the first parse, and Node waits for that before the process can exit
+ * (research R37). Baseline code parses these languages fast enough; nothing else changes.
+ */
+export const BASELINE_ONLY_GRAMMARS: ReadonlySet<string> = new Set(['cobol', 'fortran']);
 
 /** Where the gzipped grammars are (a bundled copy, such as the ArchLens skill, sets its own). */
 export function setGrammarDir(dir: string): void {
@@ -75,7 +84,16 @@ export function grammar(id: string): Language | Error {
     const wasm = (
       globalThis as unknown as { WebAssembly: { Module: new (b: Uint8Array) => unknown } }
     ).WebAssembly;
-    out = Language.loadSync(new wasm.Module(bytes) as Parameters<typeof Language.loadSync>[0]);
+    const baselineOnly = BASELINE_ONLY_GRAMMARS.has(id);
+    // V8 reads the flag when it compiles a module, so it applies to this grammar alone.
+    if (baselineOnly) setFlagsFromString('--liftoff-only');
+    let module: unknown;
+    try {
+      module = new wasm.Module(bytes);
+    } finally {
+      if (baselineOnly) setFlagsFromString('--no-liftoff-only');
+    }
+    out = Language.loadSync(module as Parameters<typeof Language.loadSync>[0]);
   } catch (e) {
     out = new Error(`grammar ${id} could not be loaded: ${(e as Error).message}`);
   }
