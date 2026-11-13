@@ -34,6 +34,7 @@ import {
   readDelimited,
   readDot,
   readGettext,
+  readGradle,
   readMakefile,
   readRequirements,
   readSln,
@@ -369,6 +370,107 @@ function resolveLink(
   return undefined;
 }
 
+const GRADLE = new Set(['Gradle', 'Gradle Kotlin DSL']);
+
+/** Source files a class name can live in, by extension. */
+const CLASS_SOURCE = /\.(java|kt|groovy|scala)$/;
+
+/**
+ * Links each class name written in configuration (a Spring bean's class, a servlet class…)
+ * to its source file: `com.acme.Svc` matches the one file whose path ends in
+ * `com/acme/Svc.java` (or .kt, .groovy, .scala). The link goes to the class itself when the
+ * file declares it. Matched by path convention, so inferred.
+ */
+function linkClassNames(
+  ctx: AnalyseContext,
+  refs: { f: DiscoveredFile; l: Link }[],
+  stats: AnalyseStats,
+) {
+  if (!refs.length) return;
+  const bySimpleName = new Map<string, string[]>();
+  for (const p of ctx.allPaths) {
+    if (!CLASS_SOURCE.test(p)) continue;
+    const base = posix.basename(p).replace(CLASS_SOURCE, '');
+    const list = bySimpleName.get(base);
+    if (list) list.push(p);
+    else bySimpleName.set(base, [p]);
+  }
+  for (const { f, l } of refs) {
+    const fqn = l.target.replace(/\$.*$/, '');
+    const simple = fqn.slice(fqn.lastIndexOf('.') + 1);
+    const suffix = fqn.replace(/\./g, '/');
+    const hits = (bySimpleName.get(simple) ?? []).filter(
+      (p) =>
+        p.replace(CLASS_SOURCE, '') === suffix ||
+        p.replace(CLASS_SOURCE, '').endsWith(`/${suffix}`),
+    );
+    if (hits.length !== 1 || hits[0] === f.path) {
+      stats.links.unresolved++;
+      continue;
+    }
+    const path = hits[0] as string;
+    const classKey = `${path}#${simple}`;
+    const dst: NodeRef = ctx.graph.get({ kind: 'symbol', key: classKey })
+      ? { kind: 'symbol', key: classKey }
+      : { kind: 'file', key: path };
+    const fromKey = l.fromSymbol ? `${f.path}#${l.fromSymbol}` : undefined;
+    const src: NodeRef =
+      fromKey && ctx.graph.get({ kind: 'symbol', key: fromKey })
+        ? { kind: 'symbol', key: fromKey }
+        : { kind: 'file', key: f.path };
+    stats.links.resolved++;
+    ctx.graph.addEdge({
+      kind: 'references',
+      src,
+      dst,
+      confidence: 'inferred',
+      evidencePath: f.path,
+      ...(l.line ? { evidenceLine: l.line } : {}),
+      detail: `${l.detail ?? 'class named in configuration'}: ${l.target} (matched to ${path} by package path)`,
+    });
+  }
+}
+
+/**
+ * Links a Maven dependency to the POM in this repository that builds that artifact, so the
+ * module graph is visible: by `groupId:artifactId` (observed: the coordinates match exactly),
+ * or by artifactId alone when only one POM has it and the groupId is a property (inferred).
+ */
+function linkMavenModules(ctx: AnalyseContext, files: DiscoveredFile[], stats: AnalyseStats) {
+  const byCoord = new Map<string, string>();
+  const byArtifact = new Map<string, string[]>();
+  for (const f of files) {
+    if (!/(^|\/)pom\.xml$/.test(f.path) && f.role !== 'maven') continue;
+    const facts = ctx.graph.get({ kind: 'file', key: f.path })?.data?.facts as
+      Record<string, unknown> | undefined;
+    const a = typeof facts?.artifactId === 'string' ? facts.artifactId : undefined;
+    if (!a) continue;
+    if (typeof facts?.groupId === 'string') byCoord.set(`${facts.groupId}:${a}`, f.path);
+    byArtifact.set(a, [...(byArtifact.get(a) ?? []), f.path]);
+  }
+  if (!byArtifact.size) return;
+  for (const n of [...ctx.graph.nodes.values()]) {
+    if (n.kind !== 'symbol' || n.symbolKind !== 'dependency' || !n.filePath) continue;
+    const label = typeof n.data?.label === 'string' ? n.data.label : n.name;
+    const [g, a] = label.split(':');
+    if (!a) continue;
+    const exact = byCoord.get(`${g}:${a}`);
+    const only = byArtifact.get(a);
+    const target = exact ?? (only?.length === 1 && g?.includes('${') ? only[0] : undefined);
+    if (!target || target === n.filePath) continue;
+    stats.links.resolved++;
+    ctx.graph.addEdge({
+      kind: 'references',
+      src: { kind: 'symbol', key: n.key },
+      dst: { kind: 'file', key: target },
+      confidence: exact ? 'observed' : 'inferred',
+      evidencePath: n.filePath,
+      ...(n.startLine ? { evidenceLine: n.startLine } : {}),
+      detail: `depends on the module built by ${target}`,
+    });
+  }
+}
+
 export function analyseNonTsFiles(
   ctx: AnalyseContext,
   files: DiscoveredFile[],
@@ -425,12 +527,15 @@ export function analyseNonTsFiles(
     }
   >();
 
+  /** Class names written in configuration, matched to their source after every file is read. */
+  const classRefs: { f: DiscoveredFile; l: Link }[] = [];
   const addSymbols = (f: DiscoveredFile, syms: StructSymbol[], declKindData = true) => {
     const keyOf = new Map<string, string>();
     for (const s of syms) {
       const qname = s.parent ? `${s.parent}.${s.name}` : s.name;
       const key = `${f.path}#${qname}`;
       keyOf.set(s.name, key);
+      keyOf.set(qname, key);
       graph.addNode({
         kind: 'symbol',
         key,
@@ -442,6 +547,8 @@ export function analyseNonTsFiles(
         startLine: s.line,
         data: {
           extraction: 'pattern',
+          structured: true,
+          ...(s.parent ? { label: s.name } : {}),
           language: f.language,
           ...(declKindData ? { declKind: s.kind } : {}),
         },
@@ -468,15 +575,23 @@ export function analyseNonTsFiles(
         facts: Object.fromEntries(Object.entries(r.facts).filter(([, v]) => v !== undefined)),
       };
     for (const l of r.links) {
+      if (l.classRef) {
+        classRefs.push({ f, l });
+        continue;
+      }
       const hit = resolveLink(l, f, ctx.allPaths);
       if (!hit || hit.path === f.path) {
         stats.links.unresolved++;
         continue;
       }
       stats.links.resolved++;
+      const from: NodeRef =
+        l.fromSymbol && graph.get({ kind: 'symbol', key: `${f.path}#${l.fromSymbol}` })
+          ? { kind: 'symbol', key: `${f.path}#${l.fromSymbol}` }
+          : fileRef(f.path);
       graph.addEdge({
         kind: l.kind,
-        src: fileRef(f.path),
+        src: from,
         dst: fileRef(hit.path),
         confidence: hit.inferred ? 'inferred' : 'observed',
         evidencePath: f.path,
@@ -492,6 +607,21 @@ export function analyseNonTsFiles(
             .join('; ') || undefined,
       });
     }
+  };
+
+  /** Gradle plugins, dependencies, tasks and project links, on top of the script's parse. */
+  const addGradle = (f: DiscoveredFile, text: string, rec: FileRecord | undefined) => {
+    let g: StructuredResult;
+    try {
+      g = readGradle(f.path, text);
+    } catch (e) {
+      if (rec)
+        rec.reason = `${rec.reason ? `${rec.reason}; ` : ''}Gradle reader error: ${(e as Error).message.slice(0, 120)}`;
+      return;
+    }
+    addSymbols(f, g.symbols);
+    addFactsAndLinks(f, g);
+    if (rec) rec.method = `${rec.method}; ${g.method}`;
   };
 
   /** Adds one parsed file's declarations to the graph and records its status. */
@@ -658,6 +788,7 @@ export function analyseNonTsFiles(
       }
       if (r && !(r instanceof Error)) {
         addParsed(f, r, rec);
+        if (GRADLE.has(f.language)) addGradle(f, text, rec);
         if (f.language === 'HCL') {
           // Terraform module sources are folders: the HCL reader links them.
           try {
@@ -761,6 +892,7 @@ export function analyseNonTsFiles(
         if (fallback)
           rec.reason = `syntax parser not used (${fallback.slice(0, 160)})${rec.reason ? `; ${rec.reason}` : ''}`;
       }
+      if (GRADLE.has(f.language)) addGradle(f, text, rec);
       bump('declarations');
       stats.filesAnalysed++;
       continue;
@@ -799,6 +931,9 @@ export function analyseNonTsFiles(
     addSymbols(f, r.symbols);
     addFactsAndLinks(f, r);
   }
+
+  linkClassNames(ctx, classRefs, stats);
+  linkMavenModules(ctx, files, stats);
 
   // Pass 2: resolve imports now that every file's declarations are known.
   const idx = new PathIndex(ctx.allPaths);

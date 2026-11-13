@@ -1,9 +1,10 @@
 # User guide
 
-This guide covers both Nexora products as they stand at the end of Sprint 2 (2026-11-03). For what is not built or not verified yet, see [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
+This guide covers both Nexora products and the ArchLens skill as they stand on 2026-11-13 (sprint L7). For what is not built or not verified yet, see [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 
 - [CVForge](#cvforge-resume-intelligence): tailor a resume to a job using only evidence you can stand behind.
-- [CodeAtlas](#codeatlas-architecture-brain): understand a TypeScript or JavaScript repository on your own machine.
+- [CodeAtlas](#codeatlas-architecture-brain): understand a repository in any language on your own machine.
+- [ArchLens](#archlens-claude-skill): ask Claude about a repository's architecture, or have it draw the architecture brain.
 
 Setup commands for developers are in the repository [README](../../README.md).
 
@@ -116,20 +117,21 @@ Indexing runs in the background. While it runs you can click **Cancel indexing**
 
 Open a repository to see these tabs:
 
-| Tab          | What it shows                                                                                                                                                                                                                                                                                     |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Overview     | Coverage report: files analysed, symbols, routes, how many calls were resolved, branch and commit, manifests, declared frameworks, language adapters and unsupported languages, integrations found, incremental indexing status, and what was skipped and why                                     |
-| Structure    | A collapsible tree: modules, then files, then classes, functions and their members. Expands one level at a time, and can be filtered by language                                                                                                                                                  |
-| Modules      | Modules with size and test counts, and import cycles between modules                                                                                                                                                                                                                              |
-| Dependencies | The import graph for a module or the whole repository, optionally including external packages, filtered by language if you choose                                                                                                                                                                 |
-| Integrations | Environment variables, configuration files, HTTP services and databases the code uses, each with the lines that use them (inferred, never their values)                                                                                                                                           |
-| Flows        | From a route or entry point, the chain of calls it makes                                                                                                                                                                                                                                          |
-| Risk         | Files ranked by churn, size and missing tests; import cycles; files that look like credentials (listed by path only, never read)                                                                                                                                                                  |
-| Ownership    | Who changed which files, from git history                                                                                                                                                                                                                                                         |
-| Knowledge    | Markdown documents and architecture decision records, plus **Module documentation**: a generated page per module (exports, dependencies, routes, integrations, with citations). **Download Markdown** saves it; **Write overview with AI** adds a model-written summary when a model is available |
-| Search       | Full-text search over code and docs, optionally limited to one language                                                                                                                                                                                                                           |
-| Ask          | Questions answered from the code, with citations                                                                                                                                                                                                                                                  |
-| Investigate  | Take a bug from description to an approved, merged fix                                                                                                                                                                                                                                            |
+| Tab          | What it shows                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Brain        | The whole repository as a 3D brain with six lobes: Frontend, Backend, Database, DevOps, Core & shared and Documentation. Click a lobe to go inside and a part for its details: a method's inputs and output and who calls it, a table's columns, a build file's dependencies, plugins and tasks, a document's sections. **Diagrams** draws ER, schema and class diagrams; **Languages & files** lists every file with its status. Search finds any part |
+| Overview     | Coverage report: files analysed, symbols, routes, how many calls were resolved, branch and commit, manifests, declared frameworks, language adapters and unsupported languages, integrations found, incremental indexing status, and what was skipped and why                                                                                                                                                                                           |
+| Structure    | A collapsible tree: modules, then files, then classes, functions and their members. Expands one level at a time, and can be filtered by language                                                                                                                                                                                                                                                                                                        |
+| Modules      | Modules with size and test counts, and import cycles between modules                                                                                                                                                                                                                                                                                                                                                                                    |
+| Dependencies | The import graph for a module or the whole repository, optionally including external packages, filtered by language if you choose                                                                                                                                                                                                                                                                                                                       |
+| Integrations | Environment variables, configuration files, HTTP services and databases the code uses, each with the lines that use them (inferred, never their values)                                                                                                                                                                                                                                                                                                 |
+| Flows        | From a route or entry point, the chain of calls it makes                                                                                                                                                                                                                                                                                                                                                                                                |
+| Risk         | Files ranked by churn, size and missing tests; import cycles; files that look like credentials (listed by path only, never read)                                                                                                                                                                                                                                                                                                                        |
+| Ownership    | Who changed which files, from git history                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Knowledge    | Markdown documents and architecture decision records, plus **Module documentation**: a generated page per module (exports, dependencies, routes, integrations, with citations). **Download Markdown** saves it; **Write overview with AI** adds a model-written summary when a model is available                                                                                                                                                       |
+| Search       | Full-text search over code and docs, optionally limited to one language                                                                                                                                                                                                                                                                                                                                                                                 |
+| Ask          | Questions answered from the code, with citations                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Investigate  | Take a bug from description to an approved, merged fix                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 Every relationship is labelled **observed** (seen directly in code), **inferred** (likely, with the reason) or **unknown**. Click any node to see its details and the source lines behind it.
 
@@ -175,3 +177,33 @@ Set these environment variables before starting the service:
 | `AI_REMOTE_CONSENT`                                          | not set                                         | Must be `true` before any code is sent to a hosted provider |
 
 CodeAtlas needs Node.js 22.13 or later with SQLite full-text search (FTS5). If your Node build lacks FTS5, CodeAtlas stops with a message saying so.
+
+### 9. What CodeAtlas reads
+
+CodeAtlas identifies every file in the repository and reads each one as deeply as it can. **Overview → Languages & files** shows, for every file, whether it was fully analysed, partially analysed, read as text only, or not read, and why.
+
+- **Code:** TypeScript and JavaScript (with Svelte, Vue and Astro components) through the TypeScript compiler, and 71 more languages through tree-sitter grammars: classes, methods with their parameters and return types, imports and calls.
+- **Databases:** tables, columns, views, procedures, functions and triggers from SQL files, and models and migrations from 23 ORM frameworks.
+- **Build and configuration:** every key of JSON, YAML and TOML files and every element of XML files, with their lines but never their values. Maven, Gradle and npm dependencies, plugins and tasks; a dependency on a module the repository builds is linked to it. Class names in Spring and other XML files are linked to their Java classes.
+- **Documentation:** every Markdown heading as a section, with links to the files and code it mentions. AsciiDoc and reStructuredText headings and includes are read too.
+
+The limits are listed in [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
+
+---
+
+## ArchLens (Claude skill)
+
+ArchLens teaches Claude to answer questions about a repository with evidence: each claim is labelled **observed** (with the file and line), **inferred** (with the reasoning) or **unknown**.
+
+### 1. Install
+
+- **Claude Code:** copy the `skills/archlens` folder to `~/.claude/skills/archlens/`.
+- **Claude app:** zip the `archlens` folder (`cd skills && zip -r archlens-skill.zip archlens`) and upload the zip under **Settings → Capabilities → Skills**. The zip has about 20 files; the app refuses zips with more than 200.
+
+### 2. Ask
+
+Type `/archlens` followed by your question, or just ask, for example "trace what happens when a user logs in" or "what breaks if I change the orders table?".
+
+### 3. Get an architecture brain
+
+Ask "make an architecture brain of https://github.com/owner/repo". Claude clones the repository into a temporary folder, runs the bundled CodeAtlas indexer (Node.js 22.5 or later, nothing to install) and gives you one HTML file. Open it in any browser, even offline: it is the same brain, diagrams and **Languages & files** inventory as in CodeAtlas. Claude also tells you, in its reply, what the brain does not cover.

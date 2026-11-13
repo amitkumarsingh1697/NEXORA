@@ -54,6 +54,16 @@ test('CodeAtlas', async ({ page }) => {
   await brain.getByRole('button', { name: /^Backend/ }).click();
   await page.waitForTimeout(2500);
   await shot(page, 'codeatlas-brain-backend');
+  // Build manifests and configuration with their dependencies, then documentation sections.
+  await brain.getByRole('button', { name: '← Whole brain' }).click();
+  await brain.getByRole('button', { name: /^DevOps/ }).click();
+  await page.waitForTimeout(2500);
+  await shot(page, 'codeatlas-brain-devops');
+  await brain.getByRole('button', { name: '← Whole brain' }).click();
+  await brain.getByRole('button', { name: /^Documentation/ }).click();
+  await page.waitForTimeout(2500);
+  await shot(page, 'codeatlas-brain-docs');
+  await brain.getByRole('button', { name: '← Whole brain' }).click();
   await brain.getByRole('searchbox', { name: 'Search the brain' }).fill('validateBrain');
   await brain
     .getByRole('option', { name: /^validateBrain/ })

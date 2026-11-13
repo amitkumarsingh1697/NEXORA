@@ -23,12 +23,20 @@ export interface Link {
   dir?: boolean;
   /** A conventional file name to look for when `dir` is set (Dockerfile, pom.xml…). */
   defaultFile?: string[];
+  /**
+   * The target is a fully qualified class name (`com.acme.Svc`), not a path: the caller
+   * matches it to the source file whose path ends in that name (`com/acme/Svc.java`).
+   */
+  classRef?: boolean;
+  /** The structured symbol (its full dotted path) the link starts from, instead of the file. */
+  fromSymbol?: string;
 }
 
 export interface StructSymbol {
   name: string;
   kind: string;
   line: number;
+  /** The full dotted path of the parent symbol (`a.b` for the key `c` in `a.b.c`). */
   parent?: string;
 }
 
@@ -127,6 +135,166 @@ function result(
   extra: Partial<StructuredResult> = {},
 ): StructuredResult {
   return { level, method, facts: {}, links: [], symbols: [], ...extra };
+}
+
+// ---------------------------------------------------------------- key trees
+
+/** Most keys or elements read from one file; past it the file is marked partial. */
+export const MAX_TREE_SYMBOLS = 5000;
+export const MAX_TREE_DEPTH = 32;
+/** Array items descended into, per array. */
+const MAX_TREE_ITEMS = 25;
+
+/** Offset → 1-based line, for one text at a time. */
+function lineAtOffset(text: string, offset: number): number {
+  lineOf(text, '', 0); // fills the line cache for this text
+  const s = (lineCache as { starts: number[] }).starts;
+  let lo = 0;
+  let hi = s.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if ((s[mid] as number) <= offset) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo + 1;
+}
+
+export type KeyStyle = 'json' | 'yaml' | 'toml';
+
+/**
+ * Every key of a parsed JSON, YAML or TOML document, nested, as symbols (values are never
+ * kept: they can be credentials). Array items that hold objects are named `[0]`, `[1]`…
+ * Lines come from finding each key in the text after its parent and previous sibling, so a
+ * key written twice can be cited at the first of the two. `kindOf` names special keys
+ * (dependencies, scripts…) by their dotted path; others are `key`.
+ */
+export function keyTree(
+  doc: unknown,
+  text: string,
+  style: KeyStyle,
+  kindOf: (path: string[], key: string) => string | undefined = () => undefined,
+  parentPath?: string,
+): { symbols: StructSymbol[]; complete: boolean } {
+  const symbols: StructSymbol[] = [];
+  let complete = true;
+  const needleOf = (k: string) =>
+    style === 'json' ? JSON.stringify(k) : /^[\w.-]+$/.test(k) ? k : JSON.stringify(k);
+  const walk = (v: unknown, path: string[], dotted: string | undefined, from: number) => {
+    const entries: [string, unknown][] = Array.isArray(v)
+      ? v.slice(0, MAX_TREE_ITEMS).map((x, i) => [`[${i}]`, x])
+      : isObj(v)
+        ? Object.entries(v)
+        : [];
+    if (
+      Array.isArray(v) &&
+      v.length > MAX_TREE_ITEMS &&
+      v.some((x) => isObj(x) || Array.isArray(x))
+    )
+      complete = false;
+    let cursor = from;
+    for (const [k, child] of entries) {
+      const nested = isObj(child) || Array.isArray(child);
+      // Items of an array are named only when they hold keys of their own.
+      if (k.startsWith('[') && !nested) continue;
+      if (symbols.length >= MAX_TREE_SYMBOLS) {
+        complete = false;
+        return;
+      }
+      // An array item starts at its opening brace (JSON) or dash (YAML).
+      const opener = style === 'json' ? (isObj(child) ? '{' : '[') : style === 'yaml' ? '-' : '[';
+      let at = text.indexOf(k.startsWith('[') ? opener : needleOf(k), cursor);
+      if (at < 0 && !k.startsWith('[')) at = text.indexOf(needleOf(k), from);
+      const pos = at < 0 ? cursor : at;
+      if (at >= 0) cursor = at + 1;
+      symbols.push({
+        name: k,
+        kind: kindOf(path, k) ?? 'key',
+        line: lineAtOffset(text, pos),
+        ...(dotted ? { parent: dotted } : {}),
+      });
+      if (!nested) continue;
+      if (path.length + 1 >= MAX_TREE_DEPTH) {
+        if (isObj(child) ? Object.keys(child).length : (child as unknown[]).length)
+          complete = false;
+        continue;
+      }
+      walk(child, [...path, k], dotted ? `${dotted}.${k}` : k, pos + 1);
+    }
+  };
+  walk(doc, [], parentPath, 0);
+  return { symbols, complete };
+}
+
+/** Dependency and script sections of package manifests, by top-level key. */
+const MANIFEST_SECTIONS: Record<string, string> = {
+  dependencies: 'dependency',
+  devDependencies: 'dependency',
+  peerDependencies: 'dependency',
+  optionalDependencies: 'dependency',
+  bundledDependencies: 'dependency',
+  'dev-dependencies': 'dependency',
+  'build-dependencies': 'dependency',
+  require: 'dependency',
+  'require-dev': 'dependency',
+  libraries: 'dependency',
+  packages: 'dependency',
+  'dev-packages': 'dependency',
+  deps: 'dependency',
+  plugins: 'plugin',
+  scripts: 'task',
+  tasks: 'task',
+};
+
+/** Names keys one level under a manifest section (`dependencies.zod` is a dependency). */
+function manifestKind(path: string[], _key: string): string | undefined {
+  const top = path[0];
+  if (path.length === 1 && top && MANIFEST_SECTIONS[top]) return MANIFEST_SECTIONS[top];
+  // Cargo [target.'cfg(..)'.dependencies], poetry [tool.poetry.dependencies]
+  const last = path[path.length - 1];
+  if (path.length > 1 && last && /^(dev-|build-)?dependencies$|^group$/.test(last))
+    return last === 'group' ? undefined : 'dependency';
+  return undefined;
+}
+
+/**
+ * Adds every key of `doc` to a reader's result, unless the reader already drew the file's
+ * meaning as symbols. A reader that only listed top-level keys becomes `full` when every key
+ * fit; past MAX_TREE_SYMBOLS the result is `partial` and says how far it got.
+ */
+function withKeys(
+  r: StructuredResult,
+  docs: unknown[],
+  text: string,
+  style: KeyStyle,
+  label: string,
+): StructuredResult {
+  if (r.error || r.skipReason || r.symbols.length || /^Lockfile/.test(r.method)) return r;
+  const symbols: StructSymbol[] = [];
+  let complete = true;
+  docs.forEach((d, i) => {
+    let parent: string | undefined;
+    if (docs.length > 1) {
+      parent = `document ${i + 1}`;
+      symbols.push({ name: parent, kind: 'key', line: 1 });
+    }
+    const t = keyTree(d, text, style, manifestKind, parent);
+    const room = MAX_TREE_SYMBOLS - symbols.length;
+    if (t.symbols.length > room || !t.complete) complete = false;
+    symbols.push(...t.symbols.slice(0, Math.max(0, room)));
+  });
+  if (!symbols.length) return r;
+  const generic = /top-level keys only|tables only|structure only/.test(r.method);
+  const templated = /template placeholders not rendered/.test(r.method);
+  const what = complete
+    ? 'every key, nested'
+    : `first ${MAX_TREE_SYMBOLS} keys, ${MAX_TREE_DEPTH} levels deep`;
+  const method = generic
+    ? `${label} (${what}; values not kept)${templated ? '; template placeholders not rendered' : ''}`
+    : r.method.endsWith(')')
+      ? `${r.method.slice(0, -1).replace(/: key names( only)?$/, '')}; ${what})`
+      : `${r.method} (${what})`;
+  const level = !complete || templated ? 'partial' : generic ? 'full' : r.level;
+  return { ...r, level, method, symbols };
 }
 
 // ---------------------------------------------------------------- JSON
@@ -231,25 +399,35 @@ export function readJson(
   role: string | undefined,
   language: string,
 ): StructuredResult {
-  const r = readJsonDocument(path, text, role, language);
-  if (!r.error) return r;
+  const out: { docs?: unknown[] } = {};
+  const keyed = (r: StructuredResult, t = text) =>
+    /Jupyter|JSON Lines/.test(r.method) ? r : withKeys(r, out.docs ?? [], t, 'json', 'JSON parser');
+  const r = readJsonDocument(path, text, role, language, out);
+  if (!r.error) return keyed(r);
   if (hasTemplateSyntax(text)) {
-    const t = readJsonDocument(path, neutraliseJsonTemplates(text), role, language);
+    const neutral = neutraliseJsonTemplates(text);
+    const t = readJsonDocument(path, neutral, role, language, out);
     if (!t.error)
-      return {
-        ...t,
-        level: 'partial',
-        method: `${t.method}; template placeholders not rendered`,
-        facts: { ...t.facts, template: true },
-      };
+      return keyed(
+        {
+          ...t,
+          level: 'partial',
+          method: `${t.method}; template placeholders not rendered`,
+          facts: { ...t.facts, template: true },
+        },
+        neutral,
+      );
   }
   const parts = splitConcatenatedJson(text);
   if (parts) {
     try {
       const docs = parts.map((p) => JSON.parse(p) as unknown);
-      return result('partial', `JSON parser (${docs.length} concatenated documents)`, {
-        facts: { documents: docs.length, topLevelKeys: cap(keys(docs[0])) },
-      });
+      out.docs = docs;
+      return keyed(
+        result('partial', `JSON parser (${docs.length} concatenated documents)`, {
+          facts: { documents: docs.length, topLevelKeys: cap(keys(docs[0])) },
+        }),
+      );
     } catch {
       // not a sequence of valid documents either: report the first error
     }
@@ -262,6 +440,7 @@ function readJsonDocument(
   text: string,
   role: string | undefined,
   language: string,
+  out: { docs?: unknown[] } = {},
 ): StructuredResult {
   const method = 'JSON parser';
   let doc: unknown;
@@ -284,6 +463,7 @@ function readJsonDocument(
       });
     }
   }
+  out.docs = [doc];
   const top = keys(doc);
   const facts: Record<string, unknown> = { topLevelKeys: cap(top) };
   const links: Link[] = [];
@@ -388,8 +568,19 @@ function openApi(doc: Record<string, unknown>, text: string, method: string): St
 // ---------------------------------------------------------------- YAML
 
 export function readYaml(path: string, text: string, role: string | undefined): StructuredResult {
+  const out: { docs?: unknown[] } = {};
+  const r = readYamlTemplated(path, text, role, out);
+  return withKeys(r, out.docs ?? [], text, 'yaml', 'YAML parser');
+}
+
+function readYamlTemplated(
+  path: string,
+  text: string,
+  role: string | undefined,
+  out: { docs?: unknown[] },
+): StructuredResult {
   if (role === 'helm-template' || /(?<!\$)\{\{[-\s]*[^}\s]|\{%-?\s*\w/.test(text)) {
-    const r = readYamlDocument(path, neutraliseTemplates(text), role);
+    const r = readYamlDocument(path, neutraliseTemplates(text), role, out);
     if (r.error)
       return result('partial', 'Template (not rendered)', {
         skipReason: `Go/Helm/Jinja template syntax: not valid YAML even with its template tags replaced by placeholders (${r.error.slice(0, 100)}), so it is indexed as text`,
@@ -401,10 +592,15 @@ export function readYaml(path: string, text: string, role: string | undefined): 
       facts: { ...r.facts, template: true },
     };
   }
-  return readYamlDocument(path, text, role);
+  return readYamlDocument(path, text, role, out);
 }
 
-function readYamlDocument(path: string, text: string, role: string | undefined): StructuredResult {
+function readYamlDocument(
+  path: string,
+  text: string,
+  role: string | undefined,
+  out: { docs?: unknown[] } = {},
+): StructuredResult {
   let docs;
   try {
     docs = parseAllDocuments(text, {
@@ -427,6 +623,7 @@ function readYamlDocument(path: string, text: string, role: string | undefined):
   const values = list
     .map((d) => d.toJS({ maxAliasCount: 100 }) as unknown)
     .filter((v) => v !== null && v !== undefined);
+  out.docs = values;
   const first = values[0];
   const facts: Record<string, unknown> = {
     documents: values.length,
@@ -719,6 +916,11 @@ function readYamlDocument(path: string, text: string, role: string | undefined):
 // ---------------------------------------------------------------- TOML
 
 export function readToml(path: string, text: string): StructuredResult {
+  const out: { docs?: unknown[] } = {};
+  return withKeys(readTomlDocument(path, text, out), out.docs ?? [], text, 'toml', 'TOML parser');
+}
+
+function readTomlDocument(path: string, text: string, out: { docs?: unknown[] }): StructuredResult {
   let doc: Record<string, unknown>;
   try {
     doc = parseToml(text) as Record<string, unknown>;
@@ -727,6 +929,7 @@ export function readToml(path: string, text: string): StructuredResult {
       error: `TOML parse error: ${(e as Error).message.split('\n')[0]?.slice(0, 160)}`,
     });
   }
+  out.docs = [doc];
   const facts: Record<string, unknown> = { tables: cap(Object.keys(doc)) };
   const links: Link[] = [];
   const base = path.slice(path.lastIndexOf('/') + 1);
@@ -893,6 +1096,109 @@ const kids = (el: XmlEl | undefined, name: string) =>
   el ? el.children.filter((c) => local(c.name) === name) : [];
 const kid = (el: XmlEl | undefined, name: string) => kids(el, name)[0];
 
+/** Liquibase changes the schema reader applies (packages/orm, readLiquibaseTree). */
+const LIQUIBASE_APPLIED = new Set([
+  'createTable',
+  'addColumn',
+  'addForeignKeyConstraint',
+  'dropTable',
+  'renameTable',
+  'dropColumn',
+  'renameColumn',
+  'addPrimaryKey',
+  'addNotNullConstraint',
+  'addUniqueConstraint',
+]);
+/** Liquibase changes that move data or mark the log, not the schema. */
+const LIQUIBASE_DATA = new Set([
+  'insert',
+  'update',
+  'delete',
+  'loadData',
+  'loadUpdateData',
+  'tagDatabase',
+  'output',
+  'empty',
+  'stop',
+  'comment',
+  'rollback',
+  'preConditions',
+  'validCheckSum',
+]);
+
+/** A fully qualified class name: `com.acme.Svc`, `com.acme.Outer$Inner`. */
+const CLASS_NAME = /^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*\.[A-Z]\w*(?:\$\w+)?$/;
+
+interface XmlTreeOptions {
+  /** Names an element specially (a Maven dependency, a Spring bean…); otherwise `element`. */
+  kindOf?: (el: XmlEl) => { kind: string; name?: string } | undefined;
+}
+
+/**
+ * Every element of an XML document, nested, as symbols named by tag (and `id`, `name` or
+ * `key` attribute when there is one), plus a `references` link for every attribute value or
+ * text that is a fully qualified class name, so configuration points at the code it names.
+ */
+function xmlTree(
+  root: XmlEl,
+  opts: XmlTreeOptions = {},
+): { symbols: StructSymbol[]; links: Link[]; complete: boolean } {
+  const symbols: StructSymbol[] = [];
+  const links: Link[] = [];
+  let complete = true;
+  // Past the limit, plain elements are skipped but named ones (dependencies, plugins, beans…)
+  // are still read, under their nearest recorded ancestor.
+  const visit = (el: XmlEl, name: string, parent: string | undefined, depth: number) => {
+    const special = opts.kindOf?.(el);
+    const own = special?.name ?? name;
+    const room = symbols.length < MAX_TREE_SYMBOLS;
+    let dotted = parent;
+    if (room || (special && symbols.length < MAX_TREE_SYMBOLS * 2)) {
+      symbols.push({
+        name: own,
+        kind: special?.kind ?? 'element',
+        line: el.line,
+        ...(parent ? { parent } : {}),
+      });
+      dotted = parent ? `${parent}.${own}` : own;
+    } else complete = false;
+    if (!room) complete = false;
+    const tag = local(el.name);
+    const named = (v: string, where: string) => {
+      if (CLASS_NAME.test(v.trim()))
+        links.push({
+          kind: 'references',
+          target: v.trim(),
+          classRef: true,
+          line: el.line,
+          ...(dotted ? { fromSymbol: dotted } : {}),
+          detail: `class named in <${tag}${where}>`,
+        });
+    };
+    for (const [a, v] of Object.entries(el.attrs)) named(v, ` ${a}`);
+    if (!el.children.length && el.text) named(el.text, '');
+    if (depth + 1 >= MAX_TREE_DEPTH) {
+      if (el.children.length) complete = false;
+      return;
+    }
+    const seen = new Map<string, number>();
+    for (const c of el.children) {
+      const ident = c.attrs.id ?? c.attrs.name ?? c.attrs.key ?? c.attrs['android:name'];
+      const base = `${local(c.name)}${ident ? `[${ident}]` : ''}`;
+      const n = (seen.get(base) ?? 0) + 1;
+      seen.set(base, n);
+      visit(c, n > 1 ? `${base}[${n}]` : base, dotted, depth + 1);
+    }
+  };
+  visit(root, local(root.name), undefined, 0);
+  return { symbols, links, complete };
+}
+
+/** The XML reader's method text, with how much of the element tree was read. */
+function treeMethod(what: string, complete: boolean): string {
+  return `XML element scanner (${what}; ${complete ? 'every element, nested' : `first ${MAX_TREE_SYMBOLS} elements, ${MAX_TREE_DEPTH} levels deep`})`;
+}
+
 export function readXml(path: string, text: string, role: string | undefined): StructuredResult {
   const { root, error } = scanXml(text);
   if (error || !root)
@@ -935,7 +1241,27 @@ export function readXml(path: string, text: string, role: string | undefined): S
       deps.map((d) => `${kid(d, 'groupId')?.text}:${kid(d, 'artifactId')?.text}`),
     );
     facts.modules = kids(kid(root, 'modules'), 'module').length;
-    return result('full', 'XML element scanner (Maven POM)', { facts, links });
+    const coord = (el: XmlEl) =>
+      [kid(el, 'groupId')?.text, kid(el, 'artifactId')?.text].filter(Boolean).join(':');
+    const tree = xmlTree(root, {
+      kindOf: (el) => {
+        const t = local(el.name);
+        if (t === 'dependency' && kid(el, 'artifactId'))
+          return { kind: 'dependency', name: coord(el) };
+        if ((t === 'plugin' || t === 'extension') && kid(el, 'artifactId'))
+          return { kind: 'plugin', name: coord(el) };
+        if (t === 'profile')
+          return { kind: 'profile', name: `profile[${kid(el, 'id')?.text ?? ''}]` };
+        if (t === 'execution' && kid(el, 'id'))
+          return { kind: 'task', name: `execution[${kid(el, 'id')?.text}]` };
+        return undefined;
+      },
+    });
+    return result(tree.complete ? 'full' : 'partial', treeMethod('Maven POM', tree.complete), {
+      facts,
+      links: [...links, ...tree.links],
+      symbols: tree.symbols,
+    });
   }
   if (role === 'dotnet-project' && (rootName === 'Project' || rootName === 'Solution')) {
     const items = root.children
@@ -960,7 +1286,21 @@ export function readXml(path: string, text: string, role: string | undefined): S
           line: p.line,
           detail: 'import',
         });
-    return result('full', 'XML element scanner (.NET project)', { facts, links });
+    const tree = xmlTree(root, {
+      kindOf: (el) => {
+        const t = local(el.name);
+        if (t === 'PackageReference' && (el.attrs.Include ?? el.attrs.Update))
+          return { kind: 'dependency', name: el.attrs.Include ?? el.attrs.Update };
+        if (t === 'Target' && el.attrs.Name)
+          return { kind: 'task', name: `Target[${el.attrs.Name}]` };
+        return undefined;
+      },
+    });
+    return result(tree.complete ? 'full' : 'partial', treeMethod('.NET project', tree.complete), {
+      facts,
+      links: [...links, ...tree.links],
+      symbols: tree.symbols,
+    });
   }
   if (rootName === 'manifest' && /AndroidManifest\.xml$/.test(path)) {
     const app = kid(root, 'application');
@@ -996,17 +1336,36 @@ export function readXml(path: string, text: string, role: string | undefined): S
           dir: true,
           defaultFile: [],
         });
-    for (const s of sets)
-      for (const c of s.children)
-        if (local(c.name) === 'createTable' && c.attrs.tableName)
-          symbols.push({ name: c.attrs.tableName, kind: 'table', line: c.line });
-    facts.tablesCreated = cap(symbols.map((s) => s.name));
-    // Table names and includes only; columns, types and constraints are not read, so partial.
-    return result('partial', 'XML element scanner (Liquibase changelog)', {
-      facts,
-      links,
-      symbols,
-    });
+    const changes = sets.flatMap((s) =>
+      s.children.flatMap((c) => (local(c.name) === 'changes' ? c.children : [c])),
+    );
+    facts.tablesCreated = cap(
+      changes
+        .filter((c) => local(c.name) === 'createTable' && c.attrs.tableName)
+        .map((c) => c.attrs.tableName as string),
+    );
+    const tree = xmlTree(root);
+    // The Liquibase schema reader (packages/orm) applies these to the database schema; any
+    // other schema change is read as elements here but not applied, so the file is partial.
+    const notApplied = [
+      ...new Set(
+        changes
+          .map((c) => local(c.name))
+          .filter((n) => !LIQUIBASE_APPLIED.has(n) && !LIQUIBASE_DATA.has(n)),
+      ),
+    ];
+    const what = notApplied.length
+      ? `Liquibase changelog; ${notApplied.slice(0, 6).join(', ')}${notApplied.length > 6 ? '…' : ''} not applied to the schema`
+      : 'Liquibase changelog; every change applied to the schema';
+    return result(
+      tree.complete && !notApplied.length ? 'full' : 'partial',
+      treeMethod(what, tree.complete),
+      {
+        facts,
+        links: [...links, ...tree.links],
+        symbols: tree.symbols,
+      },
+    );
   }
   if (rootName === 'project' && kids(root, 'target').length) {
     for (const t of kids(root, 'target'))
@@ -1015,7 +1374,21 @@ export function readXml(path: string, text: string, role: string | undefined): S
       if (t.attrs.file) links.push({ kind: 'includes', target: t.attrs.file, line: t.line });
     return result('full', 'XML element scanner (Ant build)', { facts, links, symbols });
   }
-  if (
+  // Any other XML: every element, with Spring beans, servlets and filters named, and class
+  // names linked to their source.
+  const SPRING = new Set(['bean', 'servlet', 'filter', 'listener', 'persistence-unit']);
+  const tree = xmlTree(root, {
+    kindOf: (el) => (SPRING.has(local(el.name)) ? { kind: 'bean' } : undefined),
+  });
+  facts.elements = tree.symbols.length;
+  if (rootName === 'hibernate-mapping')
+    // The mapping's elements are read, but its tables and columns are not added to the schema.
+    return result(
+      'partial',
+      `${treeMethod('Hibernate mapping', tree.complete).slice(0, -1)}; tables and columns not read into the database schema)`,
+      { facts, links: tree.links, symbols: tree.symbols },
+    );
+  const known =
     rootName === 'beans' ||
     rootName === 'web-app' ||
     rootName === 'persistence' ||
@@ -1023,13 +1396,162 @@ export function readXml(path: string, text: string, role: string | undefined): S
     rootName === 'plist' ||
     rootName === 'svg' ||
     rootName === 'module' ||
-    rootName === 'resources'
-  ) {
-    facts.elements = root.children.length;
-    return result('full', `XML element scanner (${rootName})`, { facts });
+    rootName === 'resources';
+  return result(
+    tree.complete ? 'full' : 'partial',
+    treeMethod(known ? rootName : 'generic XML', tree.complete),
+    {
+      facts,
+      links: tree.links,
+      symbols: tree.symbols,
+    },
+  );
+}
+
+// ---------------------------------------------------------------- Gradle
+
+/** The bodies of every `name { … }` block, with their offsets (braces in strings ignored). */
+function blocksNamed(text: string, name: string): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = [];
+  const re = new RegExp(`(^|[^\\w.])${name}\\s*\\{`, 'g');
+  for (const m of text.matchAll(re)) {
+    const open = (m.index ?? 0) + m[0].length;
+    let depth = 1;
+    let q = '';
+    let k = open;
+    for (; k < text.length && depth; k++) {
+      const c = text[k];
+      if (q) {
+        if (c === '\\') k++;
+        else if (c === q) q = '';
+      } else if (c === '"' || c === "'") q = c;
+      else if (c === '{') depth++;
+      else if (c === '}') depth--;
+    }
+    out.push({ start: open, end: k - 1 });
   }
-  facts.children = cap([...new Set(root.children.map((c) => c.name))]);
-  return result('partial', 'XML element scanner (structure only)', { facts });
+  return out;
+}
+
+/** `:a:b` → `a/b`, the conventional folder of a Gradle project path. */
+const projectDir = (p: string) => p.replace(/^:/, '').replace(/:/g, '/');
+const GRADLE_BUILD = ['build.gradle', 'build.gradle.kts'];
+
+/**
+ * Gradle build and settings scripts (Groovy or Kotlin DSL), read by patterns on top of the
+ * syntax parse: plugins, dependencies (coordinates, version-catalog aliases and project
+ * dependencies, which link to that project's build file), tasks, included projects and
+ * applied scripts. A dependency or plugin added by code the patterns do not recognise (a
+ * loop, a helper function) is not seen.
+ */
+export function readGradle(path: string, rawText: string): StructuredResult {
+  // Comments blanked (lines kept) so commented-out dependencies are not read.
+  const text = rawText
+    .replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' '))
+    .replace(/(^|[^:"'])\/\/[^\n]*/g, (c, p: string) => p + ' '.repeat(c.length - p.length));
+  const symbols: StructSymbol[] = [];
+  const links: Link[] = [];
+  const seen = new Set<string>();
+  const lineAt = (i: number) => lineAtOffset(text, i);
+  /** Offset of a match's first non-blank character (patterns start with `^\s*`). */
+  const startOf = (m: RegExpMatchArray, base = 0) =>
+    base + (m.index ?? 0) + (m[0].length - m[0].trimStart().length);
+  const add = (name: string, kind: string, at: number) => {
+    const k = `${kind}|${name}`;
+    if (seen.has(k) || symbols.length >= MAX_TREE_SYMBOLS) return;
+    seen.add(k);
+    symbols.push({ name, kind, line: lineAt(at) });
+  };
+  for (const b of blocksNamed(text, 'plugins')) {
+    const body = text.slice(b.start, b.end);
+    for (const m of body.matchAll(
+      /\bid\s*\(?\s*["']([^"']+)["']|\bkotlin\s*\(\s*["']([^"']+)["']\s*\)|\balias\s*\(\s*([\w.]+)\s*\)|`([\w-]+)`|^\s*([a-z][\w-]*)\s*$/gm,
+    )) {
+      const name = m[1] ?? (m[2] ? `org.jetbrains.kotlin.${m[2]}` : (m[3] ?? m[4] ?? m[5]));
+      if (name && name !== 'version' && name !== 'apply') add(name, 'plugin', startOf(m, b.start));
+    }
+  }
+  for (const m of text.matchAll(/\bapply\s*\(?\s*plugin\s*[:=]\s*["']([^"']+)["']/g))
+    add(m[1] as string, 'plugin', m.index ?? 0);
+  for (const m of text.matchAll(/\bapply\s*\(?\s*from\s*[:=]\s*["']([^"'$]+)["']/g))
+    links.push({
+      kind: 'includes',
+      target: m[1] as string,
+      line: lineAt(m.index ?? 0),
+      detail: 'applied script',
+    });
+  for (const b of blocksNamed(text, 'dependencies')) {
+    const body = text.slice(b.start, b.end);
+    for (const m of body.matchAll(
+      /^\s*(\w+)\s*\(?\s*(?:platform\s*\(|enforcedPlatform\s*\()?\s*["']([^"':$]+):([^"':$]+)(?::[^"']*)?["']/gm,
+    ))
+      add(`${m[2]}:${m[3]}`, 'dependency', startOf(m, b.start));
+    for (const m of body.matchAll(
+      /^\s*(\w+)\s*\(?\s*group\s*[:=]\s*["']([^"']+)["']\s*,\s*name\s*[:=]\s*["']([^"']+)["']/gm,
+    ))
+      add(`${m[2]}:${m[3]}`, 'dependency', startOf(m, b.start));
+    for (const m of body.matchAll(/^\s*(\w+)\s*\(?\s*(?:platform\s*\()?\s*(libs\.[\w.]+)/gm))
+      add(m[2] as string, 'dependency', startOf(m, b.start));
+    for (const m of body.matchAll(
+      /^\s*(\w+)\s*\(?\s*(?:platform\s*\()?\s*project\s*\(\s*(?:path\s*[:=]\s*)?["'](:[^"']*)["']/gm,
+    )) {
+      const p = m[2] as string;
+      add(`project ${p}`, 'dependency', startOf(m, b.start));
+      if (p !== ':')
+        links.push({
+          kind: 'references',
+          target: projectDir(p),
+          line: lineAt(startOf(m, b.start)),
+          detail: `${m[1]} dependency on project ${p}`,
+          dir: true,
+          defaultFile: GRADLE_BUILD,
+          fromSymbol: `project ${p}`,
+        });
+    }
+  }
+  for (const m of text.matchAll(
+    /\btask\s+([A-Za-z_][\w-]*)|\btask\s*\(\s*["']([^"']+)["']|\btasks\s*\.\s*(?:register|create)\s*(?:<[^>]*>)?\s*\(\s*["']([^"']+)["']|\bval\s+(\w+)\s+by\s+tasks\s*\.\s*(?:registering|creating)/g,
+  ))
+    add((m[1] ?? m[2] ?? m[3] ?? m[4]) as string, 'task', m.index ?? 0);
+  const facts: Record<string, unknown> = {
+    plugins: cap(symbols.filter((x) => x.kind === 'plugin').map((x) => x.name)),
+    dependencies: symbols.filter((x) => x.kind === 'dependency').length,
+    tasks: cap(symbols.filter((x) => x.kind === 'task').map((x) => x.name)),
+  };
+  if (/(^|\/)settings\.gradle(\.kts)?$/.test(path)) {
+    const projects: string[] = [];
+    for (const m of text.matchAll(/\binclude\s*\(?([^\n)]*)/g))
+      for (const q of (m[1] ?? '').matchAll(/["'](:?[^"']+)["']/g)) {
+        const p = q[1] as string;
+        projects.push(p);
+        add(`project ${p.startsWith(':') ? p : `:${p}`}`, 'build-module', m.index ?? 0);
+        links.push({
+          kind: 'includes',
+          target: projectDir(p),
+          line: lineAt(m.index ?? 0),
+          detail: `included project ${p}`,
+          dir: true,
+          defaultFile: GRADLE_BUILD,
+        });
+      }
+    for (const m of text.matchAll(/\bincludeBuild\s*\(?\s*["']([^"']+)["']/g))
+      links.push({
+        kind: 'includes',
+        target: m[1] as string,
+        line: lineAt(m.index ?? 0),
+        detail: 'included build',
+        dir: true,
+        defaultFile: ['settings.gradle', 'settings.gradle.kts', ...GRADLE_BUILD],
+      });
+    const root = /\brootProject\.name\s*=\s*["']([^"']+)["']/.exec(text);
+    if (root) facts.rootProject = root[1];
+    facts.projects = cap(projects);
+  }
+  return result('partial', 'Gradle plugins, dependencies and tasks (patterns)', {
+    facts,
+    links,
+    symbols,
+  });
 }
 
 // ---------------------------------------------------------------- go.mod / go.work, requirements.txt
@@ -1472,7 +1994,10 @@ export function readIdl(language: string, text: string): StructuredResult {
 
 export function readDocHeadings(language: string, text: string): StructuredResult {
   const lines = text.split('\n');
-  const headings: StructSymbol[] = [];
+  const found: { name: string; level: number; line: number }[] = [];
+  const rstLevels: string[] = [];
+  const TEX = ['part', 'chapter', 'section', 'subsection', 'subsubsection'];
+  const links: Link[] = [];
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i] ?? '';
     const next = lines[i + 1] ?? '';
@@ -1480,26 +2005,70 @@ export function readDocHeadings(language: string, text: string): StructuredResul
     if (
       language === 'reStructuredText' &&
       l.trim() &&
-      /^([=\-~^"'`#*+])\1{2,}\s*$/.test(next) &&
+      (m = /^([=\-~^"'`#*+])\1{2,}\s*$/.exec(next)) &&
       next.trim().length >= l.trim().length - 1
-    )
-      headings.push({ name: l.trim(), kind: 'heading', line: i + 1 });
-    else if (language === 'AsciiDoc' && (m = /^(={1,6})\s+(.+)$/.exec(l)))
-      headings.push({ name: m[2] as string, kind: 'heading', line: i + 1 });
+    ) {
+      const ch = m[1] as string;
+      if (!rstLevels.includes(ch)) rstLevels.push(ch);
+      found.push({ name: l.trim(), level: rstLevels.indexOf(ch) + 1, line: i + 1 });
+    } else if (language === 'AsciiDoc' && (m = /^(={1,6})\s+(.+)$/.exec(l)))
+      found.push({ name: m[2] as string, level: (m[1] as string).length, line: i + 1 });
     else if (language === 'Org' && (m = /^(\*{1,6})\s+(.+)$/.exec(l)))
-      headings.push({ name: m[2] as string, kind: 'heading', line: i + 1 });
-    else if ((language === 'Pod' || language === 'Pod 6') && (m = /^=head\d\s+(.+)$/.exec(l)))
-      headings.push({ name: m[1] as string, kind: 'heading', line: i + 1 });
+      found.push({ name: m[2] as string, level: (m[1] as string).length, line: i + 1 });
+    else if ((language === 'Pod' || language === 'Pod 6') && (m = /^=head(\d)\s+(.+)$/.exec(l)))
+      found.push({ name: m[2] as string, level: Number(m[1]), line: i + 1 });
     else if (
       language === 'TeX' &&
-      (m = /^\\(?:part|chapter|section|subsection|subsubsection)\*?\{([^}]+)\}/.exec(l))
+      (m = /^\\(part|chapter|section|subsection|subsubsection)\*?\{([^}]+)\}/.exec(l))
     )
-      headings.push({ name: m[1] as string, kind: 'heading', line: i + 1 });
+      found.push({ name: m[2] as string, level: TEX.indexOf(m[1] as string) + 1, line: i + 1 });
+    // Other files a document pulls in or points at.
+    if (language === 'AsciiDoc')
+      for (const x of l.matchAll(/\b(include|xref|link)::?([^\s[\]{}]+?)\[/g)) {
+        const target = (x[2] as string).replace(/#.*$/, '');
+        if (target && !/^[a-z]+:\/\//i.test(target))
+          links.push({
+            kind: x[1] === 'include' ? 'includes' : 'references',
+            target,
+            line: i + 1,
+            detail: `AsciiDoc ${x[1]}`,
+          });
+      }
+    if (
+      language === 'reStructuredText' &&
+      (m = /^\.\.\s+(include|literalinclude|image|figure)::\s+(\S+)/.exec(l))
+    )
+      links.push({
+        kind: m[1] === 'include' || m[1] === 'literalinclude' ? 'includes' : 'references',
+        target: m[2] as string,
+        line: i + 1,
+        detail: `reStructuredText ${m[1]}`,
+      });
   }
-  return result('partial', 'Documentation heading extractor', {
-    facts: { headings: headings.length },
-    symbols: headings.slice(0, 500),
-  });
+  // Each heading sits under the nearest heading above it with a higher level.
+  const headings: StructSymbol[] = [];
+  const stack: { level: number; path: string }[] = [];
+  const used = new Set<string>();
+  for (const h of found.slice(0, MAX_TREE_SYMBOLS)) {
+    while (stack.length && (stack[stack.length - 1] as { level: number }).level >= h.level)
+      stack.pop();
+    const parent = stack[stack.length - 1]?.path;
+    let name = h.name;
+    if (used.has(parent ? `${parent}.${name}` : name)) name = `${name} (line ${h.line})`;
+    const path = parent ? `${parent}.${name}` : name;
+    used.add(path);
+    headings.push({ name, kind: 'heading', line: h.line, ...(parent ? { parent } : {}) });
+    stack.push({ level: h.level, path });
+  }
+  return result(
+    'partial',
+    'Documentation heading extractor (nested headings, includes and links)',
+    {
+      facts: { headings: found.length },
+      links,
+      symbols: headings,
+    },
+  );
 }
 
 // ---------------------------------------------------------------- Lockfiles (text formats)

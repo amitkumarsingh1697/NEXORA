@@ -32,4 +32,4 @@ All software used is open source. Hosting, managed Postgres, object storage, ema
 
 ## CodeAtlas
 
-CodeAtlas is designed to run on the developer's machine, not on a server. Distribution options (future): an npm package exposing the `codeatlas` CLI, or a single-file bundle. It must keep binding to `127.0.0.1`.
+CodeAtlas is designed to run on the developer's machine, not on a server. Distribution options (future): an npm package exposing the `codeatlas` CLI. The indexer already ships as a single-file bundle inside the ArchLens skill (`skills/archlens/scripts/brain/`, ADR 0020 and 0023), which needs only Node.js 22.5 or later. The service must keep binding to `127.0.0.1`.

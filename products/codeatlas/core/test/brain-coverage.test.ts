@@ -68,11 +68,12 @@ describe('brain coverage on a mixed-language repository', () => {
   it('says on the model how each file was processed, and never claims it all (QA AL-01)', () => {
     expect(brain.coverage?.partial).toBe(true);
     // Counts from the inventory: 10 tracked files. The Java files parse completely with the Java
-    // grammar (full); the two Liquibase changelogs and the Hibernate mapping are partially read.
+    // grammar (full); the two Liquibase changelogs only hold changes the schema reader applies
+    // (full); the Hibernate mapping's tables are not read into the schema (partial).
     expect(brain.coverage?.summary).toBe(
-      '10 files found, 6 fully analysed, 3 partially analysed, 0 text only, 1 excluded, 0 binary. 100% of readable files were analysed (66.7% fully).',
+      '10 files found, 8 fully analysed, 1 partially analysed, 0 text only, 1 excluded, 0 binary. 100% of readable files were analysed (88.9% fully).',
     );
-    expect(brain.coverage?.gaps.join(' ')).toMatch(/3 files are partially analysed/);
+    expect(brain.coverage?.gaps.join(' ')).toMatch(/1 files? (is|are) partially analysed/);
     const inv = brain.coverage?.inventory;
     expect(inv?.languages.find((l) => l.language === 'Java')).toMatchObject({
       files: 3,

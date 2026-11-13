@@ -12,7 +12,8 @@ export interface LobeShape {
 /**
  * Where each lobe sits, loosely following a human brain seen from the side: frontal lobe
  * at the front (frontend), parietal on top (backend), temporal below (database), occipital
- * at the back (DevOps), cerebellum under the back (core and shared code).
+ * at the back (DevOps), cerebellum under the back (core and shared code), brainstem below
+ * the middle (documentation).
  */
 export const LOBES: Record<RegionId, LobeShape> = {
   frontend: { center: [0, 0.35, 0.95], radii: [1.15, 0.7, 0.65] },
@@ -20,6 +21,7 @@ export const LOBES: Record<RegionId, LobeShape> = {
   database: { center: [0, -0.3, 0.2], radii: [1.15, 0.36, 0.7] },
   devops: { center: [0, 0.25, -1.3], radii: [1.0, 0.55, 0.38] },
   core: { center: [0, -0.8, -1.2], radii: [0.85, 0.38, 0.5] },
+  docs: { center: [0, -0.85, -0.3], radii: [0.42, 0.55, 0.38] },
 };
 
 export interface LaidOutNeuron extends BrainNeuron {

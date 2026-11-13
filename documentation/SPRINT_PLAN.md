@@ -162,6 +162,19 @@ The founder asked for full analysis of every language, file, method, function an
 
 **Status:** done 2026-11-12 (research R37 to R40, ADR 0020 and 0021). The proof runs found and fixed: components as text only (ADR 0021), a 20,000-file cap and 512 KiB size limit, a 6,000-part brain cap, stale coverage notes, generated SQL query lists, Swift 6 and Rust 2024 syntax (grammars moved to newer commits), and an off-by-one in SQL error lines.
 **Excluded from L6:** measuring the 3D view on a real graphics card; Swift `~Copyable` and `case .x():` (grammar gaps upstream).
+
+## Sprint L7: Build, configuration and documentation files in the brain
+
+| ID   | Item                 | Requirements | Acceptance criteria                                                                                                                                                      |
+| ---- | -------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| L7-1 | Keys and elements    | ARCH-05      | Every JSON, YAML and TOML key and XML element is indexed with its line (values never kept); a file is `full` only when every key or element fit.                         |
+| L7-2 | Build files          | ARCH-05      | Maven and Gradle dependencies, plugins, tasks and projects are parts; a Maven dependency links to the POM that builds it, a Gradle project dependency to its build file. |
+| L7-3 | Configuration → code | ARCH-05      | A class named in XML configuration links to its class when the source is in the repository.                                                                              |
+| L7-4 | Documentation        | ARCH-05      | Markdown headings are nested sections in a Documentation lobe; links between documents and to code are drawn.                                                            |
+| L7-5 | Proof run            | ARCH-05      | Keycloak indexed; every new partial label names its reason.                                                                                                              |
+
+**Status:** done 2026-11-12 (ADR 0022, research R41).
+**Excluded from L7:** applying Liquibase index, data-type and custom changes to the schema; Hibernate `hbm.xml` tables; a Gradle model beyond patterns; measuring the 3D view on a real graphics card.
 ---
 
 ## Blocked or external track (not sprint-scheduled)

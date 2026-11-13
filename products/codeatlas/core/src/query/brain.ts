@@ -54,6 +54,35 @@ const SYNAPSE_OF: Record<string, SynapseKind> = {
 /** Links between files (from build, CI, container and config files). */
 const FILE_LINKS = new Set(['builds', 'runs', 'includes', 'references']);
 
+/**
+ * What build, configuration, data and documentation files declare (structured readers and
+ * the Markdown reader), by symbol kind. A kind not listed here is drawn as an element.
+ */
+const STRUCT_KINDS = new Map<string, NeuronKind>([
+  ['dependency', 'dependency'],
+  ['plugin', 'plugin'],
+  ['task', 'task'],
+  ['ci-job', 'task'],
+  ['make-target', 'task'],
+  ['build-target', 'task'],
+  ['build-stage', 'task'],
+  ['build-module', 'module'],
+  ['profile', 'config'],
+  ['bean', 'bean'],
+  ['key', 'key'],
+  ['element', 'element'],
+  ['section', 'section'],
+  ['heading', 'section'],
+  ['operation', 'route'],
+  ['service', 'service'],
+  ['k8s-object', 'service'],
+  ['node', 'element'],
+]);
+/** Keys and elements deeper than this are in the index and search, not drawn. */
+export const MAX_DRAWN_DEPTH = 3;
+/** Kinds left out first when a brain is too big to draw whole. */
+const MINOR_KINDS = new Set<NeuronKind>(['key', 'element', 'section']);
+
 const SYMBOL_KINDS = new Map<string, NeuronKind>([
   ['class', 'class'],
   ['interface', 'interface'],
@@ -376,6 +405,35 @@ function str(v: unknown): string | undefined {
   return typeof v === 'string' && v ? v : undefined;
 }
 
+/** What a part read from a build, configuration or documentation file is, and how it was read. */
+function structuredDoc(
+  n: { data: Record<string, unknown>; filePath: string | null },
+  kind: NeuronKind,
+): string {
+  const file = n.filePath ?? 'its file';
+  const lang = str(n.data.language) ?? 'file';
+  switch (kind) {
+    case 'section':
+      return `Section of ${file} (Markdown heading level ${String(n.data.level ?? '?')}).`;
+    case 'key':
+      return `Key in ${file} (${lang}), read by its parser. Values are not kept: they can be credentials.`;
+    case 'element':
+      return `Element in ${file} (${lang}), read by the XML element scanner.`;
+    case 'dependency':
+      return `Dependency declared in ${file} (${lang}).`;
+    case 'plugin':
+      return `Build plugin applied in ${file} (${lang}).`;
+    case 'task':
+      return `Task, job or target defined in ${file} (${lang}).`;
+    case 'module':
+      return `Project included by ${file}.`;
+    case 'bean':
+      return `Bean, servlet, filter or persistence unit declared in ${file}; its class is linked when the class is in this repository.`;
+    default:
+      return `Declared in ${file} (${lang}) and read by its file-format reader.`;
+  }
+}
+
 /**
  * Builds the 3D architecture brain for an indexed repository: classes, functions, methods,
  * components, routes, databases, external services and configuration as neurons; calls,
@@ -388,7 +446,7 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
   const nodes = (
     rows(
       db,
-      `SELECT ${NODE_COLS} FROM nodes WHERE repo_id = ? AND kind IN ('symbol','file','route','service','config','table')`,
+      `SELECT ${NODE_COLS} FROM nodes WHERE repo_id = ? AND kind IN ('symbol','file','route','service','config','table','doc')`,
       repoId,
     ) as Parameters<typeof toNode>[0][]
   ).map(toNode);
@@ -397,6 +455,7 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
       db,
       `SELECT ${EDGE_COLS} FROM edges WHERE repo_id = ? AND kind IN (${[
         ...Object.keys(SYNAPSE_OF),
+        'mentions',
         'contains',
         'imports',
       ]
@@ -435,6 +494,9 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
   ).map((r) => r.key);
   const uiPkgs = uiPackages(repo.root, filePaths);
 
+  const containerOf = new Map<number, number>();
+  for (const e of edges) if (e.kind === 'contains') containerOf.set(e.dst, e.src);
+
   // Files at either end of a build, run or include link are drawn, so the link is visible.
   const linkedFiles = new Set<number>();
   for (const e of edges)
@@ -444,6 +506,42 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
       nodeById.get(e.dst)?.kind === 'file'
     )
       linkedFiles.add(e.src).add(e.dst);
+
+  // Files whose declarations come from a structured or Markdown reader are drawn themselves,
+  // with what they declare inside them.
+  const structuredFiles = new Set<number>();
+  for (const e of edges)
+    if (e.kind === 'contains' && nodeById.get(e.dst)?.data.structured) {
+      let src = nodeById.get(e.src);
+      while (src && src.kind === 'symbol') {
+        const up = containerOf.get(src.id);
+        src = up === undefined ? undefined : nodeById.get(up);
+      }
+      if (src?.kind === 'file') structuredFiles.add(src.id);
+    }
+  // A Markdown document node stands for its file.
+  const fileIdByPath = new Map<string, number>();
+  for (const n of nodes) if (n.kind === 'file') fileIdByPath.set(n.key, n.id);
+  const docFile = new Map<number, number>();
+  for (const n of nodes)
+    if (n.kind === 'doc') {
+      const f = fileIdByPath.get(n.key);
+      if (f !== undefined) {
+        docFile.set(n.id, f);
+        structuredFiles.add(f);
+      }
+    }
+
+  const depthCache = new Map<number, number>();
+  /** How many symbols deep a structured symbol is in its file (a top-level key is 1). */
+  const depthOf = (id: number): number => {
+    const hit = depthCache.get(id);
+    if (hit !== undefined) return hit;
+    const up = containerOf.get(id);
+    const d = up === undefined || nodeById.get(up)?.kind !== 'symbol' ? 1 : depthOf(up) + 1;
+    depthCache.set(id, d);
+    return d;
+  };
 
   const neuronOf = new Map<number, BrainNeuron>();
   const placeFile = (path: string | null) =>
@@ -456,8 +554,14 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     if (n.filePath && isTestSupportPath(n.filePath)) continue;
     let kind: NeuronKind | undefined;
     const fromSql = n.kind === 'symbol' && n.data.extraction === 'sql';
+    const structured = n.kind === 'symbol' && !!n.data.structured;
     if (fromSql) kind = SQL_KINDS.get(n.symbolKind ?? '');
-    else if (n.kind === 'symbol') {
+    else if (structured) {
+      kind =
+        SYMBOL_KINDS.get(n.symbolKind ?? '') ?? STRUCT_KINDS.get(n.symbolKind ?? '') ?? 'element';
+      // Deep keys and elements stay in the index and search; the brain draws the top levels.
+      if ((kind === 'key' || kind === 'element') && depthOf(n.id) > MAX_DRAWN_DEPTH) continue;
+    } else if (n.kind === 'symbol') {
       kind = SYMBOL_KINDS.get(n.symbolKind ?? '');
       if (
         kind === 'function' &&
@@ -469,7 +573,10 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     else if (n.kind === 'service') kind = n.data.category === 'database' ? 'database' : 'service';
     else if (n.kind === 'config') kind = 'config';
     else if (n.kind === 'table') kind = 'table';
-    else if (n.kind === 'file' && (isDevopsFile(n.key, n.data.role) || linkedFiles.has(n.id)))
+    else if (
+      n.kind === 'file' &&
+      (isDevopsFile(n.key, n.data.role) || linkedFiles.has(n.id) || structuredFiles.has(n.id))
+    )
       kind = 'file';
     if (!kind) continue;
 
@@ -488,7 +595,13 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
         region: 'database',
         reason: `database ${KIND_WORD[String(n.data.declKind)] ?? String(n.data.declKind ?? kind)} defined in ${n.filePath ?? 'SQL'}`,
       };
-    else place = placeFile(n.filePath);
+    else if (kind === 'section') place = { region: 'docs', reason: 'documentation section' };
+    else if (structured || kind === 'file') {
+      const p = placeFile(n.filePath);
+      // Configuration files with no other signal sit with DevOps, not with core code.
+      place =
+        p.region === 'core' ? { region: 'devops', reason: 'build, configuration or data file' } : p;
+    } else place = placeFile(n.filePath);
 
     const params = Array.isArray(n.data.params)
       ? (n.data.params as BrainParam[]).map((p) => ({
@@ -514,7 +627,8 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
       returnsDeclared:
         typeof n.data.returnsDeclared === 'boolean' ? n.data.returnsDeclared : undefined,
       doc: str(n.data.doc),
-      ...(n.data.extraction === 'pattern' && !str(n.data.doc)
+      ...(structured ? { name: str(n.data.label) ?? n.name, doc: structuredDoc(n, kind) } : {}),
+      ...(n.data.extraction === 'pattern' && !structured && !str(n.data.doc)
         ? {
             doc: `Found by the ${str(n.data.language) ?? 'source'} declaration pattern (${str(n.data.declKind) ?? n.symbolKind ?? 'declaration'}); not checked by a compiler, and calls are not traced.`,
           }
@@ -528,12 +642,21 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     });
   }
 
-  // Members sit inside their class.
+  // Members sit inside their class; what a build, configuration or documentation file declares
+  // sits inside its nearest drawn ancestor (the file itself at the top).
   for (const e of edges) {
     if (e.kind !== 'contains') continue;
-    const parent = neuronOf.get(e.src);
     const child = neuronOf.get(e.dst);
-    if (parent && child && nodeById.get(e.src)?.kind === 'symbol') {
+    if (!child) continue;
+    const structured = !!nodeById.get(e.dst)?.data.structured;
+    let up: number | undefined = e.src;
+    let parent = neuronOf.get(up);
+    while (structured && !parent && up !== undefined) {
+      up = containerOf.get(up);
+      parent = up === undefined ? undefined : neuronOf.get(up);
+    }
+    const src = up === undefined ? undefined : nodeById.get(up);
+    if (parent && (src?.kind === 'symbol' || (src?.kind === 'file' && structured))) {
       child.parent = parent.id;
       child.region = parent.region;
       child.regionReason = parent.regionReason;
@@ -582,6 +705,9 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
   for (const e of edges) {
     const kind = SYNAPSE_OF[e.kind];
     if (kind) add(e, kind);
+    // Documentation that names a file or symbol: from the document's file.
+    else if (e.kind === 'mentions' && docFile.has(e.src))
+      add({ ...e, src: docFile.get(e.src) as number }, 'references');
     // Imports between files resolved by the pattern or syntax analysers (TypeScript imports are drawn as calls).
     else if (e.kind === 'imports' && primaryOf.has(e.src) && primaryOf.has(e.dst))
       add(e, 'imports');
@@ -600,6 +726,7 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
         .sort(
           (x, y) =>
             Number(y.kind === 'table') - Number(x.kind === 'table') ||
+            Number(MINOR_KINDS.has(x.kind)) - Number(MINOR_KINDS.has(y.kind)) ||
             (degree.get(y.id) ?? 0) - (degree.get(x.id) ?? 0),
         )
         .slice(0, BRAIN_MAX_NEURONS)
@@ -626,6 +753,7 @@ export function buildBrain(db: Db, repoId: number): BrainModel | null {
     'Which lobe a part sits in is inferred from its file path and the packages the file imports.',
     'Tables and columns are read from SQL files (CREATE TABLE, ALTER TABLE), Prisma schemas, Drizzle table definitions and CREATE TABLE statements inside code, with types, sizes and keys as written. A Drizzle query that names a table is an observed read or write; a Prisma call or a table named in a SQL string is inferred. Views, materialized views, functions, procedures, triggers, indexes, sequences, types, packages, policies, rules and events are read from SQL files with their parameters and columns: PostgreSQL by its own parser (bodies included, PL/pgSQL through its compiler front end), other dialects by a statement reader, and each object says which. The tables a body reads and writes and the routines it calls are matched to the schema by name: observed from the PostgreSQL parser, inferred from the statement reader. SQL built at run time (EXECUTE, sp_executesql) and the Drizzle relational query API are not linked.',
     'Inputs and return types of TypeScript and JavaScript, including the scripts and templates of Svelte, Vue and Astro components, come from the type checker, which also resolves their calls (observed). Languages with a tree-sitter grammar are parsed in full: classes, functions and methods with parameters and return types as written, imports, and calls matched to a declaration by name (inferred), or resolved by a SCIP index when one was given (observed). Languages without a grammar get declarations from patterns: names, lines and parameters as written, and no calls. Languages & files says which method read each language. An import between two files outside TypeScript is drawn from the first declaration of each. Test files, type aliases and plain variables are left out.',
+    `Build, configuration, data and documentation files are drawn with what they declare: Maven and Gradle dependencies, plugins, profiles, tasks and included projects; package.json, Cargo and other manifests' dependencies and scripts; every key of JSON, YAML and TOML files (never their values, which can be credentials) and every element of XML files, with keys and elements deeper than ${MAX_DRAWN_DEPTH} levels kept in the index and search but not drawn; Spring beans, servlets and filters linked to their class when it is in this repository (inferred, by package path); a Maven dependency linked to the POM that builds it (observed when the coordinates match); and every Markdown heading as a section in the Documentation lobe, with the files and symbols the text links to (inferred). Gradle scripts are read by patterns on top of their syntax parse, so a dependency added by a loop or a helper function is not seen.`,
     'Languages & files lists every language and file type found, with how each file was processed.',
   );
   return {

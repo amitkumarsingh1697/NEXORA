@@ -55,7 +55,7 @@ If a CodeAtlas service or export is available, use its observed / inferred / unk
 
 ## 6. Architecture brain
 
-When the user asks for an **architecture brain** (usually with a repository link), the deliverable is one HTML file: an interactive 3D brain with Frontend, Backend, Database, DevOps and Core & shared lobes. Clicking a lobe goes inside it; clicking a class or method shows its inputs and output, where its input comes from and where its work goes, each link labelled and cited. Tables show their columns (types, sizes, keys) and which functions read and write them. A Diagrams button gives ER, schema and class diagrams, each downloadable as SVG. It is not a report, a PDF or a document.
+When the user asks for an **architecture brain** (usually with a repository link), the deliverable is one HTML file: an interactive 3D brain with Frontend, Backend, Database, DevOps, Core & shared and Documentation lobes. Build, configuration and documentation files are parts too: Maven and Gradle dependencies, plugins and tasks, JSON/YAML/TOML keys, XML elements (Spring beans linked to their classes) and Markdown sections. Clicking a lobe goes inside it; clicking a class or method shows its inputs and output, where its input comes from and where its work goes, each link labelled and cited. Tables show their columns (types, sizes, keys) and which functions read and write them. A Diagrams button gives ER, schema and class diagrams, each downloadable as SVG. It is not a report, a PDF or a document.
 
 The user asking for a brain is their request to clone the repository into a temporary folder, write the model and page into an output folder, and run `node`. These steps prompt for permission; they never touch the user's own files.
 

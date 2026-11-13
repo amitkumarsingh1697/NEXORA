@@ -17,7 +17,10 @@ import { relaunchWithLargerHeap } from './heap';
 const here = dirname(fileURLToPath(import.meta.url));
 const relaunched = relaunchWithLargerHeap(fileURLToPath(import.meta.url), process.argv.slice(2));
 if (relaunched !== null) process.exit(relaunched);
-setGrammarDir(join(here, 'grammars'));
+// The bundle's banner unpacks runtime.pack.gz (grammars, TypeScript lib files, libpg-query)
+// into a private temporary folder that is removed on exit, so the skill stays under 200 files.
+const runtime = (globalThis as { __ARCHLENS_RUNTIME__?: string }).__ARCHLENS_RUNTIME__ ?? here;
+setGrammarDir(join(runtime, 'grammars'));
 const template = readFileSync(join(here, '..', '..', 'assets', 'brain-template.html'), 'utf8');
 const home = mkdtempSync(join(tmpdir(), 'archlens-index-'));
 try {

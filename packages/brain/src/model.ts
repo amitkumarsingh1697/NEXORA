@@ -8,7 +8,7 @@
  */
 export const BRAIN_FORMAT = 1;
 
-export const REGION_IDS = ['frontend', 'backend', 'database', 'devops', 'core'] as const;
+export const REGION_IDS = ['frontend', 'backend', 'database', 'devops', 'core', 'docs'] as const;
 export type RegionId = (typeof REGION_IDS)[number];
 
 export interface BrainRegion {
@@ -43,6 +43,11 @@ export const DEFAULT_REGIONS: BrainRegion[] = [
     label: 'Core & shared',
     description: 'Domain logic and libraries used across the other parts.',
   },
+  {
+    id: 'docs',
+    label: 'Documentation',
+    description: 'READMEs, guides and design documents: their sections and what they link to.',
+  },
 ];
 
 export const NEURON_KINDS = [
@@ -71,6 +76,15 @@ export const NEURON_KINDS = [
   'synonym',
   'schema',
   'extension',
+  // What build, configuration and documentation files declare.
+  'dependency',
+  'plugin',
+  'task',
+  'module',
+  'bean',
+  'key',
+  'element',
+  'section',
 ] as const;
 
 /** Neuron kinds that are database objects (placed in the database lobe). */

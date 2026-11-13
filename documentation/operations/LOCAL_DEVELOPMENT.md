@@ -74,6 +74,19 @@ CLI:
 ```bash
 pnpm --filter @nexora/codeatlas-service cli index /abs/path/to/repo
 pnpm --filter @nexora/codeatlas-service cli search 1 "session refresh"    # 1 = repo id printed by index
+pnpm --filter @nexora/codeatlas-service cli brain /abs/path/to/repo --out brain.html --json brain-model.json
+```
+
+## ArchLens
+
+The skill is `skills/archlens/`. Its generated files are rebuilt from the packages and checked by tests:
+
+```bash
+pnpm --filter @nexora/brain build                 # assets/brain-template.html and scripts/render-brain.mjs
+pnpm --filter @nexora/languages build             # scripts/inventory.mjs
+pnpm --filter @nexora/codeatlas-service skill     # scripts/brain/ (bundled indexer and runtime.pack.gz)
+node skills/archlens/scripts/check.mjs            # structure check
+(cd skills && zip -r ../archlens-skill.zip archlens)   # zip for the Claude app (must stay under 200 files)
 ```
 
 UI development with hot reload: run the service, then `pnpm --filter @nexora/codeatlas-web dev` and open the Vite URL with the same `#token=` fragment (the dev server proxies `/api` to port 4317).
