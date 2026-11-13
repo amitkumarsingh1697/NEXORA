@@ -31,7 +31,13 @@ cp -r nexora/skills/archlens ~/.claude/skills/archlens
 
 **Claude Code, one project:** copy the folder to `<project>/.claude/skills/archlens/` instead.
 
-**claude.ai:** zip the `archlens` folder (or use the release zip) and upload it under **Settings → Capabilities → Skills**. The frontmatter uses only `name`, `description` and `allowed-tools`, the fields the docs list as accepted outside Claude Code.
+**Claude app (claude.ai):** zip the `archlens` folder (or use the release zip) and upload it under **Settings → Capabilities → Skills**. The app accepts at most 200 files in a skill zip; this folder holds 20, because the indexer's grammars, TypeScript library files and PostgreSQL parser ship packed in `scripts/brain/runtime.pack.gz` (ADR 0023).
+
+```bash
+cd nexora/skills && zip -r archlens-skill.zip archlens
+```
+
+The frontmatter uses only `name`, `description` and `allowed-tools`, the fields the docs list as accepted outside Claude Code.
 
 Check the install:
 
@@ -55,7 +61,7 @@ Ask: **"Make an architecture brain of https://github.com/owner/repo"**. Asking i
 
 1. **Clones** the repository (`git clone --depth 1`, `https://` links only).
 2. **Builds the model.**
-   - It runs the CodeAtlas indexer bundled in `scripts/brain/` (Node 22.5 or later; no install, no network). It analyses TypeScript and JavaScript with the TypeScript compiler, 71 more languages with tree-sitter grammars (classes, functions, methods with parameters and return types, imports, and calls matched by name), SQL schemas, views, procedures and triggers, and configuration, build, CI, container, infrastructure and API files with format readers:
+   - It runs the CodeAtlas indexer bundled in `scripts/brain/` (Node 22.5 or later; no install, no network). It analyses TypeScript and JavaScript with the TypeScript compiler, 71 more languages with tree-sitter grammars (classes, functions, methods with parameters and return types, imports, and calls matched by name), SQL schemas, views, procedures and triggers, ORM models and migrations, and configuration, build, CI, container, infrastructure, API and documentation files with format readers. Every JSON, YAML and TOML key and XML element is read; Maven, Gradle and npm dependencies, plugins and tasks are named and linked to the modules they build; Spring beans are linked to their classes; Markdown sections go into a Documentation lobe:
 
      ```bash
      node skills/archlens/scripts/brain/brain.mjs /abs/path/to/repo --out repo-brain.html --json brain-model.json
@@ -74,13 +80,13 @@ Ask: **"Make an architecture brain of https://github.com/owner/repo"**. Asking i
 5. **Renders** the page: `node scripts/render-brain.mjs brain-model.json repo-brain.html`.
 6. **Hands over** the file with the coverage sentence word for word and every gap.
 
-Open the HTML file in any browser; it works offline. Click a lobe (Frontend, Backend, Database, DevOps, Core & shared) to go inside, click a class, method or table for its inputs, outputs, columns and links, use **Diagrams** for ER, schema and class diagrams (downloadable as SVG), and **Languages & files** for the inventory.
+Open the HTML file in any browser; it works offline. Click a lobe (Frontend, Backend, Database, DevOps, Core & shared, Documentation) to go inside, click a class, method or table for its inputs, outputs, columns and links, use **Diagrams** for ER, schema and class diagrams (downloadable as SVG), and **Languages & files** for the inventory.
 
 | Languages & files in the brain                                                              | Inside a lobe                                                                   |
 | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | ![Languages and files](../../documentation/assets/screenshots/archlens-brain-languages.png) | ![Backend lobe](../../documentation/assets/screenshots/archlens-brain-lobe.png) |
 
-The screenshots show the brain ArchLens produces through CodeAtlas (step 2) for [GoogleCloudPlatform/microservices-demo](https://github.com/GoogleCloudPlatform/microservices-demo) at commit `c7cb6d5`, a Go, C#, Python, Java and Node.js application. Most of its Go services land in Core & shared because their paths and imports carry no frontend or backend signal; lobe placement is an inference, and the brain says so.
+The screenshots show the brain the bundled indexer (step 2) produced on 2026-11-13 for [GoogleCloudPlatform/microservices-demo](https://github.com/GoogleCloudPlatform/microservices-demo) at commit `c7cb6d5`, a Go, C#, Python, Java and Node.js application. It found 364 files and analysed 90% of the readable ones (80.9% fully). Most of its Go services land in Core & shared because their paths and imports carry no frontend or backend signal, and its READMEs and docs fill the Documentation lobe; lobe placement is an inference, and the brain says so.
 
 ## The inventory script
 
@@ -116,7 +122,9 @@ skills/archlens/
 └── scripts/
     ├── render-brain.mjs             model JSON → one self-contained brain HTML file
     ├── inventory.mjs                every file with its language, type and status (generated by packages/languages)
-    ├── brain/                       the CodeAtlas indexer bundled for the skill (generated; see brain/README.md)
+    ├── brain/                       the CodeAtlas indexer bundled for the skill (generated; see brain/README.md):
+    │                                brain.mjs, runtime.pack.gz (grammars, TypeScript libs, PostgreSQL parser,
+    │                                unpacked to a temporary folder on each run), web-tree-sitter.wasm, licences
     └── check.mjs                    structural validation (run with node)
 ```
 

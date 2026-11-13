@@ -25,6 +25,7 @@ All screenshots below come from the real applications, captured by automated scr
 - [Getting started](#getting-started)
 - [Configuration](#configuration)
 - [Architecture](#architecture)
+- [Tech stack](#tech-stack)
 - [Quality gates](#quality-gates)
 - [Documentation](#documentation)
 - [Ground rules](#ground-rules)
@@ -148,10 +149,11 @@ The extension source is in [`products/cvforge/extension/`](products/cvforge/exte
 
 ## CodeAtlas
 
-CodeAtlas runs entirely on your machine (`127.0.0.1`, protected by a token). It indexes a repository into SQLite and labels every relationship **observed**, **inferred** or **unknown**, so you always know how a fact was found. TypeScript and JavaScript are read by the TypeScript Compiler API; about 80 other languages and the common configuration, build, container, CI, infrastructure, API and documentation formats are read by declaration patterns and format readers (see [Languages and file types](#languages-and-file-types)).
+CodeAtlas runs entirely on your machine (`127.0.0.1`, protected by a token). It indexes a repository into SQLite and labels every relationship **observed**, **inferred** or **unknown**, so you always know how a fact was found. TypeScript and JavaScript are read by the TypeScript Compiler API (Svelte, Vue and Astro components too). 71 more languages, from Java, Go, Python and C# to COBOL and Verilog, are parsed with tree-sitter grammars. SQL is read by PostgreSQL's own parser and a statement reader for other dialects, ORM schemas and migrations of 23 frameworks are read into the database model, and configuration, build, container, CI, infrastructure, API and documentation files are read by format readers (see [Languages and file types](#languages-and-file-types)).
 
-- **Architecture brain:** the whole repository as a 3D brain. Lobes for Frontend, Backend, Database, DevOps and Core & shared; click a lobe to fly inside it, click a class or method to see its inputs and output, where its input comes from and where it sends work, each link labelled with its evidence. Search recalls any part. `pnpm --filter @nexora/codeatlas-service cli brain <path> --out brain.html` writes the same brain as one offline HTML file.
-- **Database tables and diagrams:** tables from SQL, Prisma and Drizzle schemas, with every column's type, length, precision, scale, nullability, keys and default, and the functions that read and write each table. The **Diagrams** button in the brain draws ER, schema and class diagrams that you can scope, zoom, download as SVG, and click to find a part in the brain.
+- **Architecture brain:** the whole repository as a 3D brain. Lobes for Frontend, Backend, Database, DevOps, Core & shared and Documentation; click a lobe to fly inside it, click a class or method to see its inputs and output, where its input comes from and where it sends work, each link labelled with its evidence. Search recalls any part. `pnpm --filter @nexora/codeatlas-service cli brain <path> --out brain.html` writes the same brain as one offline HTML file.
+- **Database tables and diagrams:** tables from SQL files and ORM schemas and migrations (Prisma, Drizzle, TypeORM, Django, SQLAlchemy, Rails, JPA, EF Core, Liquibase and more), with every column's type, length, precision, scale, nullability, keys and default, and the functions that read and write each table. Views, procedures, functions, triggers and sequences are read with their bodies: the tables each one reads and writes and the routines it calls.
+- **Build, configuration and documentation:** every JSON, YAML and TOML key and every XML element, nested, with its line (values are never stored). Maven, Gradle, npm and other manifest dependencies, plugins and tasks, with a dependency on a module the repository builds linked to that module. Spring beans, servlets and other class names in XML linked to their Java classes. Markdown and AsciiDoc sections in a Documentation lobe, with links to the files and code they mention. The **Diagrams** button in the brain draws ER, schema and class diagrams that you can scope, zoom, download as SVG, and click to find a part in the brain.
 - **Languages & files:** every file in the repository with its language, file type and one of seven statuses (fully analysed, partially analysed, text only, recognised but not readable, failed, excluded, binary) and the reason. Totals by language, file type, folder and status, and a browser for every file. The same section is in the brain.
 - **Coverage report:** what was read, what was skipped and why, manifests and declared frameworks.
 - **Structure, modules and dependencies:** a module → file → symbol tree and dependency graphs, with cycle detection.
@@ -172,6 +174,10 @@ The screenshots show CodeAtlas exploring this repository.
 | A table: columns, types and who reads it                                     | ER diagram                                                               |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | ![Table details](documentation/assets/screenshots/codeatlas-brain-table.png) | ![ER diagram](documentation/assets/screenshots/codeatlas-diagram-er.png) |
+
+| DevOps: build manifests with their dependencies, plugins and tasks          | Documentation: every README and guide, section by section                        |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| ![DevOps lobe](documentation/assets/screenshots/codeatlas-brain-devops.png) | ![Documentation lobe](documentation/assets/screenshots/codeatlas-brain-docs.png) |
 
 | Schema diagram                                                                   | Class diagram                                                                  |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
@@ -211,12 +217,12 @@ One registry, [`packages/languages`](packages/languages), decides what every fil
 
 Each file is then read at the deepest level available, and the level is shown:
 
-| Level              | What is read                                                              | Examples                                                                                                                                                                                                                                                                           |
-| ------------------ | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fully analysed     | A complete parser read the file and understood its type                   | TypeScript and JavaScript (compiler), package.json, tsconfig, Docker Compose, Kubernetes, GitHub Actions, OpenAPI, go.mod, requirements.txt, .sln, CSV, gettext catalogs                                                                                                           |
-| Partially analysed | Structure read by patterns or a generic parser; not checked by a compiler | Classes, functions and imports in Java, Go, C#, Python, Ruby, PHP, Kotlin, Swift, Rust, C and C++, COBOL, Fortran and about 70 more; SQL objects; Terraform/HCL; Protobuf, Thrift and GraphQL; Dockerfiles, Makefiles, CMake; Helm and Jinja templates with placeholders; Graphviz |
-| Text only          | Identified and searchable, no structure                                   | Licences, ignore files, plain lists, recorded HTTP bodies                                                                                                                                                                                                                          |
-| Excluded           | Not read on purpose, with the reason                                      | Vendored and build folders, files that may hold credentials, generated files, symlinks, submodules, files over the size or count limits                                                                                                                                            |
+| Level              | What is read                                            | Examples                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fully analysed     | A complete parser read the file and understood its type | TypeScript and JavaScript (compiler); Java, Go, C#, Python, Ruby, PHP, Kotlin, Swift, Rust, C and C++, COBOL and 60 more languages when their tree-sitter parse has no syntax errors; PostgreSQL SQL; Markdown; JSON, YAML and TOML read to every key; Maven POMs, Spring XML, Liquibase changelogs; package.json, Docker Compose, Kubernetes, GitHub Actions, OpenAPI, go.mod, .sln, CSV, gettext catalogs |
+| Partially analysed | Structure read, with the reason it is not full recorded | Source files with syntax errors; SQL in other dialects (statement reader); Terraform/HCL; Protobuf, Thrift and GraphQL; Makefiles, CMake; AsciiDoc and reStructuredText; Helm and Jinja templates with placeholders; JSON over 5,000 keys; Liquibase changes not applied to the schema; Graphviz                                                                                                            |
+| Text only          | Identified and searchable, no structure                 | Licences, ignore files, plain lists, recorded HTTP bodies                                                                                                                                                                                                                                                                                                                                                   |
+| Excluded           | Not read on purpose, with the reason                    | Vendored and build folders, files that may hold credentials, generated files, symlinks, submodules, files over the size or count limits                                                                                                                                                                                                                                                                     |
 
 Coverage is (fully + partially analysed) ÷ readable files, where readable means every file except excluded and binary ones. Text-only files never count as analysed. The full list is in the generated [support matrix](documentation/reports/LANGUAGE_SUPPORT_MATRIX.md), and the results on 23 public repositories, from Kubernetes to a COBOL course, are in the [validation report](documentation/reports/LANGUAGE_COVERAGE_VALIDATION.md).
 
@@ -250,10 +256,10 @@ pnpm --filter @nexora/codeatlas-service cli search <repoId> "query"
 
 ArchLens is a Claude Code skill in [`skills/archlens/`](skills/archlens/README.md). It does the same evidence work as CodeAtlas, in conversation: every architectural claim is tagged `[observed]`, `[inferred]` or `[unknown]` and cited to `path:line`.
 
-- **Install:** copy `skills/archlens/` to `~/.claude/skills/archlens/` (every project) or `<project>/.claude/skills/archlens/` (one project). On claude.ai, upload the release zip under Settings → Capabilities → Skills.
+- **Install:** copy `skills/archlens/` to `~/.claude/skills/archlens/` (every project) or `<project>/.claude/skills/archlens/` (one project). In the Claude app, zip the `archlens` folder and upload it under Settings → Capabilities → Skills. The folder holds 20 files, well under the app's limit of 200 (the indexer's grammars and libraries ship packed in one file, ADR 0023).
 - **Use:** run `/archlens <question>` or just ask about a repository's architecture, for example "trace what happens when a user logs in" or "what breaks if I change the orders table?".
-- **Architecture brain:** ask for "an architecture brain of https://github.com/owner/repo". ArchLens returns one HTML file with the same 3D brain, database tables and ER, schema and class diagrams as CodeAtlas. It builds the brain through CodeAtlas when a Nexora checkout is available, and otherwise from the code it reads.
-- **Coverage:** ArchLens counts every file with the same registry (`node scripts/inventory.mjs <repo> --model brain-model.json`) and puts the counts in the brain's **Languages & files** section, so the brain says what it does not cover. Files ArchLens read by hand are "partially analysed"; nothing it reports is "fully analysed".
+- **Architecture brain:** ask for "an architecture brain of https://github.com/owner/repo". ArchLens clones it and runs the CodeAtlas indexer bundled in `scripts/brain/` with Node alone (22.5 or later, no install and no network), so the brain has exactly what CodeAtlas finds: every language, table, view, procedure, build file, configuration key and document. It returns one offline HTML file with the 3D brain, the database tables and ER, schema and class diagrams.
+- **Coverage:** the brain's **Languages & files** section counts every file with the same registry and says what was fully analysed, partially analysed or not read, and why. When Node is not available, ArchLens writes the model by hand and labels every file it read "partially analysed".
 
 The full guide, with every step and command, is in the [ArchLens README](skills/archlens/README.md). The brain format is in [`references/brain-model.md`](skills/archlens/references/brain-model.md).
 
@@ -263,7 +269,7 @@ The full guide, with every step and command, is in the [ArchLens README](skills/
 
 ### Requirements
 
-- Node.js 22.13 or later and pnpm 10
+- Node.js 22.13 or later and pnpm 10 (the ArchLens brain script alone needs Node.js 22.5 or later)
 - PostgreSQL 16, through Docker or installed natively (CVForge only)
 - LibreOffice (`soffice`) with `fonts-crosextra-carlito` and `fonts-liberation` for PDF export (CVForge only)
 - Ollama, optional, for AI phrasing and answers
@@ -308,6 +314,16 @@ pnpm --filter @nexora/codeatlas-service cli index /abs/path/to/repo   # or add t
 
 Open the printed address. The token in the address is how the browser proves it is you; the page removes it from the address bar after reading it. The walkthrough is in [Using CodeAtlas](#using-codeatlas).
 
+### Use or rebuild ArchLens
+
+```bash
+cp -r skills/archlens ~/.claude/skills/archlens          # Claude Code
+(cd skills && zip -r ../archlens-skill.zip archlens)     # zip to upload in the Claude app
+node skills/archlens/scripts/check.mjs                  # structure check
+node skills/archlens/scripts/brain/brain.mjs /abs/path/to/repo --out repo-brain.html --json brain-model.json
+pnpm --filter @nexora/codeatlas-service skill           # rebuild the bundled indexer after changing CodeAtlas
+```
+
 ## Configuration
 
 CVForge reads `products/cvforge/web/.env.local`. The full list with comments is in [`.env.example`](products/cvforge/web/.env.example). The main settings:
@@ -330,6 +346,9 @@ CodeAtlas uses `CODEATLAS_HOME` (data folder), `CODEATLAS_PORT` (default 4317) a
 ```
 packages/                shared libraries: ai (model providers), logging, validation,
                          languages (language and file-type registry, file inventory),
+                         syntax (tree-sitter grammars and extraction rules for 71 languages),
+                         sql (PostgreSQL parser and statement reader for other dialects),
+                         orm (ORM models and migrations of 23 frameworks), scip (SCIP index reader),
                          brain (3D architecture brain viewer used by CodeAtlas and ArchLens)
 products/cvforge/
   core/                  pure domain engine: extraction, parsing, evidence, scoring, suggestions, export
@@ -341,11 +360,30 @@ products/codeatlas/
   service/               local HTTP API and CLI
   web/                   Vite + React UI
 infrastructure/          docker compose for Postgres/Ollama, database init SQL, native setup script
-skills/archlens/         ArchLens skill
+skills/archlens/         ArchLens skill, with the CodeAtlas indexer bundled in scripts/brain/
 documentation/           product, architecture, API, security, operations, deployment and testing docs
 ```
 
 Rules the code follows: products never import each other (shared code lives in `packages/`); domain logic is pure and lives in each product's `core`; persistence and policy live in services; UI and route handlers stay thin. Significant decisions are recorded as ADRs in [`documentation/architecture/`](documentation/architecture/ARCHITECTURE_DECISIONS.md).
+
+## Tech stack
+
+Versions are the exact pins in each `package.json`.
+
+| Area                        | Technology                                                                                                                                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language and tooling        | TypeScript 5.9.3 (strict, ESM), Node.js 22.13 or later, pnpm 10.28, ESLint 10, Prettier 3.9, vitest 5.1, Playwright 1.63 with axe-core                                                                        |
+| Validation and logging      | zod 4.6, pino 10.4                                                                                                                                                                                            |
+| CVForge web                 | Next.js 16.4, React 19.3, Tailwind CSS 4.3, lucide-react                                                                                                                                                      |
+| CVForge backend             | PostgreSQL 16, pg 8.23, Drizzle ORM 0.45, nodemailer 10.1                                                                                                                                                     |
+| CVForge documents           | mammoth 1.13 (DOCX in), pdf.js 6.5 (PDF in, in a worker), docx 9.15 (DOCX out), LibreOffice (PDF out)                                                                                                         |
+| CVForge extension           | WXT 0.21 (Manifest V3, Chrome and Edge), React 19.3                                                                                                                                                           |
+| CodeAtlas store and service | SQLite with FTS5 through `node:sqlite`, `node:http` on 127.0.0.1                                                                                                                                              |
+| CodeAtlas analysis          | TypeScript Compiler API 5.9.3, web-tree-sitter 0.27.1 with 71 grammars built from pinned commits, libpg-query 18.2.2 (PostgreSQL's parser), yaml 2.9, smol-toml 1.9, GitHub Linguist 9.7.0 data, SCIP indexes |
+| CodeAtlas web               | Vite 8.3, React 19.3, Tailwind CSS 4.3, cytoscape 3.34, React Flow 12.12                                                                                                                                      |
+| Architecture brain          | three.js 0.186.1, one self-contained HTML file                                                                                                                                                                |
+| ArchLens bundle             | esbuild 0.28.2 bundles the indexer into `skills/archlens/scripts/brain/brain.mjs`                                                                                                                             |
+| AI (optional)               | Ollama or an OpenAI-compatible endpoint; never required                                                                                                                                                       |
 
 ## Quality gates
 

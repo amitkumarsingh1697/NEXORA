@@ -8,6 +8,12 @@ pnpm workspaces, TypeScript 5.9 strict, ESM everywhere, zod 4 for every boundary
 packages/ai          ModelProvider interface; OllamaProvider, OpenAICompatibleProvider (refuses without consent), DisabledProvider; JSON-schema-validated generation
 packages/logging     pino-style structured logger with redaction of secret-looking keys
 packages/validation  shared zod helpers and AppError codes
+packages/languages   language and file-type registry (GitHub Linguist 9.7.0 data plus overlays), file inventory and analyser descriptions
+packages/syntax      web-tree-sitter 0.27.1 with 71 grammars built from pinned commits, and per-language extraction rules
+packages/sql         PostgreSQL parser (libpg-query 18.2.2) and a statement reader for MySQL, SQL Server, Oracle, Db2 and SQLite
+packages/orm         ORM models and migrations of 23 frameworks into one schema model
+packages/scip        SCIP index reader for compiler-checked references
+packages/brain       3D architecture brain (three.js 0.186.1): model, layout, viewer and the single-file HTML template
 ```
 
 ## CVForge
@@ -41,17 +47,28 @@ packages/validation  shared zod helpers and AppError codes
  Browser (127.0.0.1 only) ──► service (node:http, products/codeatlas/service)
                                  ├─ static SPA (Vite build of products/codeatlas/web)
                                  ├─ /api/* JSON routes ──► codeatlas-core queries ──► SQLite (node:sqlite, FTS5)
-                                 ├─ JobRunner ── fork ──► index child process (TypeScript Compiler API)
+                                 ├─ JobRunner ── fork ──► index child process (TypeScript Compiler API, tree-sitter,
+                                 │                         PostgreSQL parser, ORM, format readers)
                                  ├─ chat ──► retrieval + ModelProvider (Ollama / fallback)
                                  └─ investigations ──► git worktrees + allowlisted commands
 ```
 
 - **Store:** one SQLite database, `$CODEATLAS_HOME/codeatlas.db`, shared by all registered repositories (every row is scoped by `repo_id`). Tables: `repos`, `index_runs`, `nodes`, `edges`, `unresolved`, `chunks` + `chunks_fts`, and the investigation tables.
-- **Indexer:** discovers files (git ls-files or walk, skipping secrets/generated/oversized), groups them by nearest `tsconfig.json`, builds one `ts.Program` per group, and walks the AST twice (declarations/imports/routes, then calls/renders/heritage/complexity). Adds git history, Markdown docs, and searchable chunks. A full re-index replaces the previous run in one transaction.
+- **Indexer:** discovers files (git ls-files or walk, skipping secrets/generated/oversized) and gives every file a language, a file type and one of seven statuses.
+  - TypeScript and JavaScript (and Svelte, Vue and Astro components as virtual modules) are grouped by nearest `tsconfig.json`, one `ts.Program` per group, and the AST is walked twice (declarations/imports/routes, then calls/renders/heritage/complexity).
+  - 71 more languages are parsed with tree-sitter; declarations, parameters, imports and calls are extracted by per-language rules and calls are linked by scope, imports and package folders. SCIP indexes, when given, add compiler-checked references.
+  - SQL files are read by PostgreSQL's parser or the dialect statement reader (tables, views, routines, triggers and the tables their bodies touch); ORM models and migrations are replayed into the same schema.
+  - JSON, YAML, TOML and XML are read to every key and element; manifests give dependencies, plugins and tasks, with module and class links (ADR 0022). Markdown and other documentation give nested sections and links.
+  - Adds git history and searchable chunks. A full re-index replaces the previous run in one transaction; an unchanged project configuration allows an incremental run.
 - **Queries:** graph lookups, BM25 search with a relevance floor, and the view builders.
 - **Chat:** entity extraction → definitions + graph facts + route handlers + search hits (≤60 lines per source, secrets redacted) → prompt that treats sources as data → schema-validated answer → citation grounding.
 - **Investigations:** state machine: investigation `open → patch_proposed → approved → committed` (or `discarded`); each patch `proposed → approved | rejected | superseded → committed`. Git runs with hooks disabled and signing off; commands run via `execFile` without a shell, with a scrubbed environment and a timeout.
+- **Brain:** `buildBrain` turns the index into a brain model (parts, connections, regions, coverage); `packages/brain` lays it out in six lobes and renders it with three.js, in the Brain tab and as one offline HTML file (`cli brain`).
 - **Web UI:** React 19 + Tailwind 4, cytoscape for module/dependency graphs, React Flow for flows, hash router; token captured from `#token=` and kept in `sessionStorage`.
+
+## ArchLens
+
+A Claude skill (`skills/archlens/`): instructions, references and scripts. `scripts/brain/brain.mjs` is the CodeAtlas indexer bundled with esbuild (ADR 0020). It runs with Node alone: it unpacks `runtime.pack.gz` (grammars, TypeScript library files, the PostgreSQL parser) to a private temporary folder (ADR 0023), indexes the repository into a temporary SQLite file, and writes the brain HTML and model JSON. Both temporary folders are removed when it exits.
 
 ## Cross-cutting
 

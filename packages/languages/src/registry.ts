@@ -40,10 +40,12 @@ export const ANALYSERS = {
   },
   json: {
     name: 'JSON parser (comments and trailing commas allowed for JSON with Comments)',
-    level: 'full when the document type is recognised, otherwise partial',
+    level:
+      'full when the document type is recognised or every key is read (up to 5,000 keys, 32 levels deep), otherwise partial',
     capabilities: [
       'syntax check of the whole file',
-      'top-level keys',
+      'every key, nested, with its line; array items holding keys are named [0], [1]…',
+      'keys under dependency, plugin and script sections named as dependencies, plugins and tasks (package.json, composer.json and similar)',
       'package.json, tsconfig, composer.json, OpenAPI, JSON Schema, Jupyter notebooks, appsettings: document-specific facts',
     ],
     limitations: [
@@ -54,9 +56,11 @@ export const ANALYSERS = {
   },
   yaml: {
     name: 'YAML 1.2 parser (yaml package)',
-    level: 'full when the document type is recognised, otherwise partial',
+    level:
+      'full when the document type is recognised or every key is read (up to 5,000 keys, 32 levels deep), otherwise partial',
     capabilities: [
       'syntax check of every document in the file',
+      'every key, nested, with its line (up to 5,000 keys, 32 levels deep)',
       'Docker Compose services, images, build contexts and depends_on',
       'Kubernetes objects (kind, name, images, referenced ConfigMaps and Secrets by name)',
       'GitHub Actions and GitLab CI jobs, needs, used actions and repository scripts they run',
@@ -69,11 +73,12 @@ export const ANALYSERS = {
   },
   toml: {
     name: 'TOML 1.0 parser (smol-toml package)',
-    level: 'full when the document type is recognised, otherwise partial',
+    level:
+      'full when the document type is recognised or every key is read (up to 5,000 keys, 32 levels deep), otherwise partial',
     capabilities: [
       'syntax check',
-      'tables and keys',
-      'Cargo.toml, pyproject.toml, Pipfile, Julia Project.toml, netlify.toml dependencies and members',
+      'every table and key, nested, with its line (up to 5,000 keys, 32 levels deep)',
+      'Cargo.toml, pyproject.toml, Pipfile, libs.versions.toml, Julia Project.toml, netlify.toml dependencies, plugins and members',
     ],
     limitations: ['values of configuration keys are never stored'],
   },
@@ -81,11 +86,17 @@ export const ANALYSERS = {
     name: 'XML element scanner (well-formedness check, no DTD or entity expansion)',
     level: 'full when the document type is recognised, otherwise partial',
     capabilities: [
-      'element structure and well-formedness',
-      'Maven POM coordinates, modules, parent and dependencies',
-      '.NET project files (package and project references), Android manifests, Liquibase changelogs, Ant targets',
+      'element structure and well-formedness; every element as a nested part named by tag and its id, name or key attribute (up to 5,000 elements; named ones past the limit are still read)',
+      'Maven POM coordinates, modules, parent, dependencies, plugins, profiles and executions; a dependency on a module the repository builds is linked to its POM',
+      'fully qualified class names in attributes and text (Spring beans, servlets, filters, listeners, persistence units, service files) linked to the JVM source file that declares them, labelled inferred',
+      '.NET project files (package and project references, targets), Android manifests, Ant targets',
+      'Liquibase changelogs: full when every change is one the schema reader applies; otherwise partial, naming the changes not applied',
     ],
-    limitations: ['DTDs, entities and XInclude are not processed', 'no schema validation'],
+    limitations: [
+      'DTDs, entities and XInclude are not processed',
+      'no schema validation',
+      'Hibernate mapping files are partial: their tables are not read into the database schema',
+    ],
   },
   ini: {
     name: 'Line parser for INI, properties, .env templates and similar key/value formats',
@@ -150,15 +161,22 @@ export const ANALYSERS = {
   },
   markdown: {
     name: 'Markdown section and link reader',
-    level: 'partial',
-    capabilities: ['headings, links to repository files, mentions of exported code symbols'],
+    level: 'full',
+    capabilities: [
+      'every heading as a section nested under the nearest higher heading',
+      'links to repository files (relative paths resolved through ..) and mentions of exported code symbols',
+      'text chunked by section for search',
+    ],
     limitations: ['not a CommonMark parser; embedded HTML is text'],
   },
   'doc-headings': {
     name: 'Documentation heading extractor (reStructuredText, AsciiDoc, Org, POD, TeX)',
     level: 'partial',
-    capabilities: ['section headings'],
-    limitations: ['links and directives are not resolved'],
+    capabilities: [
+      'section headings, nested by level',
+      'AsciiDoc include::, xref: and link:, and reStructuredText include, literalinclude, image and figure, linked to repository files',
+    ],
+    limitations: ['prose is not chunked for search', 'other directives and roles are not resolved'],
   },
   idl: {
     name: 'Interface definition extractor (Protocol Buffers, Thrift, GraphQL, Cap’n Proto, Avro IDL, Smithy, WebIDL)',
@@ -177,11 +195,13 @@ export const ANALYSERS = {
       'parameters with their declared types, defaults and variadics; declared return types; base classes and implemented interfaces',
       'imports with the names and aliases they bring in, resolved to repository files where the language has a path rule',
       'calls and instantiations, linked to the declaration they name through scope, imports, the package folder or a unique name; each link is labelled observed, inferred or unresolved',
+      'Gradle build scripts: plugins, dependencies (coordinates, map notation, version-catalog aliases, platform(), project()), tasks, and settings include/includeBuild links, read by patterns on top of the parse',
     ],
     limitations: [
       'no type checker: a call through a variable whose type is not written is linked only when one declaration has that name, and is labelled inferred',
       'code generated by macros, preprocessors or at build time is not seen',
       'a file with syntax errors is partial, with the first error line recorded; the rest of the file is still read',
+      'Gradle dependencies added by code (loops, functions, conditions) are missed',
     ],
   },
   declarations: {
